@@ -1,0 +1,657 @@
+class_name LTEconomy
+extends RefCounted
+
+
+
+
+
+
+
+var businesses: Array = []
+var debts: Array = []
+var town_money_flow: Dictionary = {"outside_in": 0.0, "outside_out": 0.0, "creditor_losses": 0.0}
+var ledger_note: String = "Money moves between citizen cash, business cash, and the outside flows in town_money_flow. Retail revenue is collected from citizen cash. Imports and rent to outside owners leave through outside_out. Outside contract and export income enters through outside_in."
+
+var _next_business_id: int = 1
+var _next_debt_id: int = 1
+
+const BUSINESS_TYPES: Dictionary = {
+	"grocery": {"display": "Grocery", "skill": "retail", "startup": 8000.0, "unit_price": 7.0, "unit_cost": 4.2, "wage": 42.0, "target_staff": 2, "rent": 12.0, "demand_per_capita": 0.8},
+	"farm": {"display": "Farm", "skill": "farming", "startup": 6000.0, "unit_price": 5.0, "unit_cost": 1.5, "wage": 40.0, "target_staff": 3, "rent": 6.0, "demand_per_capita": 0.3},
+	"cafe": {"display": "Cafe", "skill": "cooking", "startup": 5000.0, "unit_price": 9.0, "unit_cost": 4.5, "wage": 42.0, "target_staff": 2, "rent": 10.0, "demand_per_capita": 0.15},
+	"general_store": {"display": "General Store", "skill": "retail", "startup": 7000.0, "unit_price": 12.0, "unit_cost": 7.0, "wage": 42.0, "target_staff": 2, "rent": 11.0, "demand_per_capita": 0.25},
+	"construction": {"display": "Construction", "skill": "construction", "startup": 10000.0, "unit_price": 120.0, "unit_cost": 70.0, "wage": 60.0, "target_staff": 4, "rent": 9.0, "demand_per_capita": 0.02},
+}
+
+const JOB_TITLES: Dictionary = {
+	"grocery": "Grocery Clerk",
+	"farm": "Farm Worker",
+	"cafe": "Cafe Worker",
+	"general_store": "Store Clerk",
+	"construction": "Construction Worker",
+}
+
+const DEBT_TERMS: Dictionary = {
+	"mortgage": {"base_rate": 0.05, "min_score": 640},
+	"business_loan": {"base_rate": 0.08, "min_score": 620},
+	"personal_loan": {"base_rate": 0.11, "min_score": 600},
+	"credit_card": {"base_rate": 0.22, "min_score": 540},
+	"supplier_credit": {"base_rate": 0.06, "min_score": 500},
+}
+
+
+func get_total_town_money(citizens: Array) -> float:
+	var total: float = 0.0
+	for c in citizens:
+		total += float(c.get("cash", 0.0))
+	for b in businesses:
+		total += float(b.get("cash", 0.0))
+	return total
+
+
+func get_business(business_id: int) -> Dictionary:
+	for b in businesses:
+		if int(b.get("id", -1)) == business_id:
+			return b
+	return {}
+
+
+func get_citizen(citizens: Array, citizen_id: int) -> Dictionary:
+	for c in citizens:
+		if int(c.get("id", -1)) == citizen_id:
+			return c
+	return {}
+
+
+func _history(citizen: Dictionary, text: String) -> void:
+	if not citizen.has("history"):
+		citizen["history"] = []
+	var h: Array = citizen["history"]
+	h.append(text)
+	citizen["history"] = h
+
+
+func _clamp_credit(citizen: Dictionary, delta: float) -> void:
+	var score: float = float(citizen.get("credit_score", 650))
+	score = clampf(score + delta, 300.0, 850.0)
+	citizen["credit_score"] = int(round(score))
+
+
+
+
+func create_debt(citizen: Dictionary, business_id: int, creditor: String, debt_type: String, amount: float, secured_by: String = "") -> int:
+	if amount <= 0.0:
+		return -1
+	if int(citizen.get("bankruptcy_record_years", 0)) > 0:
+		return -1
+	var terms: Dictionary = DEBT_TERMS.get(debt_type, {"base_rate": 0.12, "min_score": 600})
+	var score: int = int(citizen.get("credit_score", 650))
+	if score < int(terms["min_score"]):
+		return -1
+	var rate: float = float(terms["base_rate"]) + clampf((700.0 - float(score)) / 100.0, -2.0, 4.0) * 0.01
+	rate = maxf(rate, 0.01)
+	var monthly: float = maxf(15.0, amount * (rate / 12.0) + amount * 0.02)
+	var debt: Dictionary = {
+		"id": _next_debt_id,
+		"debtor_citizen_id": int(citizen.get("id", -1)),
+		"debtor_business_id": business_id,
+		"creditor": creditor,
+		"type": debt_type,
+		"original_amount": amount,
+		"balance": amount,
+		"interest_annual": rate,
+		"min_payment": monthly,
+		"secured_by": secured_by,
+		"status": "current",
+		"missed_months": 0,
+		"cosigner_id": -1,
+		"due_day": 30,
+	}
+	_next_debt_id += 1
+	debts.append(debt)
+	if business_id >= 0:
+		var biz: Dictionary = get_business(business_id)
+		if not biz.is_empty():
+			var ids: Array = biz.get("debt_ids", [])
+			ids.append(debt["id"])
+			biz["debt_ids"] = ids
+	return int(debt["id"])
+
+
+func _citizen_debts(citizen_id: int) -> Array:
+	var out: Array = []
+	for d in debts:
+		if int(d.get("debtor_citizen_id", -1)) == citizen_id and String(d.get("status", "")) not in ["paid", "discharged"]:
+			out.append(d)
+	return out
+
+
+func _debt_service_monthly(citizens: Array, summary: Dictionary) -> void:
+	for d in debts:
+		if String(d.get("status", "")) in ["paid", "discharged", "bankruptcy"]:
+			continue
+		var interest: float = float(d["balance"]) * float(d["interest_annual"]) / 12.0
+		d["balance"] = float(d["balance"]) + interest
+		var citizen: Dictionary = get_citizen(citizens, int(d["debtor_citizen_id"]))
+		if citizen.is_empty():
+			continue
+
+		var paid: float = 0.0
+		var biz: Dictionary = {}
+		if int(d.get("debtor_business_id", -1)) >= 0:
+			biz = get_business(int(d["debtor_business_id"]))
+		if not biz.is_empty() and float(biz.get("cash", 0.0)) > 0.0:
+			paid = minf(float(d["min_payment"]), minf(float(d["balance"]), float(biz["cash"])))
+			biz["cash"] = float(biz["cash"]) - paid
+		if paid < float(d["min_payment"]):
+			var rest: float = minf(float(d["min_payment"]) - paid, minf(float(d["balance"]) - paid, float(citizen.get("cash", 0.0))))
+			if rest > 0.0:
+				citizen["cash"] = float(citizen.get("cash", 0.0)) - rest
+				paid += rest
+		d["balance"] = float(d["balance"]) - paid
+		if float(d["balance"]) <= 0.01:
+			d["balance"] = 0.0
+			d["status"] = "paid"
+			_history(citizen, "Paid off a %s debt to %s." % [String(d["type"]), String(d["creditor"])])
+			_clamp_credit(citizen, 4.0)
+		elif paid >= float(d["min_payment"]) * 0.99:
+			d["status"] = "current"
+			d["missed_months"] = 0
+			_clamp_credit(citizen, 2.0)
+			summary["debts_serviced"] = int(summary.get("debts_serviced", 0)) + 1
+		else:
+			d["missed_months"] = int(d.get("missed_months", 0)) + 1
+			var missed: int = int(d["missed_months"])
+			if missed == 1:
+				d["status"] = "late30"
+			elif missed == 2:
+				d["status"] = "late60"
+			elif missed == 3:
+				d["status"] = "late90"
+			else:
+				d["status"] = "collections"
+			_clamp_credit(citizen, -25.0)
+			summary["debts_defaulted"] = int(summary.get("debts_defaulted", 0)) + 1
+			_history(citizen, "Missed a payment on a %s debt to %s. The debt is now marked %s." % [String(d["type"]), String(d["creditor"]), String(d["status"])])
+
+
+
+
+func _try_found_business(citizen: Dictionary, citizens: Array, day: int, rng: RandomNumberGenerator, summary: Dictionary) -> void:
+	var intent: String = String(citizen.get("business_intent", ""))
+	if not BUSINESS_TYPES.has(intent):
+		return
+	if int(citizen.get("last_founding_try_day", -1000)) > day - 30:
+		return
+	citizen["last_founding_try_day"] = day
+	var cfg: Dictionary = BUSINESS_TYPES[intent]
+	var traits: Dictionary = citizen.get("traits", {})
+	var skills: Dictionary = citizen.get("skills", {})
+	var skill_key: String = String(cfg["skill"])
+	var score: float = float(traits.get("ambition", 50)) * 0.25 + float(traits.get("risk", 50)) * 0.2 + float(traits.get("discipline", 50)) * 0.15 + float(skills.get(skill_key, 0)) * 0.25 + float(skills.get("finance", 0)) * 0.1 + float(traits.get("intelligence", 50)) * 0.05
+
+
+
+
+
+
+	var estimate: float = score + (float(traits.get("risk", 50)) - 50.0) * 0.1
+	if estimate < 48.0:
+		if rng.randf() < 0.3:
+			_history(citizen, "Looked at starting a %s but decided the numbers did not work." % String(cfg["display"]))
+		return
+	var cost: float = float(cfg["startup"])
+	var own: float = minf(float(citizen.get("cash", 0.0)), cost)
+	var loan_id: int = -1
+	if own < cost:
+		if own < cost * 0.25:
+			if rng.randf() < 0.5:
+				_history(citizen, "Wanted to start a %s but did not have enough savings and did not try for a loan." % String(cfg["display"]))
+			return
+		loan_id = create_debt(citizen, -1, "Outside Bank", "business_loan", cost - own, "equipment")
+		if loan_id == -1:
+			_history(citizen, "Was denied a business loan for a %s. Credit score or a past bankruptcy blocked it." % String(cfg["display"]))
+			return
+	citizen["cash"] = float(citizen.get("cash", 0.0)) - own
+	var setup_spend: float = cost * 0.65
+	town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + setup_spend
+	var biz: Dictionary = {
+		"id": _next_business_id,
+		"type": intent,
+		"name": "%s %s" % [String(citizen.get("last_name", "Town")), String(cfg["display"])],
+		"owner_id": int(citizen.get("id", -1)),
+		"cash": cost - setup_spend,
+		"stock": 120.0,
+		"price_level": 0.95 + rng.randf() * 0.3,
+		"staff_ids": [],
+		"wage": float(cfg["wage"]),
+		"reputation": 55.0,
+		"open": true,
+		"days_open": 0,
+		"supplier": "outside",
+		"debt_ids": [],
+		"days_cash_negative": 0,
+	}
+	_next_business_id += 1
+	if loan_id >= 0:
+
+		for d in debts:
+			if int(d.get("id", -1)) == loan_id:
+				d["debtor_business_id"] = int(biz["id"])
+		biz["debt_ids"] = [loan_id]
+		summary["debts_created"] = int(summary.get("debts_created", 0)) + 1
+	businesses.append(biz)
+	citizen["job_title"] = "Owner"
+	citizen["employer_business_id"] = int(biz["id"])
+	citizen["business_intent"] = ""
+	_history(citizen, "Started %s with $%d of savings%s. Saw unmet demand in town and judged the numbers could work." % [String(biz["name"]), int(own), " and a bank loan" if loan_id >= 0 else ""])
+	summary["businesses_started"] = int(summary.get("businesses_started", 0)) + 1
+	var started: Array = summary.get("started_ids", [])
+	started.append(int(biz["id"]))
+	summary["started_ids"] = started
+
+
+
+
+func _collect_from_citizens(citizens: Array, amount: float) -> float:
+	if amount <= 0.0:
+		return 0.0
+	var payers: Array = []
+	for c in citizens:
+		if bool(c.get("alive", false)) and float(c.get("cash", 0.0)) > 0.0:
+			payers.append(c)
+	if payers.is_empty():
+		return 0.0
+	var share: float = amount / float(payers.size())
+	var collected: float = 0.0
+	for c in payers:
+		var pay: float = minf(float(c.get("cash", 0.0)), minf(share * 1.2, amount - collected))
+		if pay <= 0.0:
+			continue
+		c["cash"] = float(c.get("cash", 0.0)) - pay
+		collected += pay
+		if collected >= amount:
+			break
+	return collected
+
+
+func _find_local_farm() -> Dictionary:
+	for b in businesses:
+		if String(b.get("type", "")) == "farm" and bool(b.get("open", false)):
+			return b
+	return {}
+
+
+func _restock(biz: Dictionary, cfg: Dictionary, demand_units: float) -> void:
+	var target: float = demand_units * 4.0 + 20.0
+	var stock: float = float(biz.get("stock", 0.0))
+	if stock >= target:
+		return
+	var want: float = target - stock
+	var cash: float = float(biz.get("cash", 0.0))
+	if cash <= 0.0:
+		return
+
+	if String(biz.get("type", "")) in ["grocery", "cafe"]:
+		var farm: Dictionary = _find_local_farm()
+		if not farm.is_empty() and int(farm.get("id", -1)) != int(biz.get("id", -1)):
+			var local_cost: float = float(cfg["unit_cost"]) * 0.8
+			var take: float = minf(want, float(farm.get("stock", 0.0)))
+			take = minf(take, cash / local_cost)
+			if take > 0.0:
+				biz["cash"] = float(biz["cash"]) - take * local_cost
+				farm["cash"] = float(farm.get("cash", 0.0)) + take * local_cost
+				farm["stock"] = float(farm.get("stock", 0.0)) - take
+				biz["stock"] = float(biz.get("stock", 0.0)) + take
+				biz["supplier"] = str(int(farm.get("id", -1)))
+				want -= take
+				cash = float(biz["cash"])
+	if want <= 0.0:
+		return
+	var outside_cost: float = float(cfg["unit_cost"]) * 1.3
+	var buy: float = minf(want, cash * 0.6 / outside_cost)
+	if buy > 0.0:
+		biz["cash"] = float(biz["cash"]) - buy * outside_cost
+		biz["stock"] = float(biz.get("stock", 0.0)) + buy
+		town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + buy * outside_cost
+		if String(biz.get("supplier", "")) == "":
+			biz["supplier"] = "outside"
+
+
+func _hire(biz: Dictionary, cfg: Dictionary, citizens: Array, summary: Dictionary) -> void:
+	var staff: Array = biz.get("staff_ids", [])
+	if staff.size() >= int(cfg["target_staff"]):
+		return
+	if float(biz.get("cash", 0.0)) < 200.0:
+		return
+	var skill_key: String = String(cfg["skill"])
+	var best: Dictionary = {}
+	var best_score: float = -1.0
+	for c in citizens:
+		if not bool(c.get("alive", false)):
+			continue
+		var age: int = int(c.get("age_years", 0))
+		if age < 18 or age > 64:
+			continue
+		if int(c.get("id", -1)) == int(biz.get("owner_id", -1)):
+			continue
+		var job: String = String(c.get("job_title", ""))
+		if job != "" and job != "Unemployed":
+			continue
+		var skills: Dictionary = c.get("skills", {})
+		var s: float = float(skills.get(skill_key, 0)) * 0.7 + float(c.get("reputation", 50)) * 0.3
+		if s > best_score:
+			best_score = s
+			best = c
+	if best.is_empty():
+		return
+	staff.append(int(best.get("id", -1)))
+	biz["staff_ids"] = staff
+	best["job_title"] = String(JOB_TITLES.get(String(biz.get("type", "")), "Worker"))
+	best["employer_business_id"] = int(biz.get("id", -1))
+	_history(best, "Hired at %s as a %s." % [String(biz.get("name", "a business")), String(best["job_title"])])
+	summary["hires"] = int(summary.get("hires", 0)) + 1
+
+
+func _close_business(biz: Dictionary, citizens: Array, reason: String, summary: Dictionary) -> void:
+	biz["open"] = false
+	var staff: Array = biz.get("staff_ids", [])
+	for sid in staff:
+		var c: Dictionary = get_citizen(citizens, int(sid))
+		if not c.is_empty():
+			c["job_title"] = "Unemployed"
+			c["employer_business_id"] = -1
+			_history(c, "Laid off when %s closed. %s" % [String(biz.get("name", "The business")), reason])
+	biz["staff_ids"] = []
+	var owner: Dictionary = get_citizen(citizens, int(biz.get("owner_id", -1)))
+	if not owner.is_empty() and int(owner.get("employer_business_id", -1)) == int(biz.get("id", -1)):
+		owner["job_title"] = "Unemployed"
+		owner["employer_business_id"] = -1
+		_history(owner, "%s closed. %s The business debts remain on record." % [String(biz.get("name", "The business")), reason])
+	summary["businesses_closed"] = int(summary.get("businesses_closed", 0)) + 1
+
+
+func _operate_business(biz: Dictionary, citizens: Array, alive_count: int, rng: RandomNumberGenerator, summary: Dictionary) -> void:
+	var cfg: Dictionary = BUSINESS_TYPES[String(biz.get("type", "grocery"))]
+	biz["days_open"] = int(biz.get("days_open", 0)) + 1
+
+	if String(biz.get("type", "")) == "farm":
+		var grow_cost: float = minf(float(biz.get("cash", 0.0)), 30.0)
+		if float(biz.get("cash", 0.0)) > 0.0:
+			biz["cash"] = float(biz["cash"]) - grow_cost
+			biz["stock"] = minf(float(biz.get("stock", 0.0)) + 25.0, 600.0)
+			town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + grow_cost
+	var demand_units: float = float(alive_count) * float(cfg["demand_per_capita"])
+	demand_units *= 0.85 + rng.randf() * 0.3
+	_restock(biz, cfg, demand_units)
+
+	var rep_factor: float = clampf(float(biz.get("reputation", 50.0)) / 50.0, 0.3, 1.4)
+	var price_factor: float = clampf(1.6 - float(biz.get("price_level", 1.0)) * 0.6, 0.4, 1.2)
+	var wanted: float = demand_units * rep_factor * price_factor
+	var sold: float = minf(wanted, float(biz.get("stock", 0.0)))
+	var stockout: bool = sold < wanted - 0.01
+	var gross: float = sold * float(cfg["unit_price"]) * float(biz.get("price_level", 1.0))
+	var revenue: float = 0.0
+	if String(biz.get("type", "")) == "construction":
+		revenue = gross
+		town_money_flow["outside_in"] = float(town_money_flow["outside_in"]) + revenue
+	else:
+		revenue = _collect_from_citizens(citizens, gross)
+		if gross > 0.0 and revenue < gross:
+			sold = sold * (revenue / gross)
+	biz["stock"] = float(biz.get("stock", 0.0)) - sold
+	biz["cash"] = float(biz.get("cash", 0.0)) + revenue
+	summary["sales_total"] = float(summary.get("sales_total", 0.0)) + revenue
+
+	var staff: Array = biz.get("staff_ids", [])
+	var wage: float = float(biz.get("wage", float(cfg["wage"])))
+	for sid in staff:
+		var c: Dictionary = get_citizen(citizens, int(sid))
+		if c.is_empty() or not bool(c.get("alive", false)):
+			continue
+		var pay: float = minf(wage, maxf(float(biz.get("cash", 0.0)), 0.0))
+		biz["cash"] = float(biz["cash"]) - pay
+		c["cash"] = float(c.get("cash", 0.0)) + pay
+		if pay < wage:
+			_history(c, "Pay from %s came up short today." % String(biz.get("name", "work")))
+
+	var owner: Dictionary = get_citizen(citizens, int(biz.get("owner_id", -1)))
+	if not owner.is_empty() and bool(owner.get("alive", false)) and float(biz.get("cash", 0.0)) > 600.0:
+		var draw: float = 14.0
+		biz["cash"] = float(biz["cash"]) - draw
+		owner["cash"] = float(owner.get("cash", 0.0)) + draw
+
+	var rent: float = float(cfg["rent"])
+	biz["cash"] = float(biz["cash"]) - rent
+	town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + rent
+
+	var rep: float = float(biz.get("reputation", 50.0))
+	if stockout:
+		rep -= 1.5
+	elif sold > 0.0:
+		rep += 0.3
+	if float(biz.get("price_level", 1.0)) > 1.3:
+		rep -= 0.5
+	elif float(biz.get("price_level", 1.0)) < 1.1 and sold > 0.0:
+		rep += 0.2
+	biz["reputation"] = clampf(rep, 0.0, 100.0)
+
+	if float(biz.get("cash", 0.0)) < 0.0:
+		biz["days_cash_negative"] = int(biz.get("days_cash_negative", 0)) + 1
+	else:
+		biz["days_cash_negative"] = 0
+	if int(biz.get("days_cash_negative", 0)) >= 30:
+		_close_business(biz, citizens, "It ran out of money and stayed in the red for a month.", summary)
+
+
+
+
+func _maybe_bankruptcy(citizen: Dictionary, citizens: Array, rng: RandomNumberGenerator, summary: Dictionary) -> void:
+	if not bool(citizen.get("alive", false)):
+		return
+	var mine: Array = _citizen_debts(int(citizen.get("id", -1)))
+	if mine.is_empty():
+		return
+	var total: float = 0.0
+	var monthly: float = 0.0
+	var max_missed: int = 0
+	for d in mine:
+		total += float(d.get("balance", 0.0))
+		monthly += float(d.get("min_payment", 0.0))
+		max_missed = maxi(max_missed, int(d.get("missed_months", 0)))
+	if max_missed < 2 or total < 2000.0:
+		return
+	var employed: bool = String(citizen.get("job_title", "")) not in ["", "Unemployed"]
+	var est_monthly_income: float = 900.0 if employed else 0.0
+	var cash: float = float(citizen.get("cash", 0.0))
+	if cash >= monthly and total < est_monthly_income * 6.0:
+		return
+	var traits: Dictionary = citizen.get("traits", {})
+	var desperation: float = 40.0 if est_monthly_income <= 0.0 else clampf(total / maxf(est_monthly_income, 1.0), 0.0, 5.0) * 8.0
+	var score: float = desperation + (100.0 - float(traits.get("discipline", 50))) * 0.2 + float(traits.get("honesty", 50)) * 0.1 + rng.randf() * 20.0
+
+
+
+	if score < 50.0:
+		return
+
+
+
+	_history(citizen, "Filed for bankruptcy. Total debts of $%d could not be paid from income or savings." % int(total))
+	var haircut: float = cash * 0.5
+	citizen["cash"] = cash - haircut
+	town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + haircut
+	for d in mine:
+		if String(d.get("secured_by", "")) == "":
+			var loss: float = float(d.get("balance", 0.0))
+			town_money_flow["creditor_losses"] = float(town_money_flow["creditor_losses"]) + loss
+			d["balance"] = 0.0
+			d["status"] = "discharged"
+			_history(citizen, "Bankruptcy discharged a %s debt to %s. The creditor took a loss of $%d." % [String(d["type"]), String(d["creditor"]), int(loss)])
+		else:
+			d["balance"] = float(d.get("balance", 0.0)) * 0.5
+			d["status"] = "current"
+			d["missed_months"] = 0
+			_history(citizen, "Gave up collateral on a %s debt to %s during bankruptcy. Part of the debt remains." % [String(d["type"]), String(d["creditor"])])
+
+		if int(d.get("debtor_business_id", -1)) >= 0:
+			var biz: Dictionary = get_business(int(d["debtor_business_id"]))
+			if not biz.is_empty() and bool(biz.get("open", false)):
+				_close_business(biz, citizens, "It was lost in the owner bankruptcy.", summary)
+	citizen["credit_score"] = 320
+	citizen["bankruptcy_record_years"] = 10
+	_history(citizen, "Bankruptcy is on the credit record for 10 years. New loans are blocked in that time.")
+	summary["bankruptcies"] = int(summary.get("bankruptcies", 0)) + 1
+
+
+
+
+func settle_estate(citizen: Dictionary, citizens: Array) -> Dictionary:
+	var summary: Dictionary = {"debts_paid": 0.0, "debts_written_off": 0.0, "cash_to_heirs": 0.0, "heirs": []}
+	if bool(citizen.get("estate_settled", false)):
+		return summary
+	var cash: float = float(citizen.get("cash", 0.0))
+
+	var funeral: float = minf(500.0, cash)
+	cash -= funeral
+	town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + funeral
+	var mine: Array = _citizen_debts(int(citizen.get("id", -1)))
+
+	var ordered: Array = []
+	for d in mine:
+		if String(d.get("secured_by", "")) != "":
+			ordered.append(d)
+	for d in mine:
+		if String(d.get("secured_by", "")) == "":
+			ordered.append(d)
+	for d in ordered:
+		var bal: float = float(d.get("balance", 0.0))
+		if bal <= 0.0:
+			continue
+		var pay: float = minf(bal, cash)
+		cash -= pay
+		summary["debts_paid"] = float(summary["debts_paid"]) + pay
+		var rest: float = bal - pay
+		if rest <= 0.01:
+			d["balance"] = 0.0
+			d["status"] = "paid"
+		elif int(d.get("cosigner_id", -1)) >= 0:
+			var co: Dictionary = get_citizen(citizens, int(d["cosigner_id"]))
+			if not co.is_empty() and bool(co.get("alive", false)):
+				d["debtor_citizen_id"] = int(co.get("id", -1))
+				d["balance"] = rest
+				d["status"] = "current"
+				d["missed_months"] = 0
+				_history(co, "Took over a %s debt of $%d as co-signer after a death in the family." % [String(d["type"]), int(rest)])
+			else:
+				d["balance"] = 0.0
+				d["status"] = "discharged"
+				summary["debts_written_off"] = float(summary["debts_written_off"]) + rest
+				town_money_flow["creditor_losses"] = float(town_money_flow["creditor_losses"]) + rest
+		else:
+
+			d["balance"] = 0.0
+			d["status"] = "discharged"
+			summary["debts_written_off"] = float(summary["debts_written_off"]) + rest
+			town_money_flow["creditor_losses"] = float(town_money_flow["creditor_losses"]) + rest
+
+	var heirs: Array = []
+	var spouse_id: int = int(citizen.get("spouse_id", citizen.get("partner_id", -1)))
+	var spouse: Dictionary = get_citizen(citizens, spouse_id) if spouse_id >= 0 else {}
+	if not spouse.is_empty() and bool(spouse.get("alive", false)):
+		heirs.append(spouse)
+	else:
+		var child_ids: Array = citizen.get("children_ids", [])
+		for cid in child_ids:
+			var ch: Dictionary = get_citizen(citizens, int(cid))
+			if not ch.is_empty() and bool(ch.get("alive", false)):
+				heirs.append(ch)
+		if heirs.is_empty():
+			for c in citizens:
+				if int(c.get("id", -1)) == int(citizen.get("id", -1)):
+					continue
+				if int(c.get("father_id", -2)) == int(citizen.get("id", -1)) or int(c.get("mother_id", -2)) == int(citizen.get("id", -1)) or int(c.get("parent_id", -2)) == int(citizen.get("id", -1)):
+					if bool(c.get("alive", false)):
+						heirs.append(c)
+
+	for b in businesses:
+		if int(b.get("owner_id", -1)) == int(citizen.get("id", -1)) and bool(b.get("open", false)):
+			if not heirs.is_empty():
+				b["owner_id"] = int(heirs[0].get("id", -1))
+				_history(heirs[0], "Inherited %s, with its business debts, after a death in the family." % String(b.get("name", "a business")))
+			else:
+				b["open"] = false
+				b["staff_ids"] = []
+	if cash > 0.0:
+		if heirs.is_empty():
+			town_money_flow["outside_out"] = float(town_money_flow["outside_out"]) + cash
+		else:
+			var share: float = cash / float(heirs.size())
+			for h in heirs:
+				h["cash"] = float(h.get("cash", 0.0)) + share
+				summary["heirs"] = (summary["heirs"] as Array) + [int(h.get("id", -1))]
+				_history(h, "Received $%d from the estate of %s %s, after the estate paid its debts." % [int(share), String(citizen.get("first_name", "")), String(citizen.get("last_name", ""))])
+			summary["cash_to_heirs"] = cash
+	citizen["cash"] = 0.0
+	citizen["estate_settled"] = true
+	_history(citizen, "Estate settled. Paid $%d in debts, $%d in debts written off, $%d left to heirs." % [int(summary["debts_paid"]), int(summary["debts_written_off"]), int(summary["cash_to_heirs"])])
+	return summary
+
+
+
+
+func daily_update(citizens: Array, day: int, rng: RandomNumberGenerator) -> Dictionary:
+	var summary: Dictionary = {
+		"day": day,
+		"businesses_started": 0,
+		"businesses_closed": 0,
+		"businesses_open": 0,
+		"hires": 0,
+		"sales_total": 0.0,
+		"debts_created": 0,
+		"debts_serviced": 0,
+		"debts_defaulted": 0,
+		"bankruptcies": 0,
+		"estates_settled": 0,
+		"started_ids": [],
+	}
+
+	for c in citizens:
+		if not bool(c.get("alive", false)) and not bool(c.get("estate_settled", false)):
+			settle_estate(c, citizens)
+			summary["estates_settled"] = int(summary["estates_settled"]) + 1
+
+	if day > 0 and day % 365 == 0:
+		for c in citizens:
+			if int(c.get("bankruptcy_record_years", 0)) > 0:
+				c["bankruptcy_record_years"] = int(c["bankruptcy_record_years"]) - 1
+
+	for c in citizens:
+		if bool(c.get("alive", false)) and int(c.get("age_years", 0)) >= 18 and String(c.get("business_intent", "")) != "":
+			var owns: bool = false
+			for b in businesses:
+				if int(b.get("owner_id", -1)) == int(c.get("id", -1)) and bool(b.get("open", false)):
+					owns = true
+					break
+			if not owns:
+				_try_found_business(c, citizens, day, rng, summary)
+
+	var alive_count: int = 0
+	for c in citizens:
+		if bool(c.get("alive", false)):
+			alive_count += 1
+	for b in businesses:
+		if bool(b.get("open", false)):
+			_hire(b, BUSINESS_TYPES[String(b.get("type", "grocery"))], citizens, summary)
+	for b in businesses:
+		if bool(b.get("open", false)):
+			_operate_business(b, citizens, alive_count, rng, summary)
+
+	if day > 0 and day % 30 == 0:
+		_debt_service_monthly(citizens, summary)
+		for c in citizens:
+			_maybe_bankruptcy(c, citizens, rng, summary)
+	for b in businesses:
+		if bool(b.get("open", false)):
+			summary["businesses_open"] = int(summary["businesses_open"]) + 1
+	return summary

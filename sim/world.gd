@@ -1,0 +1,524 @@
+class_name LTWorld
+extends RefCounted
+## The whole town as plain data. Systems are static scripts that read and write
+## these records. Nothing here is a scene node, so the town can run headless and
+## grow past the starting size without changing any system.
+
+const SAVE_VERSION: int = 1
+
+var seed_value: int = 0
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var day: int = 0
+var weather: String = "Clear"
+var config: Dictionary = {}
+var ledger: LTLedger = LTLedger.new()
+
+var citizens: Array = []      # index == id, dead and departed Sims stay so history is never lost
+var households: Array = []    # index == id
+var lots: Array = []          # index == id
+var road_nodes: Array = []    # [{"id","x","y"}]
+var roads: Array = []         # segments, index == id
+var streets: Array = []       # named groups of segments
+var businesses: Array = []    # index == id
+var debts: Array = []         # index == id
+var petitions: Array = []     # index == id
+var city_needs: Array = []    # published needs, index == id
+var projects: Array = []      # index == id
+var companies: Array = []     # outside contractors, index == id
+var laws_log: Array = []      # every law change with its estimate and tracked result
+var city: Dictionary = {}
+var bank: Dictionary = {}
+var chronicle: Array = []
+var events_today: Array = []
+var stats_history: Array = []
+var counters: Dictionary = {}
+var market: Dictionary = {}
+var action_log: Array = []
+var watch_list: Array = []
+var _path_cache: Dictionary = {}
+var dist_cache: Dictionary = {}
+var debt_index: Dictionary = {}
+var debt_index_dirty: bool = true
+
+
+static func default_config() -> Dictionary:
+	return {
+		"lot_cols": 6,
+		"lot_rows": 4,
+		"target_households": 30,
+		"target_population": 100,
+		"house_lots": 6,
+		"apartment_lots": 6,
+		"apartment_units": 4,
+		"next_town_minutes": 25,
+		"city_start_cash": LTMoney.dollars(150000.0),
+		"bank_reserve": LTMoney.dollars(5000000.0),
+	}
+
+
+func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
+	seed_value = p_seed
+	rng.seed = p_seed
+	rng.state = 0
+	rng.seed = p_seed
+	day = 0
+	config = default_config()
+	for k in p_config:
+		config[k] = p_config[k]
+	ledger = LTLedger.new()
+	citizens.clear()
+	households.clear()
+	lots.clear()
+	road_nodes.clear()
+	roads.clear()
+	streets.clear()
+	businesses.clear()
+	debts.clear()
+	petitions.clear()
+	city_needs.clear()
+	projects.clear()
+	companies.clear()
+	laws_log.clear()
+	chronicle.clear()
+	events_today.clear()
+	stats_history.clear()
+	action_log.clear()
+	watch_list.clear()
+	_path_cache.clear()
+	dist_cache.clear()
+	debt_index.clear()
+	debt_index_dirty = true
+	counters = {
+		"births": 0, "deaths": 0, "moved_in": 0, "moved_out": 0,
+		"businesses_opened": 0, "businesses_closed": 0, "founding_attempts": 0, "founding_failed": 0,
+		"bankruptcies": 0, "bankruptcies_ch7": 0, "bankruptcies_ch13": 0, "estates": 0,
+		"loans_made": 0, "loans_denied": 0, "debts_paid_off": 0, "debts_charged_off": 0,
+		"foreclosures": 0, "repossessions": 0, "evictions": 0, "thefts": 0,
+		"hires": 0, "layoffs": 0, "quits": 0, "petitions": 0, "projects_done": 0, "marriages": 0,
+	}
+	ledger.open("outside")
+	ledger.open("city")
+	ledger.open("bank")
+	ledger.pay("outside", "bank", int(config["bank_reserve"]), "bank_capital")
+	ledger.pay("outside", "city", int(config["city_start_cash"]), "city_start_reserve")
+	LTGeography.build(self)
+	LTCivic.setup_city(self)
+	LTFinance.setup_bank(self)
+	LTProjects.setup_companies(self)
+	LTPeople.generate_town(self)
+	LTEconomy.analyze_market(self)
+	ledger.tracked["city"] = {"in": {}, "out": {}}
+	city["outside_at_start"] = ledger.bal("outside")
+	chronicle_add("The town of %s begins. %d people in %d households. Most adults with jobs drive to work outside town. There is no grocery, no school, and no clinic." % [city["name"], alive_count(), households.size()], "town", true, [])
+
+
+# ---------------------------------------------------------------- the daily tick
+
+func tick_day() -> void:
+	day += 1
+	events_today.clear()
+	_path_cache.clear()
+	if day % 7 == 0:
+		dist_cache.clear()
+	debt_index_dirty = true
+	LTGeography.roll_weather(self)
+	LTPeople.morning(self)
+	LTEconomy.daily(self)
+	LTPeople.evening(self)
+	LTFinance.daily(self)
+	LTCivic.daily(self)
+	LTProjects.daily(self)
+	LTPeople.life_events(self)
+	LTEconomy.analyze_market(self)
+	if LTCalendar.day_of_month(day) == LTCalendar.MONTH_DAYS[LTCalendar.month_index(day)]:
+		stats_history.append(snapshot())
+		if stats_history.size() > 600:
+			stats_history.remove_at(0)
+
+
+func run_days(n: int) -> void:
+	for i in n:
+		tick_day()
+
+
+# ---------------------------------------------------------------- player actions
+## Every mayor verb goes through here so a run can be replayed from seed plus this log.
+
+func apply_action(a: Dictionary) -> Dictionary:
+	var act: Dictionary = a.duplicate(true)
+	act["day"] = day
+	var result: Dictionary = {"ok": false, "message": "Unknown action."}
+	match str(act.get("kind", "")):
+		"set_law":
+			result = LTCivic.set_law(self, str(act["law"]), act["value"])
+		"zone_lot":
+			result = LTCivic.zone_lot(self, int(act["lot"]), str(act["zone"]))
+		"publish_need":
+			result = LTCivic.publish_need(self, str(act["need"]), int(act.get("lot", -1)), act.get("incentives", {}), int(act.get("petition_id", -1)))
+		"respond_petition":
+			result = LTCivic.respond_petition(self, int(act["petition_id"]), str(act["response"]), act)
+		"define_project":
+			result = LTProjects.define_project(self, str(act["ptype"]), int(act.get("target", -1)), int(act.get("ceiling", 0)), int(act.get("petition_id", -1)))
+		"award_bid":
+			result = LTProjects.award(self, int(act["project_id"]), int(act["bid_index"]))
+		"cancel_project":
+			result = LTProjects.cancel(self, int(act["project_id"]))
+		"city_borrow":
+			result = LTFinance.city_borrow(self, int(act["amount"]), str(act.get("purpose", "general")))
+		"watch":
+			var cid: int = int(act["citizen_id"])
+			if watch_list.has(cid):
+				watch_list.erase(cid)
+				result = {"ok": true, "message": "Stopped watching."}
+			else:
+				watch_list.append(cid)
+				result = {"ok": true, "message": "Now watching."}
+	if bool(result.get("ok", false)) and str(act.get("kind", "")) != "watch":
+		action_log.append(act)
+	return result
+
+
+# ---------------------------------------------------------------- lookups
+
+func cit(id: int) -> Dictionary:
+	if id < 0 or id >= citizens.size():
+		return {}
+	return citizens[id]
+
+
+func biz(id: int) -> Dictionary:
+	if id < 0 or id >= businesses.size():
+		return {}
+	return businesses[id]
+
+
+func hh(id: int) -> Dictionary:
+	if id < 0 or id >= households.size():
+		return {}
+	return households[id]
+
+
+func debt(id: int) -> Dictionary:
+	if id < 0 or id >= debts.size():
+		return {}
+	return debts[id]
+
+
+func lot(id: int) -> Dictionary:
+	if id < 0 or id >= lots.size():
+		return {}
+	return lots[id]
+
+
+func is_present(c: Dictionary) -> bool:
+	return not c.is_empty() and bool(c["alive"]) and not bool(c["left_town"])
+
+
+func present_citizens() -> Array:
+	var out: Array = []
+	for c in citizens:
+		if bool(c["alive"]) and not bool(c["left_town"]):
+			out.append(c)
+	return out
+
+
+func alive_count() -> int:
+	var n: int = 0
+	for c in citizens:
+		if bool(c["alive"]) and not bool(c["left_town"]):
+			n += 1
+	return n
+
+
+func open_businesses(btype: String = "") -> Array:
+	var out: Array = []
+	for b in businesses:
+		if str(b["status"]) == "open" and (btype == "" or str(b["type"]) == btype):
+			out.append(b)
+	return out
+
+
+func full_name(c: Dictionary) -> String:
+	if c.is_empty():
+		return "nobody"
+	return "%s %s" % [c["first_name"], c["last_name"]]
+
+
+func age_years(c: Dictionary) -> int:
+	return int(c["age_days"]) / 365
+
+
+func acct_p(c: Dictionary) -> String:
+	return "p:%d" % int(c["id"])
+
+
+func acct_b(b: Dictionary) -> String:
+	return "b:%d" % int(b["id"])
+
+
+func cash(c: Dictionary) -> int:
+	return ledger.bal("p:%d" % int(c["id"]))
+
+
+func biz_cash(b: Dictionary) -> int:
+	return ledger.bal("b:%d" % int(b["id"]))
+
+
+func household_adults(h: Dictionary) -> Array:
+	var out: Array = []
+	for mid in h["members"]:
+		var m: Dictionary = cit(int(mid))
+		if is_present(m) and age_years(m) >= 18:
+			out.append(m)
+	return out
+
+
+func household_members(h: Dictionary) -> Array:
+	var out: Array = []
+	for mid in h["members"]:
+		var m: Dictionary = cit(int(mid))
+		if is_present(m):
+			out.append(m)
+	return out
+
+
+func household_cash(h: Dictionary) -> int:
+	var t: int = 0
+	for m in household_adults(h):
+		t += cash(m)
+	return t
+
+
+## Pays a household bill from the adults, richest first. Returns amount paid.
+func household_pay(h: Dictionary, to_acct: String, cents: int, category: String) -> int:
+	if cents <= 0:
+		return 0
+	var adults: Array = household_adults(h)
+	adults.sort_custom(func(a, b): return cash(a) > cash(b))
+	var left: int = cents
+	for m in adults:
+		if left <= 0:
+			break
+		left -= ledger.pay(acct_p(m), to_acct, left, category)
+	return cents - left
+
+
+# ---------------------------------------------------------------- logs
+
+func log_sim(c: Dictionary, text: String, major: bool = true) -> void:
+	if c.is_empty():
+		return
+	var h: Array = c["history"]
+	h.append({"day": day, "text": text, "major": major})
+	if h.size() > 160:
+		# keep the oldest major events, drop the oldest minor ones first
+		var dropped: bool = false
+		for i in h.size():
+			if not bool(h[i]["major"]):
+				h.remove_at(i)
+				dropped = true
+				break
+		if not dropped:
+			h.remove_at(0)
+
+
+func log_biz(b: Dictionary, text: String) -> void:
+	var h: Array = b["history"]
+	h.append({"day": day, "text": text})
+	if h.size() > 160:
+		h.remove_at(0)
+
+
+func remember(c: Dictionary, kind: String, about: int, weight: float) -> void:
+	var mem: Array = c["memory"]
+	mem.append({"day": day, "kind": kind, "about": about, "weight": weight})
+	if mem.size() > 24:
+		var weakest: int = 0
+		for i in mem.size():
+			if absf(float(mem[i]["weight"])) < absf(float(mem[weakest]["weight"])):
+				weakest = i
+		mem.remove_at(weakest)
+
+
+func memory_weight(c: Dictionary, kind: String, about: int = -1) -> float:
+	var t: float = 0.0
+	for m in c["memory"]:
+		if str(m["kind"]) == kind and (about < 0 or int(m["about"]) == about):
+			var age: float = float(day - int(m["day"]))
+			t += float(m["weight"]) * exp(-age / 365.0)
+	return t
+
+
+func chronicle_add(text: String, kind: String, important: bool, refs: Array) -> void:
+	var e: Dictionary = {"day": day, "text": text, "kind": kind, "important": important, "refs": refs}
+	chronicle.append(e)
+	if chronicle.size() > 2000:
+		chronicle.remove_at(0)
+	events_today.append(e)
+
+
+func involves_watched(refs: Array) -> bool:
+	for r in refs:
+		if watch_list.has(int(r)):
+			return true
+	return false
+
+
+# ---------------------------------------------------------------- stats
+
+func snapshot() -> Dictionary:
+	var pop: int = 0
+	var adults: int = 0
+	var employed: int = 0
+	var local_jobs: int = 0
+	var income_sum: int = 0
+	var happy_sum: float = 0.0
+	var trust_sum: float = 0.0
+	var homeless: int = 0
+	for c in citizens:
+		if not is_present(c):
+			continue
+		pop += 1
+		happy_sum += LTPeople.happiness(c)
+		trust_sum += float(c["trust_city"])
+		if c["homeless"]:
+			homeless += 1
+		var a: int = age_years(c)
+		if a >= 18 and a < 65:
+			adults += 1
+			if str(c["job"]["kind"]) != "none":
+				employed += 1
+				income_sum += int(c["job"]["daily_wage"])
+				if str(c["job"]["kind"]) != "outside":
+					local_jobs += 1
+	var debt_total: int = 0
+	var debts_late: int = 0
+	for d in debts:
+		if LTFinance.is_active(d):
+			debt_total += int(d["balance"])
+			if str(d["status"]) != "current":
+				debts_late += 1
+	return {
+		"day": day,
+		"population": pop,
+		"adults": adults,
+		"employed": employed,
+		"local_jobs": local_jobs,
+		"unemployment": 0.0 if adults == 0 else 1.0 - float(employed) / float(adults),
+		"avg_daily_wage": 0 if employed == 0 else income_sum / employed,
+		"happiness": 0.0 if pop == 0 else happy_sum / float(pop),
+		"approval": LTCivic.approval(self),
+		"homeless": homeless,
+		"businesses_open": open_businesses().size(),
+		"city_cash": ledger.bal("city"),
+		"debt_total": debt_total,
+		"debts_late": debts_late,
+		"outside_net": -ledger.bal("outside"),
+		"counters": counters.duplicate(),
+	}
+
+
+func state_hash() -> int:
+	var parts: Array = [day, ledger.balances.hash(), citizens.size(), businesses.size(), debts.size(), counters.hash()]
+	for c in citizens:
+		parts.append(int(c["age_days"]))
+		parts.append(str(c["job"]["kind"]))
+	return str(parts).hash()
+
+
+# ---------------------------------------------------------------- save and load
+## Chunked by system and versioned from the first save.
+
+func to_save() -> Dictionary:
+	return {
+		"version": SAVE_VERSION,
+		"world": {"seed": seed_value, "rng_state": rng.state, "day": day, "weather": weather, "config": config, "counters": counters, "stats_history": stats_history, "chronicle": chronicle, "action_log": action_log, "watch_list": watch_list},
+		"geography": {"lots": lots, "road_nodes": road_nodes, "roads": roads, "streets": streets},
+		"citizens": {"citizens": citizens, "households": households},
+		"businesses": {"businesses": businesses},
+		"finance": {"ledger": ledger.to_dict(), "debts": debts, "bank": bank},
+		"city": {"city": city, "petitions": petitions, "city_needs": city_needs, "projects": projects, "companies": companies, "laws_log": laws_log},
+	}
+
+
+func save_to_file(path: String) -> Error:
+	# binary chunks keep every float exact, so a loaded town continues exactly as it would have
+	var f: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return FileAccess.get_open_error()
+	var data: Dictionary = to_save()
+	f.store_string("LIVINGTOWN")
+	f.store_32(SAVE_VERSION)
+	f.store_32(data.size())
+	for chunk in data:
+		f.store_pascal_string(str(chunk))
+		f.store_var(data[chunk])
+	f.close()
+	return OK
+
+
+func load_from_file(path: String) -> Error:
+	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return FileAccess.get_open_error()
+	if f.get_buffer(10).get_string_from_ascii() != "LIVINGTOWN":
+		return ERR_FILE_UNRECOGNIZED
+	var version: int = f.get_32()
+	if version != SAVE_VERSION:
+		return ERR_FILE_UNRECOGNIZED
+	var n: int = f.get_32()
+	var data: Dictionary = {}
+	for i in n:
+		var name: String = f.get_pascal_string()
+		data[name] = f.get_var()
+	f.close()
+	var w: Dictionary = data["world"]
+	seed_value = int(w["seed"])
+	rng.seed = seed_value
+	rng.state = int(w["rng_state"])
+	day = int(w["day"])
+	weather = str(w["weather"])
+	config = w["config"]
+	counters = w["counters"]
+	stats_history = w["stats_history"]
+	chronicle = w["chronicle"]
+	action_log = w["action_log"]
+	watch_list = w["watch_list"]
+	lots = data["geography"]["lots"]
+	road_nodes = data["geography"]["road_nodes"]
+	roads = data["geography"]["roads"]
+	streets = data["geography"]["streets"]
+	citizens = data["citizens"]["citizens"]
+	households = data["citizens"]["households"]
+	businesses = data["businesses"]["businesses"]
+	ledger = LTLedger.new()
+	ledger.from_dict(data["finance"]["ledger"])
+	debts = data["finance"]["debts"]
+	bank = data["finance"]["bank"]
+	city = data["city"]["city"]
+	petitions = data["city"]["petitions"]
+	city_needs = data["city"]["city_needs"]
+	projects = data["city"]["projects"]
+	companies = data["city"]["companies"]
+	laws_log = data["city"]["laws_log"]
+	dist_cache.clear()
+	debt_index_dirty = true
+	_path_cache.clear()
+	events_today.clear()
+	LTEconomy.analyze_market(self)
+	return OK
+
+
+# ---------------------------------------------------------------- travel
+
+func travel_minutes(from_lot: int, to_lot: int) -> float:
+	var key: int = from_lot * 100003 + to_lot
+	if _path_cache.has(key):
+		return float(_path_cache[key])
+	var m: float = LTGeography.travel_minutes(self, from_lot, to_lot)
+	_path_cache[key] = m
+	return m
+
+
+func minutes_to_outside(from_lot: int) -> float:
+	return travel_minutes(from_lot, -1)

@@ -1,0 +1,117 @@
+extends SceneTree
+
+
+
+
+
+const TOWN_SEED: = 20261120
+const RUN_DAYS: = 365
+
+
+func _init() -> void:
+	print("Living Town headless run: ", RUN_DAYS, " days, seed ", TOWN_SEED)
+	var rng: = RandomNumberGenerator.new()
+	rng.seed = TOWN_SEED
+
+	var engine = _make_system("res://sim/sim_engine.gd", "sim engine")
+	var economy = _make_system("res://econ/economy.gd", "economy")
+	var civic = _make_system("res://civic/civic.gd", "civic")
+	if engine == null or economy == null or civic == null:
+		print("ACCEPTANCE SKIPPED: one or more systems are missing, see lines above.")
+		quit(1)
+		return
+
+	if engine.has_method("setup_new_town"):
+		engine.call("setup_new_town", TOWN_SEED)
+
+	var opened_total: = 0
+	var closed_total: = 0
+	var petitions_seen: = 0
+	var projects_done: = 0
+
+	for step in RUN_DAYS:
+		var day: = step + 1
+		if engine.has_method("tick_day"):
+			engine.call("tick_day")
+		day = int(_getv(engine, ["day"], day))
+		var citizens: Array = _get_arr(engine, "citizens")
+
+		if economy.has_method("daily_update"):
+			var eres = economy.call("daily_update", citizens, day, rng)
+			if eres is Dictionary:
+				opened_total += int(_getv(eres, ["businesses_started", "opened", "businesses_opened"], 0))
+				closed_total += int(_getv(eres, ["businesses_closed", "closed"], 0))
+			citizens = _get_arr(engine, "citizens")
+
+		var stats: = {
+			"population": citizens.size(),
+			"grocery_count": 0,
+			"employed": 0,
+			"monthly_wage_total": 0.0,
+		}
+		if civic.has_method("daily_update"):
+			var cres = civic.call("daily_update", citizens, day, rng, stats)
+			if cres is Dictionary:
+				petitions_seen = maxi(petitions_seen, int(_getv(cres, ["petitions", "petition_count"], 0)))
+
+	var citizens_end: Array = _get_arr(engine, "citizens")
+	var businesses: Array = _get_arr(economy, "businesses")
+	var debts: Array = _get_arr(economy, "debts")
+	var bankruptcies = _getv(economy, ["bankruptcies", "bankruptcy_count"], 0)
+	var petitions: Array = _get_arr(civic, "petitions")
+	var projects: Array = _get_arr(civic, "projects")
+	for p in projects:
+		var s: = String(_getv(p, ["status"], "")).to_lower()
+		if s in ["done", "complete", "completed", "finished"]:
+			projects_done += 1
+
+	print("Summary after ", RUN_DAYS, " days:")
+	print("  population: ", citizens_end.size())
+	print("  businesses now: ", businesses.size(), " (opened ", opened_total, ", closed ", closed_total, " by daily counts)")
+	print("  debts created or tracked: ", debts.size())
+	print("  bankruptcies: ", str(bankruptcies))
+	print("  petitions: ", maxi(petitions.size(), petitions_seen))
+	print("  projects done: ", projects_done, " of ", projects.size())
+
+	if citizens_end.size() >= 40 and citizens_end.size() <= 250:
+		print("ACCEPTANCE PASS")
+		quit(0)
+	else:
+		print("ACCEPTANCE FAIL: population ", citizens_end.size(), " is outside 40 to 250")
+		quit(1)
+
+
+func _make_system(path: String, label: String) -> Object:
+	if not ResourceLoader.exists(path):
+		print("MISSING: ", label, " script not found at ", path)
+		return null
+	var script = load(path)
+	if script == null:
+		print("MISSING: ", label, " script failed to load at ", path)
+		return null
+	return script.new()
+
+
+func _get_arr(src: Object, key: String) -> Array:
+	if src == null:
+		return []
+	var v = src.get(key)
+	if v is Array:
+		return v
+	return []
+
+
+func _getv(src, keys: Array, default_value):
+	if src == null:
+		return default_value
+	if src is Dictionary:
+		for k in keys:
+			if src.has(k) and src[k] != null:
+				return src[k]
+		return default_value
+	if src is Object:
+		for k in keys:
+			var v = src.get(String(k))
+			if v != null:
+				return v
+	return default_value

@@ -1,0 +1,667 @@
+extends Node3D
+
+
+
+
+
+const TOWN_SEED: = 20261120
+const LOT_COLS: = 6
+const LOT_ROWS: = 4
+const LOT_COUNT: = 24
+const LOT_SPACING: = 16.0
+const LOT_SIZE: = 12.0
+const MAX_CITIZEN_VISUALS: = 40
+
+const SPEED_PAUSE: = 0
+const SPEED_SLOW: = 1
+const SPEED_NORMAL: = 2
+const SPEED_FAST: = 3
+const SPEED_TURBO: = 4
+
+const SPEED_INTERVALS: = [999999.0, 2.0, 0.5, 0.1, 0.25]
+const SPEED_BATCH: = [0, 1, 1, 1, 10]
+
+var engine: Object = null
+var economy: Object = null
+var civic: Object = null
+var rng: = RandomNumberGenerator.new()
+
+var day: = 0
+var speed_index: = SPEED_PAUSE
+var _tick_accum: = 0.0
+var last_summary: Dictionary = {}
+var last_econ_summary: Dictionary = {}
+var last_civic_summary: Dictionary = {}
+
+var lots: Array = []
+var _lot_root: Node3D
+var _building_root: Node3D
+var _people_root: Node3D
+var _house_nodes: Dictionary = {}
+var _business_nodes: Dictionary = {}
+var _citizen_visuals: Array = []
+var _visual_timer: = 0.0
+
+var _cam_pivot: Node3D
+var _cam: Camera3D
+var _cam_yaw: = 0.6
+var _cam_pitch: = -0.9
+var _cam_dist: = 70.0
+var _rotating: = false
+
+var ui: CanvasLayer = null
+
+
+func _ready() -> void:
+	rng.seed = TOWN_SEED
+	_load_systems()
+	_build_environment()
+	_build_lots()
+	_build_camera()
+	ui = get_node_or_null("MayorUI") as CanvasLayer
+	_seed_initial_houses()
+	_refresh_business_buildings()
+	if ui != null and ui.has_method("refresh_all"):
+		ui.call("refresh_all")
+	set_process(true)
+
+
+func _load_systems() -> void:
+	engine = _make_system("res://sim/sim_engine.gd")
+	economy = _make_system("res://econ/economy.gd")
+	civic = _make_system("res://civic/civic.gd")
+	if engine != null and engine.has_method("setup_new_town"):
+		engine.call("setup_new_town", TOWN_SEED)
+		day = int(_getv(engine, ["day"], 0))
+
+
+func _make_system(path: String) -> Object:
+	if not ResourceLoader.exists(path):
+		push_warning("Living Town: system script missing for now: " + path)
+		return null
+	var script = load(path)
+	if script == null:
+		return null
+	if script.has_method("new"):
+		return script.new()
+	return null
+
+
+
+
+func _mat(color: Color) -> StandardMaterial3D:
+	var m: = StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = 0.95
+	return m
+
+
+func _box(parent: Node, size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
+	var mi: = MeshInstance3D.new()
+	var mesh: = BoxMesh.new()
+	mesh.size = size
+	mi.mesh = mesh
+	mi.position = pos
+	mi.material_override = _mat(color)
+	parent.add_child(mi)
+	return mi
+
+
+func _build_environment() -> void:
+	var sun: = DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-52.0, -35.0, 0.0)
+	sun.shadow_enabled = true
+	sun.light_energy = 1.15
+	add_child(sun)
+
+	var we: = WorldEnvironment.new()
+	var env: = Environment.new()
+	var sky: = Sky.new()
+	var sky_mat: = ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.35, 0.55, 0.85)
+	sky_mat.sky_horizon_color = Color(0.75, 0.82, 0.92)
+	sky_mat.ground_bottom_color = Color(0.25, 0.3, 0.22)
+	sky_mat.ground_horizon_color = Color(0.75, 0.82, 0.92)
+	sky.sky_material = sky_mat
+	env.sky = sky
+	env.background_mode = Environment.BG_SKY
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	we.environment = env
+	add_child(we)
+
+	var ground: = MeshInstance3D.new()
+	var plane: = PlaneMesh.new()
+	plane.size = Vector2(260.0, 260.0)
+	ground.mesh = plane
+	ground.material_override = _mat(Color(0.36, 0.55, 0.3))
+	add_child(ground)
+
+	_lot_root = Node3D.new()
+	_lot_root.name = "Lots"
+	add_child(_lot_root)
+	_building_root = Node3D.new()
+	_building_root.name = "Buildings"
+	add_child(_building_root)
+	_people_root = Node3D.new()
+	_people_root.name = "People"
+	add_child(_people_root)
+
+
+func _build_lots() -> void:
+	lots.clear()
+	var zones_row: = ["residential", "residential", "commercial", "mixed"]
+	for row in LOT_ROWS:
+		for col in LOT_COLS:
+			var idx: = row * LOT_COLS + col
+			var pos: = Vector3((float(col) - float(LOT_COLS - 1) / 2.0) * LOT_SPACING, 0.0, (float(row) - float(LOT_ROWS - 1) / 2.0) * LOT_SPACING)
+			var zone: = String(zones_row[row])
+			lots.append({"index": idx, "pos": pos, "zone": zone})
+			var tint: = Color(0.42, 0.6, 0.34)
+			if zone == "commercial":
+				tint = Color(0.55, 0.58, 0.42)
+			elif zone == "mixed":
+				tint = Color(0.48, 0.6, 0.38)
+			_box(_lot_root, Vector3(LOT_SIZE, 0.06, LOT_SIZE), pos + Vector3(0, 0.03, 0), tint)
+			_build_sign(idx, pos)
+
+	var road_color: = Color(0.16, 0.16, 0.18)
+	var span: = float(LOT_COLS) * LOT_SPACING + 8.0
+	for i in LOT_COLS + 1:
+		var x: = (float(i) - float(LOT_COLS) / 2.0) * LOT_SPACING
+		_box(_lot_root, Vector3(3.2, 0.08, span), Vector3(x, 0.04, 0), road_color)
+	for j in LOT_ROWS + 1:
+		var z: = (float(j) - float(LOT_ROWS) / 2.0) * LOT_SPACING
+		_box(_lot_root, Vector3(span, 0.08, 3.2), Vector3(0, 0.04, z), road_color)
+
+
+func _build_sign(lot_index: int, pos: Vector3) -> void:
+	var sign_root: = Node3D.new()
+	sign_root.name = "Sign%d" % lot_index
+	sign_root.position = pos + Vector3(LOT_SIZE * 0.38, 0, LOT_SIZE * 0.38)
+	_lot_root.add_child(sign_root)
+	_box(sign_root, Vector3(0.18, 1.4, 0.18), Vector3(0, 0.7, 0), Color(0.4, 0.3, 0.2))
+	_box(sign_root, Vector3(1.4, 0.8, 0.1), Vector3(0, 1.5, 0), Color(0.85, 0.8, 0.6))
+
+
+func lot_position(lot_index: int) -> Vector3:
+	if lots.is_empty():
+		return Vector3.ZERO
+
+	var wrapped: = ((lot_index % LOT_COUNT) + LOT_COUNT) % LOT_COUNT
+	return lots[wrapped]["pos"]
+
+
+func first_empty_commercial_lot() -> int:
+	var used: = {}
+	for key in _business_nodes.keys():
+		used[int(_business_nodes[key].get_meta("lot", -1))] = true
+	for lot in lots:
+		var idx: = int(lot["index"])
+		if String(lot["zone"]) in ["commercial", "mixed"] and not used.has(idx) and not _house_nodes.has(idx):
+			return idx
+	return 0
+
+
+
+
+func _seed_initial_houses() -> void:
+
+	var lived: = {}
+	for c in get_citizens():
+		var home = _getv(c, ["home_lot", "home", "lot"], -1)
+		if typeof(home) == TYPE_INT and int(home) >= 0 and int(home) < LOT_COUNT:
+			lived[int(home)] = true
+	for i in range(0, 12):
+		lived[i] = true
+	for lot_index in lived.keys():
+		_make_house(int(lot_index))
+
+
+func _make_house(lot_index: int) -> void:
+	if _house_nodes.has(lot_index):
+		return
+	var pos: = lot_position(lot_index)
+	var root: = Node3D.new()
+	root.name = "House%d" % lot_index
+	root.position = pos
+	_building_root.add_child(root)
+	var hue: = float((lot_index * 37) % 100) / 100.0
+	var wall: = Color.from_hsv(0.08 + hue * 0.12, 0.3, 0.85)
+	_box(root, Vector3(5.5, 3.0, 5.0), Vector3(0, 1.5, 0), wall)
+	var roof: = MeshInstance3D.new()
+	var prism: = PrismMesh.new()
+	prism.size = Vector3(6.2, 1.8, 5.6)
+	prism.left_to_right = 0.5
+	roof.mesh = prism
+	roof.position = Vector3(0, 3.9, 0)
+	roof.material_override = _mat(Color(0.45, 0.22, 0.16))
+	root.add_child(roof)
+	_box(root, Vector3(1.0, 2.0, 0.15), Vector3(0.8, 1.0, 2.55), Color(0.3, 0.2, 0.12))
+	_house_nodes[lot_index] = root
+
+
+func _business_color(btype: String) -> Color:
+	match btype.to_lower():
+		"grocery", "grocery_store":
+			return Color(0.25, 0.6, 0.3)
+		"farm":
+			return Color(0.55, 0.42, 0.2)
+		"cafe":
+			return Color(0.85, 0.5, 0.25)
+		"construction":
+			return Color(0.85, 0.7, 0.2)
+		"bank":
+			return Color(0.6, 0.62, 0.65)
+		"general_store", "general store":
+			return Color(0.3, 0.45, 0.7)
+		_:
+			return Color(0.5, 0.5, 0.55)
+
+
+func _refresh_business_buildings() -> void:
+	var seen: = {}
+	var businesses: = get_businesses()
+	for bi in businesses.size():
+		var b = businesses[bi]
+		var status: = String(_getv(b, ["status", "state"], "open")).to_lower()
+		if status in ["closed", "bankrupt", "shut"]:
+			continue
+		if b is Dictionary and b.has("open") and not bool(b["open"]):
+			continue
+		var bname: = String(_getv(b, ["name"], "Business %d" % (bi + 1)))
+		var btype: = String(_getv(b, ["type", "business_type", "kind"], "shop"))
+		var lot = _getv(b, ["lot", "lot_index"], -1)
+		var lot_index: = -1
+		if typeof(lot) == TYPE_INT:
+			lot_index = int(lot)
+		if lot_index < 0 or lot_index >= LOT_COUNT:
+			lot_index = (16 + bi) % LOT_COUNT
+		var key: = bname + "@" + str(lot_index)
+		seen[key] = true
+		if _business_nodes.has(key):
+			continue
+		_make_business_building(key, lot_index, bname, btype)
+	for key in _business_nodes.keys():
+		if not seen.has(key):
+			_business_nodes[key].queue_free()
+			_business_nodes.erase(key)
+
+
+func _make_business_building(key: String, lot_index: int, bname: String, btype: String) -> void:
+	var pos: = lot_position(lot_index)
+	var root: = Node3D.new()
+	root.name = "Business_" + key.replace(" ", "_").replace("@", "_")
+	root.position = pos
+	root.set_meta("lot", lot_index)
+	_building_root.add_child(root)
+	var color: = _business_color(btype)
+	_box(root, Vector3(8.0, 3.6, 6.5), Vector3(0, 1.8, 0), color.lightened(0.25))
+	_box(root, Vector3(8.4, 0.5, 6.9), Vector3(0, 3.85, 0), color.darkened(0.25))
+	_box(root, Vector3(6.5, 1.6, 0.15), Vector3(0, 1.1, 3.32), Color(0.65, 0.8, 0.9))
+	var label: = Label3D.new()
+	label.text = bname
+	label.font_size = 96
+	label.pixel_size = 0.008
+	label.position = Vector3(0, 4.9, 0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.shaded = false
+	label.modulate = Color(1, 1, 1)
+	label.outline_size = 12
+	label.outline_modulate = Color(0, 0, 0)
+	root.add_child(label)
+	_business_nodes[key] = root
+
+
+
+
+func _refresh_citizen_visuals() -> void:
+	var citizens: Array = []
+	for c in get_citizens():
+		if bool(_getv(c, ["alive"], true)) and not bool(_getv(c, ["left_town"], false)):
+			citizens.append(c)
+	var want: int = mini(MAX_CITIZEN_VISUALS, citizens.size())
+	while _citizen_visuals.size() < want:
+		var i: = _citizen_visuals.size()
+		var node: = MeshInstance3D.new()
+		var cap: = CapsuleMesh.new()
+		cap.radius = 0.35
+		cap.height = 1.7
+		node.mesh = cap
+		var c: Dictionary = citizens[i] if citizens[i] is Dictionary else {}
+		var hue: = float(abs(hash(String(_getv(c, ["name"], str(i))))) % 100) / 100.0
+		node.material_override = _mat(Color.from_hsv(hue, 0.55, 0.85))
+		node.position = lot_position(int(_getv(c, ["home_lot", "home", "lot"], i % LOT_COUNT))) + Vector3(0, 0.9, 0)
+		_people_root.add_child(node)
+		_citizen_visuals.append({"node": node, "target": node.position, "speed": 2.0 + float(i % 5) * 0.4, "phase": float(i % 2)})
+	while _citizen_visuals.size() > want:
+		var v: Dictionary = _citizen_visuals.pop_back()
+		(v["node"] as Node).queue_free()
+
+	for i in _citizen_visuals.size():
+		var c: Dictionary = citizens[i] if citizens[i] is Dictionary else {}
+		var v: Dictionary = _citizen_visuals[i]
+		var home_pos: = lot_position(int(_getv(c, ["home_lot", "home", "lot"], i % LOT_COUNT)))
+		var work_pos: = home_pos
+		var employer = _getv(c, ["employer", "workplace", "job_lot"], null)
+		if typeof(employer) == TYPE_INT and int(employer) >= 0 and int(employer) < LOT_COUNT:
+			work_pos = lot_position(int(employer))
+		else:
+			work_pos = lot_position(16 + (i % 8))
+		var offset: = Vector3(float(i % 3) - 1.0, 0, float((i / 3) % 3) - 1.0) * 1.2
+		var dest: = home_pos if int(v["phase"]) == 0 else work_pos
+		v["target"] = dest + offset + Vector3(0, 0.9, 0)
+		v["phase"] = 1.0 - float(v["phase"])
+		_citizen_visuals[i] = v
+
+
+func _move_citizen_visuals(delta: float) -> void:
+	for v in _citizen_visuals:
+		var node: = v["node"] as Node3D
+		if node == null:
+			continue
+		var target: Vector3 = v["target"]
+		var to: = target - node.position
+		to.y = 0.0
+		var dist: = to.length()
+		if dist > 0.15:
+			node.position += to.normalized() * minf(float(v["speed"]) * delta, dist)
+			node.position.y = 0.9
+
+
+
+
+func _build_camera() -> void:
+	_cam_pivot = Node3D.new()
+	_cam_pivot.name = "CameraPivot"
+	add_child(_cam_pivot)
+	_cam = Camera3D.new()
+	_cam.name = "Camera3D"
+	_cam_pivot.add_child(_cam)
+	_update_camera()
+
+
+func _update_camera() -> void:
+	if _cam == null:
+		return
+	_cam_pivot.rotation = Vector3(_cam_pitch, _cam_yaw, 0)
+	_cam.position = Vector3(0, 0, _cam_dist)
+	_cam.rotation = Vector3.ZERO
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb: = event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_RIGHT:
+			_rotating = mb.pressed
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+			_cam_dist = clampf(_cam_dist - 6.0, 18.0, 140.0)
+			_update_camera()
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+			_cam_dist = clampf(_cam_dist + 6.0, 18.0, 140.0)
+			_update_camera()
+	elif event is InputEventMouseMotion and _rotating:
+		var mm: = event as InputEventMouseMotion
+		_cam_yaw -= mm.relative.x * 0.005
+		_cam_pitch = clampf(_cam_pitch - mm.relative.y * 0.005, -1.35, -0.15)
+		_update_camera()
+
+
+
+
+func _process(delta: float) -> void:
+	_handle_keys(delta)
+	_move_citizen_visuals(delta)
+	if speed_index == SPEED_PAUSE:
+		return
+	_tick_accum += delta
+	var interval: float = SPEED_INTERVALS[speed_index]
+	if _tick_accum >= interval:
+		_tick_accum = 0.0
+		_advance_days(int(SPEED_BATCH[speed_index]))
+
+
+func _handle_keys(delta: float) -> void:
+	var pan: = Vector3.ZERO
+	var fwd: = -_cam_pivot.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var right: = _cam_pivot.global_transform.basis.x
+	right.y = 0.0
+	right = right.normalized()
+	if Input.is_key_pressed(KEY_W):
+		pan += fwd
+	if Input.is_key_pressed(KEY_S):
+		pan -= fwd
+	if Input.is_key_pressed(KEY_A):
+		_cam_yaw += 1.4 * delta
+		_update_camera()
+	if Input.is_key_pressed(KEY_D):
+		_cam_yaw -= 1.4 * delta
+		_update_camera()
+	if Input.is_key_pressed(KEY_Q):
+		pan -= right
+	if Input.is_key_pressed(KEY_E):
+		pan += right
+	if pan != Vector3.ZERO:
+		_cam_pivot.position += pan.normalized() * 26.0 * delta
+		_cam_pivot.position.x = clampf(_cam_pivot.position.x, -90.0, 90.0)
+		_cam_pivot.position.z = clampf(_cam_pivot.position.z, -90.0, 90.0)
+		_cam_pivot.position.y = 0.0
+
+
+func _advance_days(count: int) -> void:
+	for i in count:
+		_tick_one_day()
+	_refresh_business_buildings()
+	_refresh_citizen_visuals()
+	if ui != null and ui.has_method("refresh_all"):
+		ui.call("refresh_all")
+
+
+func _tick_one_day() -> void:
+	day += 1
+	if engine != null and engine.has_method("tick_day"):
+		var result = engine.call("tick_day")
+		if result is Dictionary:
+			last_summary = result
+		day = int(_getv(engine, ["day"], day))
+	var citizens: = get_citizens()
+	if economy != null and economy.has_method("daily_update"):
+		var eres = economy.call("daily_update", citizens, day, rng)
+		if eres is Dictionary:
+			last_econ_summary = eres
+		citizens = get_citizens()
+	if civic != null and civic.has_method("daily_update"):
+		var cres = civic.call("daily_update", citizens, day, rng, compute_town_stats())
+		if cres is Dictionary:
+			last_civic_summary = cres
+
+
+
+
+func _getv(src, keys: Array, default_value):
+	if src == null:
+		return default_value
+	if src is Dictionary:
+		for k in keys:
+			if src.has(k) and src[k] != null:
+				return src[k]
+		return default_value
+	if src is Object:
+		for k in keys:
+			var v = src.get(String(k))
+			if v != null:
+				return v
+	return default_value
+
+
+func get_citizens() -> Array:
+	if engine == null:
+		return []
+	var c = engine.get("citizens")
+	if c is Array:
+		return c
+	return []
+
+
+func get_businesses() -> Array:
+	if economy == null:
+		return []
+	var b = economy.get("businesses")
+	if b is Array:
+		return b
+	return []
+
+
+func get_petitions() -> Array:
+	if civic == null:
+		return []
+	var p = civic.get("petitions")
+	if p is Array:
+		return p
+	return []
+
+
+func get_projects() -> Array:
+	if civic == null:
+		return []
+	var p = civic.get("projects")
+	if p is Array:
+		return p
+	return []
+
+
+func get_city_budget() -> float:
+	if civic == null:
+		return 0.0
+	var city = civic.get("city")
+	if city is Dictionary:
+		return float(_getv(city, ["budget", "cash", "funds", "balance"], 0.0))
+	return 0.0
+
+
+func compute_town_stats() -> Dictionary:
+	var citizens: = get_citizens()
+	var employed: = 0
+	var wage_total: = 0.0
+	for c in citizens:
+		if not bool(_getv(c, ["alive"], true)) or bool(_getv(c, ["left_town"], false)):
+			continue
+		var emp = _getv(c, ["job_title", "employer", "job"], null)
+		var emp_id: = int(_getv(c, ["employer_business_id"], -1))
+		if (emp != null and String(emp) != "") or emp_id >= 0:
+			employed += 1
+		wage_total += float(_getv(c, ["daily_wage", "wage"], 0.0))
+	var grocery: = 0
+	for b in get_businesses():
+		var t: = String(_getv(b, ["type", "business_type", "kind"], "")).to_lower()
+		var s: = String(_getv(b, ["status", "state"], "open")).to_lower()
+		var is_open: = not (s in ["closed", "bankrupt", "shut"])
+		if b is Dictionary and b.has("open") and not bool(b["open"]):
+			is_open = false
+		if t.find("grocery") >= 0 and is_open:
+			grocery += 1
+	return {
+		"population": get_population(),
+		"grocery_count": grocery,
+		"employed": employed,
+		"unemployed": maxi(0, get_population() - employed),
+		"monthly_wage_total": wage_total * 30.0,
+		"businesses_open": get_businesses().size(),
+		"city_budget": get_city_budget(),
+	}
+
+
+func date_text() -> String:
+	var d: int = maxi(day, 1)
+	var year: = (d - 1) / 365 + 1
+	var doy: = (d - 1) % 365 + 1
+	var season: = "Spring"
+	if doy > 273:
+		season = "Winter"
+	elif doy > 182:
+		season = "Autumn"
+	elif doy > 91:
+		season = "Summer"
+	return "Year %d Day %d, %s" % [year, doy, season]
+
+
+
+
+func set_speed(idx: int) -> void:
+	speed_index = clampi(idx, 0, 4)
+	_tick_accum = 0.0
+	if ui != null and ui.has_method("refresh_top_bar"):
+		ui.call("refresh_top_bar")
+
+
+func do_publish_need(need_type: String, incentive: String) -> void:
+
+	if civic != null and civic.has_method("publish_need"):
+		var grant: = 5000.0 if incentive == "startup_grant" else 0.0
+		civic.call("publish_need", need_type, first_empty_commercial_lot(), incentive, grant, day)
+	if ui != null and ui.has_method("refresh_all"):
+		ui.call("refresh_all")
+
+
+func do_respond_petition(petition_id, approve: bool) -> void:
+
+	if civic != null and civic.has_method("respond_to_petition"):
+		civic.call("respond_to_petition", int(petition_id), "approve" if approve else "deny", -1)
+	if ui != null and ui.has_method("refresh_all"):
+		ui.call("refresh_all")
+
+
+func do_create_road_project() -> void:
+
+
+	if civic != null and civic.has_method("create_project"):
+		var has_local: = false
+		var local_name: = ""
+		for b in get_businesses():
+			var t: = String(_getv(b, ["type", "business_type", "kind"], "")).to_lower()
+			if t.find("construction") >= 0 and bool(_getv(b, ["open"], true)):
+				has_local = true
+				local_name = String(_getv(b, ["name"], "Local Builders"))
+		civic.call("create_project", "New Road Project", "road", 0, 60000.0, day, rng, has_local, local_name)
+	if ui != null and ui.has_method("refresh_all"):
+		ui.call("refresh_all")
+
+
+func do_award_project(project_id, bid_index: int) -> void:
+
+	if civic != null and civic.has_method("award_project"):
+		civic.call("award_project", int(project_id), bid_index, day)
+	if ui != null and ui.has_method("refresh_all"):
+		ui.call("refresh_all")
+
+
+func get_population() -> int:
+	var n: = 0
+	for c in get_citizens():
+		if bool(_getv(c, ["alive"], true)) and not bool(_getv(c, ["left_town"], false)):
+			n += 1
+	return n
+
+
+func get_laws() -> Dictionary:
+	if civic == null:
+		return {}
+	var city = civic.get("city")
+	if city is Dictionary and city.has("laws") and city["laws"] is Dictionary:
+		return city["laws"]
+	return {}
+
+
+func do_set_law(key: String, value: float) -> void:
+	if civic == null:
+		return
+	var city = civic.get("city")
+	if not (city is Dictionary):
+		return
+	var laws: Dictionary = {}
+	if city.has("laws") and city["laws"] is Dictionary:
+		laws = (city["laws"] as Dictionary).duplicate()
+	laws[key] = value
+	city["laws"] = laws
+	civic.set("city", city)

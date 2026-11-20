@@ -1,0 +1,131 @@
+extends SceneTree
+
+
+
+
+const EconScript = preload("res://econ/economy.gd")
+
+var failures: int = 0
+
+
+func check(cond: bool, label: String) -> void:
+	if cond:
+		print("PASS: ", label)
+	else:
+		failures += 1
+		print("FAIL: ", label)
+
+
+func make_citizen(id: int, first: String, last: String, age: int, cash: float, credit: int) -> Dictionary:
+	return {
+		"id": id,
+		"first_name": first,
+		"last_name": last,
+		"age_years": age,
+		"alive": true,
+		"traits": {"ambition": 50, "risk": 50, "discipline": 50, "honesty": 50, "sociability": 50, "intelligence": 50, "greed": 50, "kindness": 50},
+		"needs": {},
+		"skills": {"cooking": 30, "retail": 30, "farming": 30, "construction": 30, "repair": 30, "medicine": 10, "teaching": 10, "management": 30, "logistics": 30, "finance": 30},
+		"cash": cash,
+		"job_title": "Unemployed",
+		"employer_business_id": -1,
+		"credit_score": credit,
+		"reputation": 50,
+		"history": [],
+		"business_intent": "",
+	}
+
+
+func _init() -> void:
+	var rng: = RandomNumberGenerator.new()
+	rng.seed = 12345
+	var econ = EconScript.new()
+	var citizens: Array = []
+
+
+	var founder: Dictionary = make_citizen(1, "Ada", "Harper", 35, 20000.0, 780)
+	founder["traits"] = {"ambition": 90, "risk": 80, "discipline": 80, "honesty": 80, "sociability": 60, "intelligence": 80, "greed": 40, "kindness": 60}
+	founder["skills"]["retail"] = 85
+	founder["skills"]["finance"] = 70
+	founder["skills"]["management"] = 70
+	founder["business_intent"] = "grocery"
+	citizens.append(founder)
+
+
+	var farmer: Dictionary = make_citizen(2, "Ben", "Ortiz", 40, 15000.0, 750)
+	farmer["traits"] = {"ambition": 80, "risk": 60, "discipline": 85, "honesty": 80, "sociability": 50, "intelligence": 65, "greed": 30, "kindness": 70}
+	farmer["skills"]["farming"] = 90
+	farmer["skills"]["finance"] = 50
+	farmer["business_intent"] = "farm"
+	citizens.append(farmer)
+
+
+	for i in range(3, 43):
+		var c: Dictionary = make_citizen(i, "Town", "Person%d" % i, 22 + (i % 30), 3000.0, 680)
+		c["skills"]["retail"] = 40 + (i % 40)
+		c["skills"]["farming"] = 30 + (i % 50)
+		citizens.append(c)
+
+
+	var poor: Dictionary = make_citizen(50, "Old", "Miller", 72, 40.0, 560)
+	poor["traits"] = {"ambition": 20, "risk": 40, "discipline": 20, "honesty": 30, "sociability": 40, "intelligence": 50, "greed": 40, "kindness": 50}
+	poor["children_ids"] = [51]
+	citizens.append(poor)
+	var child: Dictionary = make_citizen(51, "Young", "Miller", 45, 300.0, 650)
+	citizens.append(child)
+
+	var card_id: int = econ.create_debt(poor, -1, "Outside Bank", "credit_card", 4000.0, "")
+	check(card_id >= 0, "poor citizen credit card debt created, id %d" % card_id)
+	var denied_id: int = econ.create_debt(poor, -1, "Outside Bank", "mortgage", 90000.0, "house")
+	check(denied_id == -1, "low score citizen denied a mortgage")
+
+	var started_seen: bool = false
+	var serviced_or_defaulted: bool = false
+	for day in range(1, 181):
+		var summary: Dictionary = econ.daily_update(citizens, day, rng)
+		if int(summary.get("businesses_started", 0)) > 0:
+			started_seen = true
+		if int(summary.get("debts_serviced", 0)) > 0 or int(summary.get("debts_defaulted", 0)) > 0:
+			serviced_or_defaulted = true
+
+	check(started_seen, "at least one business was started by a citizen decision")
+	check(econ.businesses.size() >= 1, "businesses array holds the started business, count %d" % econ.businesses.size())
+	var grocery_found: bool = false
+	for b in econ.businesses:
+		if String(b.get("type", "")) == "grocery":
+			grocery_found = true
+			check(String(b.get("name", "")) == "Harper Grocery", "grocery name generated from owner, got %s" % String(b.get("name", "")))
+	check(grocery_found, "a grocery business exists")
+	check(String(founder.get("job_title", "")) == "Owner" or int(founder.get("employer_business_id", -1)) >= 0 or started_seen, "founder is tied to the business")
+	check(serviced_or_defaulted, "at least one debt was serviced or defaulted over 180 days")
+	check(econ.debts.size() >= 1, "debts array holds records, count %d" % econ.debts.size())
+
+
+	check((founder.get("history", []) as Array).size() > 0, "founder has a history trail")
+	check((poor.get("history", []) as Array).size() > 0, "debtor has a history trail")
+
+
+	var child_cash_before: float = float(child.get("cash", 0.0))
+	poor["alive"] = false
+	var estate: Dictionary = econ.settle_estate(poor, citizens)
+	check(bool(poor.get("estate_settled", false)), "estate settled after death")
+	check(float(child.get("cash", 0.0)) >= 0.0, "child cash did not go negative from inherited debt, cash %.2f" % float(child.get("cash", 0.0)))
+	check(float(child.get("cash", 0.0)) >= child_cash_before or float(estate.get("cash_to_heirs", 0.0)) == 0.0, "child only received money from the estate, never paid parent debt")
+	var child_debts: int = 0
+	for d in econ.debts:
+		if int(d.get("debtor_citizen_id", -1)) == 51 and int(d.get("cosigner_id", -1)) != 51:
+			child_debts += 1
+	check(child_debts == 0, "no parent debt record was transferred to the child")
+
+
+	var other: Dictionary = make_citizen(60, "Late", "Stone", 80, 100.0, 600)
+	citizens.append(other)
+	other["alive"] = false
+	econ.daily_update(citizens, 181, rng)
+	check(bool(other.get("estate_settled", false)), "daily_update settles the estate of a newly dead citizen")
+
+	if failures == 0:
+		print("PASS: all econ tests passed")
+	else:
+		print("FAIL: %d econ test checks failed" % failures)
+	quit(1 if failures > 0 else 0)

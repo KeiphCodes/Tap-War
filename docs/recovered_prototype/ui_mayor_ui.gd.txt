@@ -1,0 +1,476 @@
+extends CanvasLayer
+
+
+
+
+var controller: Node = null
+
+var _day_label: Label
+var _pop_label: Label
+var _budget_label: Label
+var _speed_buttons: Array = []
+
+var _town_label: RichTextLabel
+var _requests_box: VBoxContainer
+var _need_option: OptionButton
+var _incentive_option: OptionButton
+var _projects_box: VBoxContainer
+var _citizen_list: ItemList
+var _citizen_detail: RichTextLabel
+var _selected_citizen: = -1
+var _wage_spin: SpinBox
+var _tax_slider: HSlider
+var _tax_value: Label
+
+const NEED_TYPES: = ["grocery", "clinic", "school", "cafe", "general_store", "farm", "construction"]
+const INCENTIVES: = ["none", "free_lot", "tax_break", "startup_grant", "loan_guarantee"]
+
+
+func _ready() -> void:
+	controller = get_parent()
+	_build_ui()
+	refresh_all()
+
+
+func _c() -> Node:
+	if controller == null:
+		controller = get_parent()
+	return controller
+
+
+func _call_arr(method: String, args: Array, default_value):
+	var c: = _c()
+	if c != null and c.has_method(method):
+		return c.callv(method, args)
+	return default_value
+
+
+func _getv(src, keys: Array, default_value):
+	if src == null:
+		return default_value
+	if src is Dictionary:
+		for k in keys:
+			if src.has(k) and src[k] != null:
+				return src[k]
+		return default_value
+	if src is Object:
+		for k in keys:
+			var v = src.get(String(k))
+			if v != null:
+				return v
+	return default_value
+
+
+
+
+func _build_ui() -> void:
+
+	var top: = PanelContainer.new()
+	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	top.offset_bottom = 44
+	add_child(top)
+	var row: = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	top.add_child(row)
+	_day_label = Label.new()
+	_day_label.text = "Day 0"
+	row.add_child(_day_label)
+	_pop_label = Label.new()
+	_pop_label.text = "Population 0"
+	row.add_child(_pop_label)
+	_budget_label = Label.new()
+	_budget_label.text = "City budget $0"
+	row.add_child(_budget_label)
+	var spacer: = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	var names: = ["Pause", "Slow", "Normal", "Fast", "Turbo"]
+	for i in names.size():
+		var b: = Button.new()
+		b.text = names[i]
+		b.toggle_mode = true
+		var idx: = i
+		b.pressed.connect(func() -> void: _call_arr("set_speed", [idx], null))
+		row.add_child(b)
+		_speed_buttons.append(b)
+
+
+	var panel: = PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	panel.offset_top = 48
+	panel.offset_right = 380
+	panel.offset_bottom = -8
+	add_child(panel)
+	var tabs: = TabContainer.new()
+	panel.add_child(tabs)
+
+
+	var town_tab: = VBoxContainer.new()
+	town_tab.name = "Town"
+	tabs.add_child(town_tab)
+	_town_label = RichTextLabel.new()
+	_town_label.fit_content = true
+	_town_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_town_label.text = "No days have run yet. Pick a speed at the top."
+	town_tab.add_child(_town_label)
+
+
+	var req_tab: = VBoxContainer.new()
+	req_tab.name = "Requests"
+	tabs.add_child(req_tab)
+	var req_scroll: = ScrollContainer.new()
+	req_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	req_tab.add_child(req_scroll)
+	_requests_box = VBoxContainer.new()
+	_requests_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	req_scroll.add_child(_requests_box)
+	var pub_label: = Label.new()
+	pub_label.text = "Publish a city need"
+	req_tab.add_child(pub_label)
+	var pub_row: = HBoxContainer.new()
+	req_tab.add_child(pub_row)
+	_need_option = OptionButton.new()
+	for n in NEED_TYPES:
+		_need_option.add_item(n)
+	pub_row.add_child(_need_option)
+	_incentive_option = OptionButton.new()
+	for n in INCENTIVES:
+		_incentive_option.add_item(n)
+	pub_row.add_child(_incentive_option)
+	var pub_btn: = Button.new()
+	pub_btn.text = "Publish"
+	pub_btn.pressed.connect(_on_publish_need)
+	pub_row.add_child(pub_btn)
+	var pub_note: = Label.new()
+	pub_note.text = "Publishing a need raises the score for a Sim to start one. It does not force a start."
+	pub_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	req_tab.add_child(pub_note)
+
+
+	var proj_tab: = VBoxContainer.new()
+	proj_tab.name = "Projects"
+	tabs.add_child(proj_tab)
+	var new_proj: = Button.new()
+	new_proj.text = "New Road Project"
+	new_proj.pressed.connect(func() -> void: _call_arr("do_create_road_project", [], null))
+	proj_tab.add_child(new_proj)
+	var proj_scroll: = ScrollContainer.new()
+	proj_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	proj_tab.add_child(proj_scroll)
+	_projects_box = VBoxContainer.new()
+	_projects_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	proj_scroll.add_child(_projects_box)
+
+
+	var cit_tab: = HBoxContainer.new()
+	cit_tab.name = "Citizens"
+	tabs.add_child(cit_tab)
+	_citizen_list = ItemList.new()
+	_citizen_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_citizen_list.item_selected.connect(_on_citizen_selected)
+	cit_tab.add_child(_citizen_list)
+	_citizen_detail = RichTextLabel.new()
+	_citizen_detail.fit_content = true
+	_citizen_detail.custom_minimum_size = Vector2(180, 0)
+	_citizen_detail.text = "Pick a citizen to see details."
+	cit_tab.add_child(_citizen_detail)
+
+
+	var law_tab: = VBoxContainer.new()
+	law_tab.name = "Laws"
+	tabs.add_child(law_tab)
+	var wage_row: = HBoxContainer.new()
+	law_tab.add_child(wage_row)
+	var wage_label: = Label.new()
+	wage_label.text = "Minimum wage, dollars per day $"
+	wage_row.add_child(wage_label)
+	_wage_spin = SpinBox.new()
+	_wage_spin.min_value = 0.0
+	_wage_spin.max_value = 200.0
+	_wage_spin.step = 1.0
+	_wage_spin.value = 60.0
+	_wage_spin.value_changed.connect(func(v: float) -> void: _call_arr("do_set_law", ["minimum_wage", v], null))
+	wage_row.add_child(_wage_spin)
+	var tax_row: = HBoxContainer.new()
+	law_tab.add_child(tax_row)
+	var tax_label: = Label.new()
+	tax_label.text = "Income tax %"
+	tax_row.add_child(tax_label)
+	_tax_slider = HSlider.new()
+	_tax_slider.min_value = 0.0
+	_tax_slider.max_value = 40.0
+	_tax_slider.step = 1.0
+	_tax_slider.value = 10.0
+	_tax_slider.custom_minimum_size = Vector2(140, 0)
+	_tax_slider.value_changed.connect(_on_tax_changed)
+	tax_row.add_child(_tax_slider)
+	_tax_value = Label.new()
+	_tax_value.text = "10%"
+	tax_row.add_child(_tax_value)
+	var law_note: = Label.new()
+	law_note.text = "Law changes shift Sim and business scores. Effects show over time, not on the day you pass them."
+	law_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	law_tab.add_child(law_note)
+
+
+func _sync_laws() -> void:
+
+	var laws: Dictionary = _call_arr("get_laws", [], {})
+	if laws.is_empty():
+		return
+	if laws.has("minimum_wage"):
+		_wage_spin.set_value_no_signal(float(laws["minimum_wage"]))
+	if laws.has("income_tax"):
+		var pct: = float(laws["income_tax"]) * 100.0
+		_tax_slider.set_value_no_signal(pct)
+		_tax_value.text = "%d%%" % int(round(pct))
+
+
+func _on_tax_changed(v: float) -> void:
+	_tax_value.text = "%d%%" % int(v)
+	_call_arr("do_set_law", ["income_tax", v / 100.0], null)
+
+
+func _on_publish_need() -> void:
+	var need: String = NEED_TYPES[_need_option.selected] if _need_option.selected >= 0 else "grocery"
+	var incentive: String = INCENTIVES[_incentive_option.selected] if _incentive_option.selected >= 0 else "none"
+	_call_arr("do_publish_need", [need, incentive], null)
+
+
+
+
+func refresh_all() -> void:
+	if _day_label == null:
+		return
+	refresh_top_bar()
+	_sync_laws()
+	_refresh_town()
+	_refresh_requests()
+	_refresh_projects()
+	_refresh_citizens()
+
+
+func refresh_top_bar() -> void:
+	if _day_label == null:
+		return
+	var c: = _c()
+	var day: = 0
+	var date: = ""
+	var pop: = 0
+	var budget: = 0.0
+	var speed: = 0
+	if c != null:
+		day = int(_getv(c, ["day"], 0))
+		if c.has_method("date_text"):
+			date = String(c.call("date_text"))
+		if c.has_method("get_population"):
+			pop = int(c.call("get_population"))
+		elif c.has_method("get_citizens"):
+			pop = (c.call("get_citizens") as Array).size()
+		if c.has_method("get_city_budget"):
+			budget = float(c.call("get_city_budget"))
+		speed = int(_getv(c, ["speed_index"], 0))
+	_day_label.text = "Day %d  %s" % [day, date]
+	_pop_label.text = "Population %d" % pop
+	_budget_label.text = "City budget $%s" % _money(budget)
+	for i in _speed_buttons.size():
+		(_speed_buttons[i] as Button).button_pressed = i == speed
+
+
+func _money(v: float) -> String:
+	var neg: = v < 0.0
+	var a: = int(absf(v))
+	var s: = str(a)
+	var out: = ""
+	while s.length() > 3:
+		out = "," + s.right(3) + out
+		s = s.left(s.length() - 3)
+	out = s + out
+	return ("-" if neg else "") + out
+
+
+func _refresh_town() -> void:
+	var c: = _c()
+	if c == null:
+		return
+	var summary: Dictionary = _getv(c, ["last_summary"], {})
+	var econ: Dictionary = _getv(c, ["last_econ_summary"], {})
+	var stats: Dictionary = {}
+	if c.has_method("compute_town_stats"):
+		var st = c.call("compute_town_stats")
+		if st is Dictionary:
+			stats = st
+	var lines: Array = []
+	lines.append("Town summary")
+	lines.append("Births today: %s" % str(_getv(summary, ["births"], 0)))
+	lines.append("Deaths today: %s" % str(_getv(summary, ["deaths"], 0)))
+	lines.append("Moved in today: %s" % str(_getv(summary, ["immigrants", "moved_in"], 0)))
+	lines.append("Moved out today: %s" % str(_getv(summary, ["emigrants", "moved_out"], 0)))
+	lines.append("Employed: %s" % str(_getv(stats, ["employed"], 0)))
+	lines.append("Unemployed: %s" % str(_getv(stats, ["unemployed"], 0)))
+	lines.append("Businesses open: %s" % str(_getv(stats, ["businesses_open"], _getv(econ, ["businesses_open"], 0))))
+	lines.append("Businesses opened today: %s" % str(_getv(econ, ["businesses_started", "opened", "businesses_opened"], 0)))
+	lines.append("Businesses closed today: %s" % str(_getv(econ, ["businesses_closed", "closed"], 0)))
+	lines.append("Groceries open: %s" % str(_getv(stats, ["grocery_count"], 0)))
+	_town_label.text = "\n".join(lines)
+
+
+func _clear_box(box: VBoxContainer) -> void:
+	for child in box.get_children():
+		child.queue_free()
+
+
+func _refresh_requests() -> void:
+	_clear_box(_requests_box)
+	var petitions: Array = _call_arr("get_petitions", [], [])
+	if petitions.is_empty():
+		var l: = Label.new()
+		l.text = "No petitions yet. Unmet needs create them over time."
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_requests_box.add_child(l)
+		return
+	for i in petitions.size():
+		var p = petitions[i]
+		var pid = _getv(p, ["id"], i)
+		var title: = String(_getv(p, ["title", "name", "need_type", "need", "what"], "Petition"))
+		var sigs = _getv(p, ["signatures", "signature_count", "signers"], 0)
+		var status: = String(_getv(p, ["status"], "open"))
+		var row: = VBoxContainer.new()
+		var l: = Label.new()
+		l.text = "%s\nSignatures: %s  Status: %s" % [title, str(sigs), status]
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(l)
+		var btns: = HBoxContainer.new()
+		var approve: = Button.new()
+		approve.text = "Approve"
+		var deny: = Button.new()
+		deny.text = "Deny"
+		var id_copy = pid
+		approve.pressed.connect(func() -> void: _call_arr("do_respond_petition", [id_copy, true], null))
+		deny.pressed.connect(func() -> void: _call_arr("do_respond_petition", [id_copy, false], null))
+		btns.add_child(approve)
+		btns.add_child(deny)
+		row.add_child(btns)
+		_requests_box.add_child(row)
+
+
+func _refresh_projects() -> void:
+	_clear_box(_projects_box)
+	var projects: Array = _call_arr("get_projects", [], [])
+	if projects.is_empty():
+		var l: = Label.new()
+		l.text = "No projects yet. Start a road project to collect bids."
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_projects_box.add_child(l)
+		return
+	for i in projects.size():
+		var p = projects[i]
+		var pid = _getv(p, ["id"], i)
+		var title: = String(_getv(p, ["title", "name", "type", "kind"], "Project"))
+		var status: = String(_getv(p, ["status"], "bidding"))
+		var head: = Label.new()
+		head.text = "%s  Status: %s" % [title, status]
+		head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_projects_box.add_child(head)
+		var bids = _getv(p, ["bids"], [])
+		if bids is Array:
+			for bi in bids.size():
+				var b = bids[bi]
+				var brow: = HBoxContainer.new()
+				var bl: = Label.new()
+				bl.text = "%s  $%s  %s days  quality %s" % [
+					String(_getv(b, ["company", "bidder", "name"], "Bidder")),
+					_money(float(_getv(b, ["price", "cost", "amount"], 0.0))),
+					str(_getv(b, ["days", "duration", "duration_days"], "?")),
+					str(_getv(b, ["quality_history", "quality", "quality_grade"], "?")),
+				]
+				bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				brow.add_child(bl)
+				var award: = Button.new()
+				award.text = "Award"
+				var pid_copy = pid
+				var bi_copy: int = bi
+				award.pressed.connect(func() -> void: _call_arr("do_award_project", [pid_copy, bi_copy], null))
+				brow.add_child(award)
+				_projects_box.add_child(brow)
+
+
+func _alive_citizens() -> Array:
+	var out: Array = []
+	for c in _call_arr("get_citizens", [], []):
+		if bool(_getv(c, ["alive"], true)) and not bool(_getv(c, ["left_town"], false)):
+			out.append(c)
+	return out
+
+
+func _citizen_name(c, fallback: String) -> String:
+	var nm: = String(_getv(c, ["name"], ""))
+	if nm != "":
+		return nm
+	var first: = String(_getv(c, ["first_name"], ""))
+	var last: = String(_getv(c, ["last_name"], ""))
+	var joined: = (first + " " + last).strip_edges()
+	return joined if joined != "" else fallback
+
+
+func _refresh_citizens() -> void:
+	var citizens: = _alive_citizens()
+	_citizen_list.clear()
+	var limit: int = mini(30, citizens.size())
+	for i in limit:
+		var c = citizens[i]
+		var nm: = _citizen_name(c, "Citizen %d" % (i + 1))
+		var age = _getv(c, ["age_years", "age"], "?")
+		var job: = String(_getv(c, ["job_title", "job", "employer"], "none"))
+		if job == "":
+			job = "none"
+		var cash: = float(_getv(c, ["cash", "money", "balance"], 0.0))
+		_citizen_list.add_item("%s, %s, %s, $%s" % [nm, str(age), job, _money(cash)])
+	if _selected_citizen >= 0 and _selected_citizen < citizens.size():
+		_show_citizen(citizens[_selected_citizen])
+
+
+func _on_citizen_selected(index: int) -> void:
+	_selected_citizen = index
+	var citizens: = _alive_citizens()
+	if index >= 0 and index < citizens.size():
+		_show_citizen(citizens[index])
+
+
+func _dict_summary(d, keys: Array) -> String:
+	if not (d is Dictionary):
+		return "none recorded"
+	var parts: Array = []
+	for k in keys:
+		if d.has(k):
+			parts.append("%s %s" % [String(k), str(d[k])])
+	if parts.is_empty():
+		for k in d.keys():
+			parts.append("%s %s" % [String(k), str(d[k])])
+			if parts.size() >= 6:
+				break
+	return ", ".join(parts) if not parts.is_empty() else "none recorded"
+
+
+func _show_citizen(c) -> void:
+	var lines: Array = []
+	lines.append("Name: %s" % _citizen_name(c, "Unknown"))
+	lines.append("Age: %s" % str(_getv(c, ["age_years", "age"], "?")))
+	lines.append("Job: %s" % String(_getv(c, ["job_title", "job", "employer"], "none")))
+	lines.append("Cash: $%s" % _money(float(_getv(c, ["cash", "money", "balance"], 0.0))))
+	lines.append("Credit score: %s" % str(_getv(c, ["credit_score", "credit"], "no history")))
+	lines.append("Traits: %s" % _dict_summary(_getv(c, ["traits"], {}), ["ambition", "risk_tolerance", "discipline", "honesty", "sociability", "intelligence", "greed", "kindness"]))
+	lines.append("Needs: %s" % _dict_summary(_getv(c, ["needs"], {}), ["hunger", "energy", "shelter", "health", "safety", "money_security", "social", "fun"]))
+	lines.append("Recent history:")
+	var history = _getv(c, ["history", "history_log", "log"], [])
+	if history is Array and not history.is_empty():
+		var start: int = maxi(0, history.size() - 5)
+		for i in range(start, history.size()):
+			var h = history[i]
+			if h is Dictionary:
+				lines.append("- %s" % String(_getv(h, ["text", "reason", "event"], str(h))))
+			else:
+				lines.append("- %s" % str(h))
+	else:
+		lines.append("- nothing yet")
+	_citizen_detail.text = "\n".join(lines)

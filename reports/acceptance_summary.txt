@@ -1,0 +1,155 @@
+LIVING TOWN V1 SLICE ACCEPTANCE RUN
+Generated 2026-11-20T23:37:47 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 2058 ms.
+
+[PASS] 365 daily ticks complete with the ledger balanced every day (no mystery money)
+  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 112, "transfers": 17704 }.
+
+[PASS] At least one business was started by a Sim decision, with its start reason readable
+  5 businesses started by Sims. First: Peterson Fresh Market, opened day 3 by Linda Peterson. Reason in its history: "Opened by Linda Peterson on Lot 14 (Elm Street, commercial). Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 38, expects about $2,296 a month after costs, the city published this need with incentives. Funded with $5,134 of savings, a $10,000 city grant, a $16,865 bank loan at 10.1%."
+
+[PASS] At least one debt spiral reached a realistic resolution (repayment, bankruptcy, charge off, or estate) with its paper trail
+  Debt #34: credit card owed by Timothy Williams to Prairie State Bank. Status: discharged in bankruptcy.
+    Day 0: Opened: $3,693 of credit card, unsecured owed to Prairie State Bank at 22.9%.
+    Day 46: Missed payment. Paid $9 of $164. Late fee added. Now 30 days late.
+    Day 74: Missed payment. Paid $3 of $169. Late fee added. Now 60 days late.
+    Day 79: Discharged in bankruptcy. The trustee paid $0, the creditor lost $3,867.
+
+[PASS] A petition came from real unmet need data, and the mayor's response measurably changed what happened next
+  Petition: "We need a grocery store in town". Why: 30 of 30 households drive to the next town for groceries, about 68 minutes round trip, and the gas money leaves town. Started by George Johnson, 15 signatures, suggested site Lot 14 (Elm Street, commercial).
+    With the response (run A): groceries: Peterson Fresh Market opened day 3 on the incentive lot; Smith Foods opened day 362. Petition status: resolved. Signers' trust in the city: 64.5.
+    Without a response (run B, same seed): groceries: Lee Foods opened day 33. Petition status: submitted. Signers' trust in the city: 59.4.
+
+[PASS] A contract was bid, awarded, and built in stages, and its quality persists and sets the next repair need
+  Run A awarded the cheapest bid: Riverbend Contractors, quality 13, finished day 84, expected to need repair about 139 days later; it actually needed repair on day 249.
+    Run C awarded the best record instead: Capital Construction Co, quality 78, finished day 70, expected to need repair about 1517 days later.
+    The street segments store the finished quality (0.14) and wear at a rate set by it. Paper trail of run A:
+      Day 3: Defined with a budget ceiling of $130,500. Out to bid for 14 days.
+      Day 17: Bidding closed with 3 bids.
+      Day 17: Awarded to Riverbend Contractors for $91,166, 51 days promised. It was the cheapest bid.
+      Day 18: Stage: tearing out old pavement.
+      Day 32: Stage: laying the road base.
+      Day 40: City clerk Anthony Ramirez accepted $3,003 from Riverbend Contractors and signed off on inspections without looking closely.
+      Day 54: Stage: paving.
+      Day 54: Change order for $20,787 from Riverbend Contractors: "unexpected ground conditions". It fits under the ceiling and was paid.
+      Day 79: Stage: striping and cleanup.
+      Day 84: Inspection found defects: cracked base and thin asphalt.
+      Day 84: Finished. Quality 13 of 100 (grade F). Finished 16 days late. Cost $20,787 over the bid in change orders.
+      Day 84: At this quality the street should need repair again in about 139 days.
+      Day 249: Main Street needs repair again, 165 days after Riverbend Contractors finished it at quality 13. It is still under warranty, so Riverbend Contractors must fix it at its own cost.
+      Day 249: Warranty repair done by Riverbend Contractors at its own cost.
+      Day 364: Main Street needs repair again, 280 days after Riverbend Contractors finished it at quality 13. It is still under warranty, so Riverbend Contractors must fix it at its own cost.
+      Day 364: Warranty repair done by Riverbend Contractors at its own cost.
+  
+
+[PASS] Replaying the seed plus the logged mayor actions gives the same town
+  Run A hash 3945708372, replay hash 3945708372, 3 actions replayed.
+
+[PASS] Saving on day 180 and loading the save reaches the same day 365 town
+  Save OK, load OK, loaded run hash 3945708372, straight run hash 3945708372.
+
+[PASS] No em dashes in generated player facing text
+  0 lines checked problems: []
+
+Not checked by this script: independent review by a team member who did not write the system (a human gate).
+
+LIVING TOWN RUN SUMMARY
+Town: Prairie Hollow. Seed 20261120. Day 365 (Monday, December 31, Year 1).
+
+PEOPLE
+  Population: 95 at start, 100 now.
+  Births 6, deaths 0, moved in 1, moved out 2, marriages 1.
+  Working age adults 48, employed 44, unemployment 8%, local jobs 6 (was 0).
+  Hires 9, layoffs 12, quits 9. Homeless now: 1. Evictions: 2.
+  Average happiness 81.8, approval of the city 70.5.
+
+BUSINESSES
+  Opened 5, closed 1, open now 6. Founding attempts that could not raise money: 0. Times a Sim looked and said no: 217.
+  - Peterson Fresh Market (grocery, sole), opened day 3 by Linda Peterson. Closed day 354: the owner's bankruptcy. The trustee sold what it had.
+      Start reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 38, expects about $2,296 a month after costs, the city published this need with incentives. Funded with $5,134 of savings, a $10,000 city grant, a $16,865 bank loan at 10.1%.
+  - Gonzalez Gardens (farm, sole), opened day 13 by Irene Gonzalez. Open, 0 staff, cash $3,375, reputation 55.
+      Start reason: the grocery imports fresh food that could be grown here, farming skill is 38, expects about $2,894 a month after costs. Funded with $6,287 of savings, a $17,712 bank loan at 9.8%.
+  - Lee Gardens (farm, llc), opened day 33 by Thomas Lee. Open, 0 staff, cash $3,226, reputation 55.
+      Start reason: the grocery imports fresh food that could be grown here, farming skill is 23, expects about $1,343 a month after costs. Funded with $5,989 of savings, a $18,010 bank loan at 9.4% with a personal guarantee.
+  - White Farm (farm, sole), opened day 35 by Brian White. Open, 0 staff, cash $3,168, reputation 55.
+      Start reason: the grocery imports fresh food that could be grown here, farming skill is 37, expects about $1,127 a month after costs. Funded with $4,088 of savings, a $19,911 bank loan at 9.4%.
+  - Smith Foods (grocery, sole), opened day 362 by Tina Smith. Open, 1 staff, cash $8,114, reputation 55.
+      Start reason: 28 of 28 households drive about 77 minutes round trip for groceries, retail skill is 37, expects about $2,005 a month after costs. Funded with $13,554 of savings, a $18,445 bank loan at 10.1%.
+
+DEBT AND CREDIT
+  Debt records: 65 total, 58 active, $1,342,278 owed now.
+  By status: current 58, discharged in bankruptcy 7.
+  Loans made 8, denied 4. Paid off 0. Charged off 0. Repossessions 2. Foreclosures 0.
+  Bankruptcies 3 (liquidation 3, repayment plan 0). Estates settled 0.
+  Prairie State Bank: lending tightness 0.29, losses in the last year about $12,184.
+
+CITY
+  City cash $1,350 (was $150,000). Income last 12 months $106,878, spending $251,833. Credit standing B.
+  Petitions 8. Projects finished 1. Protests 0. Thefts 0.
+  - Petition "We need a grocery store in town": 15 signers, status resolved.
+  - Petition "Build a school here so our kids stop riding the bus for an hour": 31 signers, status submitted.
+  - Petition "Bring jobs to town": 21 signers, status submitted.
+  - Petition "Give the kids a park": 31 signers, status submitted.
+  - Petition "We need a clinic close to home": 3 signers, status gathering.
+  - Petition "Fix Main Street": 49 signers, status submitted.
+  - Petition "We need more places to live that people can afford": 1 signers, status gathering.
+  - Petition "We need a grocery store in town": 25 signers, status submitted.
+  - Project "Rebuild Main Street": done, quality 13.
+
+MONEY CHECK
+  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 17704.
+  Across the town line this run: $444,709 more came into town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
+
+SAMPLE LIVES (last entries of their history logs)
+Thomas Lee, adult ordinary, 35. alive.
+  Day 0: Works outside town as a office clerk and drives 30 minutes each way. Reason: there are no local jobs yet.
+  Day 3: Started planning to open a grocery. Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 48, expects about $1,961 a month after costs, the city published this need with incentives. Will look at the numbers again for a few weeks before deciding.
+  Day 5: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 24, expects about $2,134 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 19: Started planning to open a farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 23, expects about $1,350 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 33: Left the job as office clerk. Reason: started a business.
+  Day 33: Started Lee Gardens. Reason: the grocery imports fresh food that could be grown here, farming skill is 23, expects about $1,343 a month after costs. Funded with $5,989 of savings, a $18,010 bank loan at 9.4% with a personal guarantee.
+  Day 91: Borrowed $5,000 more to keep Lee Gardens going. Reason: sure it will turn around.
+  Day 277: Had a baby, Ida.
+
+Tina Smith, adult ordinary, 25. alive.
+  Day 124: Looked at starting a grocery and decided against it. Reason: the start up cost of $32,000 is more than savings, family money, and what the bank would lend.
+  Day 124: Applied for work again with no luck. Unemployed for 33 days.
+  Day 145: Looked at starting a grocery and decided against it. Reason: the start up cost of $32,000 is more than savings, family money, and what the bank would lend.
+  Day 152: Found work outside town as a nursing aide after 61 days of looking. Reason: no local opening fit, so took the commute.
+  Day 201: Looked at starting a general store and decided against it. Reason: the town is too small for a general store to make rent.
+  Day 215: Looked at starting a grocery and decided against it. Reason: not enough shoppers to cover rent and wages.
+  Day 236: Looked at starting a grocery and decided against it. Reason: not enough shoppers to cover rent and wages.
+  Day 271: Looked at starting a grocery and decided against it. Reason: not enough shoppers to cover rent and wages.
+  Day 278: Looked at starting a grocery and decided against it. Reason: not enough shoppers to cover rent and wages.
+  Day 299: Looked at starting a grocery and decided against it. Reason: not enough shoppers to cover rent and wages.
+  Day 362: Left the job as nursing aide. Reason: started a business.
+  Day 362: Started Smith Foods. Reason: 28 of 28 households drive about 77 minutes round trip for groceries, retail skill is 37, expects about $2,005 a month after costs. Funded with $13,554 of savings, a $18,445 bank loan at 10.1%.
+
+Timothy Williams, adult ordinary, 31. alive.
+  Day 79: Filed for bankruptcy under liquidation (like Chapter 7). Trigger: job loss. Unsecured debt of $4,041 could not be repaid in any realistic time.
+  Day 79: The vehicle was repossessed by Prairie State Bank. The sale covered $1,657 of the debt.
+  Day 79: The bankruptcy court discharged 3 debts. Kept exempt basics. The filing stays on the credit record for about 10 years, new credit will be slow and expensive.
+  Day 83: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 89: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 91: Could not pay the full utility bill. Paid $1 of $180.
+  Day 91: Paid $0 of $814 rent to Plains Property Group. Now 3 month(s) behind.
+  Day 91: Evicted by Plains Property Group for unpaid rent. Now without a home.
+  Day 92: Started a petition: "We need more places to live that people can afford". Reason: 1 households have no home and 1 apartments are free in town.
+  Day 98: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 104: Applied for work again with no luck. Unemployed for 202 days.
+  Day 105: Left town. Reason: they lost their home and saw no way back here.
+
+Linda Peterson, adult ordinary, 37. alive.
+  Day 338: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 341: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 342: Caught up on the credit card. It is current again.
+  Day 349: Caught up on the auto loan. It is current again.
+  Day 354: Filed for bankruptcy under liquidation (like Chapter 7). Trigger: a business that is not making it. Unsecured debt of $6,350 could not be repaid in any realistic time.
+  Day 354: Peterson Fresh Market closed. Reason: the owner's bankruptcy. The trustee sold what it had. $15,012 of business debt is still owed personally, since a sole proprietor and the business are one pocket.
+  Day 354: The bankruptcy court discharged 2 debts. Kept exempt basics. The filing stays on the credit record for about 10 years, new credit will be slow and expensive.
+  Day 356: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 359: Applied for work again with no luck. Unemployed for 5 days.
+  Day 359: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 362: Could not afford groceries this week. Went to the food pantry at the church.
+  Day 362: Started getting $75 a week in city unemployment support.
+
+RESULT: ALL GATES PASS

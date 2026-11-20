@@ -1,0 +1,561 @@
+class_name LTCivic
+extends RefCounted
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+var city: Dictionary = {}
+var petitions: Array = []
+var published_needs: Array = []
+var projects: Array = []
+
+var _next_petition_id: int = 1
+var _next_need_id: int = 1
+var _next_project_id: int = 1
+var _last_citizens: Array = []
+
+
+const OUTSIDE_COMPANIES: Array = [
+	"Prairie Road Builders",
+	"Capital Construction Co",
+	"Riverbend Contractors",
+	"North Plains Builders",
+]
+
+
+
+const PROJECT_BASE: Dictionary = {
+	"road": {"cost": 20000.0, "days": 20},
+	"school": {"cost": 60000.0, "days": 60},
+	"clinic": {"cost": 45000.0, "days": 45},
+	"water": {"cost": 50000.0, "days": 50},
+}
+const PROJECT_BASE_DEFAULT: Dictionary = {"cost": 30000.0, "days": 30}
+
+
+func _init() -> void:
+	city = {
+		"budget": 50000.0,
+		"approval": 60.0,
+		"laws": {
+			"income_tax": 0.1,
+			"property_tax": 0.05,
+			"sales_tax": 0.05,
+			"business_tax": 0.08,
+			"minimum_wage": 60.0,
+			"school_funding": 50,
+			"police_funding": 50,
+		},
+		"last_tax_income": 0.0,
+		"last_service_costs": 0.0,
+		"total_tax_collected": 0.0,
+		"total_service_spent": 0.0,
+		"last_budget_day": 0,
+	}
+
+
+
+
+
+
+
+
+func daily_update(citizens: Array, day: int, rng: RandomNumberGenerator, town_stats: Dictionary) -> Dictionary:
+	_last_citizens = citizens
+	var summary: Dictionary = {
+		"day": day,
+		"new_petition_id": -1,
+		"signatures_added": 0,
+		"tax_collected": 0.0,
+		"service_costs": 0.0,
+		"budget": float(city.get("budget", 0.0)),
+		"projects_completed": [],
+		"projects_active": 0,
+		"petitions_open": 0,
+	}
+
+	var new_petition: Dictionary = _maybe_start_petition(citizens, day, town_stats)
+	if not new_petition.is_empty():
+		summary["new_petition_id"] = int(new_petition.get("id", -1))
+
+	summary["signatures_added"] = _grow_signatures(citizens, rng, town_stats)
+
+	if day > 0 and day % 30 == 0:
+		var month: Dictionary = _run_monthly_budget(citizens, town_stats)
+		summary["tax_collected"] = float(month.get("tax_income", 0.0))
+		summary["service_costs"] = float(month.get("service_costs", 0.0))
+
+	var completed: Array = _advance_projects(day, rng)
+	summary["projects_completed"] = completed
+
+	var active: int = 0
+	for project in projects:
+		if String(project.get("status", "")) == "building":
+			active += 1
+	summary["projects_active"] = active
+
+	var open_count: int = 0
+	for petition in petitions:
+		if String(petition.get("status", "")) == "open":
+			open_count += 1
+	summary["petitions_open"] = open_count
+	summary["budget"] = float(city.get("budget", 0.0))
+	return summary
+
+
+
+
+
+
+
+func _maybe_start_petition(citizens: Array, day: int, town_stats: Dictionary) -> Dictionary:
+	var population: int = int(town_stats.get("population", citizens.size()))
+	if population < 50:
+		return {}
+
+
+	if int(town_stats.get("grocery_count", 1)) == 0 and not _need_is_covered("grocery"):
+		var why: String = "Town has %d people and 0 grocery stores." % population
+		if town_stats.has("avg_food_access"):
+			why += " Average food access is %d out of 100." % int(town_stats.get("avg_food_access", 0))
+		return _start_petition(citizens, "grocery", "We need a grocery store", why, day, town_stats)
+
+	if town_stats.has("clinic_count") and int(town_stats.get("clinic_count", 1)) == 0 and not _need_is_covered("clinic"):
+		var why_clinic: String = "Town has %d people and 0 clinics." % population
+		return _start_petition(citizens, "clinic", "We need a clinic", why_clinic, day, town_stats)
+
+	if town_stats.has("school_count") and int(town_stats.get("school_count", 1)) == 0 and not _need_is_covered("school"):
+		var children: int = 0
+		for citizen in citizens:
+			if bool(citizen.get("alive", true)) and int(citizen.get("age_years", 0)) < 18:
+				children += 1
+		if children >= 5:
+			var why_school: String = "Town has %d children and 0 schools." % children
+			return _start_petition(citizens, "school", "We need a school", why_school, day, town_stats)
+
+	if bool(town_stats.get("housing_shortage", false)) and not _need_is_covered("housing"):
+		var why_housing: String = "Town has %d people and no homes open in the price range working families can pay." % population
+		return _start_petition(citizens, "housing", "We need more housing", why_housing, day, town_stats)
+
+	if town_stats.has("road_condition") and int(town_stats.get("road_condition", 100)) < 40 and not _need_is_covered("road_repair"):
+		var why_road: String = "Road condition is %d out of 100 and trips across town are getting slower and rougher." % int(town_stats.get("road_condition", 0))
+		return _start_petition(citizens, "road_repair", "Our roads need repair", why_road, day, town_stats)
+
+	return {}
+
+
+
+
+
+func _need_is_covered(need_type: String) -> bool:
+	for petition in petitions:
+		if String(petition.get("need_type", "")) != need_type:
+			continue
+		var status: String = String(petition.get("status", ""))
+		if status in ["open", "approved_as_asked", "approved_moved", "approved_smaller", "published_as_need"]:
+			return true
+	for need in published_needs:
+		if String(need.get("need_type", "")) == need_type and int(need.get("filled_by_business_id", -1)) == -1:
+			return true
+	return false
+
+
+func _start_petition(citizens: Array, need_type: String, title: String, why: String, day: int, town_stats: Dictionary) -> Dictionary:
+	var starter: Dictionary = _pick_petition_starter(citizens, need_type)
+	if starter.is_empty():
+		return {}
+	var starter_id: int = int(starter.get("id", -1))
+	var suggested_lot: int = int(starter.get("home_lot", -1))
+	var lot_key: String = "suggested_%s_lot" % need_type
+	if town_stats.has(lot_key):
+		suggested_lot = int(town_stats.get(lot_key, suggested_lot))
+
+	var petition: Dictionary = {
+		"id": _next_petition_id,
+		"need_type": need_type,
+		"title": title,
+		"why": why,
+		"starter_id": starter_id,
+		"signatures": 1,
+		"signer_ids": [starter_id],
+		"suggested_lot": suggested_lot,
+		"status": "open",
+		"created_day": day,
+	}
+	_next_petition_id += 1
+	petitions.append(petition)
+	_add_history(starter, "Day %d: I started a petition, %s. %s" % [day, title, why])
+	return petition
+
+
+
+
+func _pick_petition_starter(citizens: Array, need_type: String) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score: float = -1.0
+	for citizen in citizens:
+		if not bool(citizen.get("alive", true)):
+			continue
+		if int(citizen.get("age_years", 0)) < 18:
+			continue
+		var traits: Dictionary = citizen.get("traits", {})
+		var sociability: float = float(traits.get("sociability", 50))
+		var score: float = sociability + _need_urgency(citizen, need_type, {}) * 20.0
+		if score > best_score:
+			best_score = score
+			best = citizen
+	if best.is_empty():
+
+		for citizen in citizens:
+			if not bool(citizen.get("alive", true)):
+				continue
+			var traits: Dictionary = citizen.get("traits", {})
+			var sociability: float = float(traits.get("sociability", 50))
+			if sociability > best_score:
+				best_score = sociability
+				best = citizen
+	return best
+
+
+
+
+
+func _need_urgency(citizen: Dictionary, need_type: String, town_stats: Dictionary) -> float:
+	var needs: Dictionary = citizen.get("needs", {})
+	match need_type:
+		"grocery":
+			if needs.has("hunger"):
+				return clampf((100.0 - float(needs.get("hunger", 100))) / 100.0, 0.0, 1.0)
+			if town_stats.has("avg_food_access"):
+				return clampf((100.0 - float(town_stats.get("avg_food_access", 100))) / 100.0, 0.0, 1.0)
+			return 0.7
+		"clinic":
+			if needs.has("health"):
+				return clampf((100.0 - float(needs.get("health", 100))) / 100.0, 0.0, 1.0)
+			return 0.5
+		"school":
+			if int(citizen.get("age_years", 99)) < 18:
+				return 0.8
+			return 0.4
+		"housing":
+			if needs.has("shelter"):
+				return clampf((100.0 - float(needs.get("shelter", 100))) / 100.0, 0.0, 1.0)
+			return 0.5
+		"road_repair":
+			return 0.4
+	return 0.5
+
+
+
+
+
+func _grow_signatures(citizens: Array, rng: RandomNumberGenerator, town_stats: Dictionary) -> int:
+	var added: int = 0
+	for petition in petitions:
+		if String(petition.get("status", "")) != "open":
+			continue
+		var need_type: String = String(petition.get("need_type", ""))
+		var signer_ids: Array = petition.get("signer_ids", [])
+		for citizen in citizens:
+			if not bool(citizen.get("alive", true)):
+				continue
+			if int(citizen.get("age_years", 0)) < 18:
+				continue
+			var cid: int = int(citizen.get("id", -1))
+			if signer_ids.has(cid):
+				continue
+			var traits: Dictionary = citizen.get("traits", {})
+			var sociability: float = float(traits.get("sociability", 50))
+			var urgency: float = _need_urgency(citizen, need_type, town_stats)
+			var chance: float = clampf(0.05 + sociability * 0.004 + urgency * 0.25, 0.0, 0.9)
+			if rng.randf() < chance:
+				signer_ids.append(cid)
+				added += 1
+		petition["signer_ids"] = signer_ids
+		petition["signatures"] = signer_ids.size()
+	return added
+
+
+
+
+
+
+
+
+
+
+
+
+
+func _run_monthly_budget(citizens: Array, town_stats: Dictionary) -> Dictionary:
+	var laws: Dictionary = city.get("laws", {})
+	var wage_base: float = 0.0
+	if town_stats.has("monthly_wage_total"):
+		wage_base = float(town_stats.get("monthly_wage_total", 0.0))
+	else:
+		var employed: int = 0
+		for citizen in citizens:
+			if not bool(citizen.get("alive", true)):
+				continue
+			if String(citizen.get("job_title", "")) != "":
+				employed += 1
+		wage_base = float(employed) * float(laws.get("minimum_wage", 60.0)) * 30.0
+
+	var population: int = int(town_stats.get("population", citizens.size()))
+	var tax_income: float = 0.0
+	tax_income += wage_base * float(laws.get("income_tax", 0.0))
+	tax_income += wage_base * 0.6 * float(laws.get("sales_tax", 0.0))
+	tax_income += wage_base * 0.4 * float(laws.get("business_tax", 0.0))
+	tax_income += float(population) * 20.0 * float(laws.get("property_tax", 0.0))
+
+	var service_costs: float = 500.0
+	service_costs += float(laws.get("school_funding", 50)) * 8.0
+	service_costs += float(laws.get("police_funding", 50)) * 8.0
+
+	city["budget"] = float(city.get("budget", 0.0)) + tax_income - service_costs
+	city["last_tax_income"] = tax_income
+	city["last_service_costs"] = service_costs
+	city["total_tax_collected"] = float(city.get("total_tax_collected", 0.0)) + tax_income
+	city["total_service_spent"] = float(city.get("total_service_spent", 0.0)) + service_costs
+	return {"tax_income": tax_income, "service_costs": service_costs, "wage_base": wage_base}
+
+
+
+
+
+
+
+func _advance_projects(day: int, rng: RandomNumberGenerator) -> Array:
+	var completed: Array = []
+	for project in projects:
+		if String(project.get("status", "")) != "building":
+			continue
+		var elapsed: int = int(project.get("build_days_elapsed", 0)) + 1
+		project["build_days_elapsed"] = elapsed
+		if elapsed >= int(project.get("build_days_total", 0)):
+			var bid: Dictionary = project.get("awarded_bid", {})
+			var base_quality: float = float(bid.get("quality_history", 60))
+			project["quality"] = int(clampf(base_quality + rng.randf_range(-5.0, 5.0), 0.0, 100.0))
+			project["status"] = "done"
+			project["completed_day"] = day
+			completed.append(int(project.get("id", -1)))
+	return completed
+
+
+
+
+
+
+
+func publish_need(need_type: String, lot: int, incentive: String, grant_amount: float, day: int) -> Dictionary:
+	var need: Dictionary = {
+		"id": _next_need_id,
+		"need_type": need_type,
+		"lot": lot,
+		"incentive": incentive,
+		"grant_amount": grant_amount,
+		"created_day": day,
+		"filled_by_business_id": -1,
+	}
+	_next_need_id += 1
+	published_needs.append(need)
+	return need
+
+
+
+
+
+
+
+
+func respond_to_petition(petition_id: int, response: String, alt_lot: int) -> void:
+	var petition: Dictionary = get_petition(petition_id)
+	if petition.is_empty():
+		return
+	if String(petition.get("status", "")) != "open":
+		return
+
+	var status: String = ""
+	match response:
+		"approved_as_asked", "approve", "approved":
+			status = "approved_as_asked"
+		"approved_moved", "moved", "move":
+			status = "approved_moved"
+		"approved_smaller", "smaller", "shrink":
+			status = "approved_smaller"
+		"denied", "deny":
+			status = "denied"
+		"published_as_need", "publish", "published":
+			status = "published_as_need"
+		_:
+			status = "denied"
+	petition["status"] = status
+	petition["response"] = status
+
+	var signatures: int = int(petition.get("signatures", 1))
+	var weight: float = clampf(float(signatures), 1.0, 40.0)
+	var change: float = 0.0
+	match status:
+		"approved_as_asked":
+			change = 2.0 + weight * 0.2
+			if alt_lot >= 0:
+				petition["suggested_lot"] = alt_lot
+		"approved_moved":
+			change = 1.0 + weight * 0.1
+			if alt_lot >= 0:
+				petition["suggested_lot"] = alt_lot
+				petition["moved_to_lot"] = alt_lot
+		"approved_smaller":
+			change = 0.5 + weight * 0.1
+		"published_as_need":
+			change = 1.0 + weight * 0.15
+			publish_need(String(petition.get("need_type", "")), int(petition.get("suggested_lot", -1)), "none", 0.0, int(petition.get("created_day", 0)))
+		"denied":
+			change = -(2.0 + weight * 0.3)
+	city["approval"] = clampf(float(city.get("approval", 60.0)) + change, 0.0, 100.0)
+
+	var starter: Dictionary = _find_citizen(int(petition.get("starter_id", -1)))
+	if not starter.is_empty():
+		var words: Dictionary = {
+			"approved_as_asked": "approved as asked",
+			"approved_moved": "approved at a different lot",
+			"approved_smaller": "approved as a smaller version",
+			"published_as_need": "published as a city need",
+			"denied": "denied",
+		}
+		_add_history(starter, "The mayor %s my petition, %s." % [String(words.get(status, status)), String(petition.get("title", ""))])
+
+
+
+
+
+
+func create_project(title: String, project_type: String, lot: int, budget_ceiling: float, day: int, rng: RandomNumberGenerator, has_local_construction: bool = false, local_company_name: String = "") -> Dictionary:
+	var base: Dictionary = PROJECT_BASE.get(project_type, PROJECT_BASE_DEFAULT)
+	var base_cost: float = float(base.get("cost", 30000.0))
+	var base_days: int = int(base.get("days", 30))
+
+	var bids: Array = []
+	var names: Array = OUTSIDE_COMPANIES.duplicate()
+
+	for i in range(3):
+		var pick: int = rng.randi_range(0, names.size() - 1)
+		var company: String = String(names[pick])
+		names.remove_at(pick)
+		var markup: float = rng.randf_range(1.15, 1.45)
+		bids.append({
+			"company": company,
+			"is_local": false,
+			"price": snappedf(base_cost * markup * rng.randf_range(0.95, 1.05), 1.0),
+			"days": maxi(5, int(round(float(base_days) * rng.randf_range(0.9, 1.3)))),
+			"quality_history": int(rng.randi_range(55, 92)),
+			"warranty_years": int(rng.randi_range(1, 5)),
+		})
+
+	if has_local_construction:
+		var local_name: String = local_company_name
+		if local_name == "":
+			local_name = "Local Builders"
+		bids.append({
+			"company": local_name,
+			"is_local": true,
+			"price": snappedf(base_cost * rng.randf_range(0.9, 1.1), 1.0),
+			"days": maxi(5, int(round(float(base_days) * rng.randf_range(0.85, 1.15)))),
+			"quality_history": int(rng.randi_range(60, 90)),
+			"warranty_years": int(rng.randi_range(1, 5)),
+		})
+
+	var project: Dictionary = {
+		"id": _next_project_id,
+		"title": title,
+		"project_type": project_type,
+		"lot": lot,
+		"budget_ceiling": budget_ceiling,
+		"bids": bids,
+		"awarded_bid": {},
+		"status": "bidding",
+		"build_day_started": -1,
+		"build_days_total": 0,
+		"build_days_elapsed": 0,
+		"quality": 0,
+		"contractor": "",
+		"created_day": day,
+		"completed_day": -1,
+	}
+	_next_project_id += 1
+	projects.append(project)
+	return project
+
+
+
+
+
+
+func award_project(project_id: int, bid_index: int, day: int) -> void:
+	var project: Dictionary = get_project(project_id)
+	if project.is_empty():
+		return
+	if String(project.get("status", "")) != "bidding":
+		return
+	var bids: Array = project.get("bids", [])
+	if bid_index < 0 or bid_index >= bids.size():
+		return
+	var bid: Dictionary = bids[bid_index]
+	var price: float = float(bid.get("price", 0.0))
+	if price > float(city.get("budget", 0.0)):
+		project["award_error"] = "City budget cannot cover this bid."
+		return
+	city["budget"] = float(city.get("budget", 0.0)) - price
+	project["awarded_bid"] = bid
+	project["contractor"] = String(bid.get("company", ""))
+	project["build_days_total"] = int(bid.get("days", 0))
+	project["build_days_elapsed"] = 0
+	project["build_day_started"] = day
+	project["status"] = "building"
+	project.erase("award_error")
+
+
+
+
+func get_petition(petition_id: int) -> Dictionary:
+	for petition in petitions:
+		if int(petition.get("id", -1)) == petition_id:
+			return petition
+	return {}
+
+
+func get_project(project_id: int) -> Dictionary:
+	for project in projects:
+		if int(project.get("id", -1)) == project_id:
+			return project
+	return {}
+
+
+func get_published_need(need_id: int) -> Dictionary:
+	for need in published_needs:
+		if int(need.get("id", -1)) == need_id:
+			return need
+	return {}
+
+
+func _find_citizen(citizen_id: int) -> Dictionary:
+	for citizen in _last_citizens:
+		if int(citizen.get("id", -1)) == citizen_id:
+			return citizen
+	return {}
+
+
+func _add_history(citizen: Dictionary, line: String) -> void:
+	var history: Array = citizen.get("history", [])
+	history.append(line)
+	citizen["history"] = history

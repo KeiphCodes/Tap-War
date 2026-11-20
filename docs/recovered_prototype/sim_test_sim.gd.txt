@@ -1,0 +1,80 @@
+extends SceneTree
+
+
+
+
+const EngineScript: Script = preload("res://sim/sim_engine.gd")
+
+var failures: int = 0
+
+func _check(condition: bool, label: String) -> void:
+	if condition:
+		print("PASS: ", label)
+	else:
+		failures += 1
+		print("FAIL: ", label)
+
+func _init() -> void:
+	var engine: RefCounted = EngineScript.new()
+	engine.setup_new_town(12345)
+	var start_pop: int = engine.alive_citizens().size()
+	print("Start population: ", start_pop)
+	_check(start_pop >= 80 and start_pop <= 140, "starting population is about 100 (got %d)" % start_pop)
+
+
+	var sample: Dictionary = engine.alive_citizens()[0]
+	var required: Array = ["id", "first_name", "last_name", "age_years", "sex", "alive", "household_id", "traits", "needs", "skills", "education", "cash", "job_title", "employer_business_id", "spouse_id", "children_ids", "history", "credit_score", "reputation", "home_lot"]
+	var keys_ok: bool = true
+	for key in required:
+		if not sample.has(key):
+			keys_ok = false
+			print("Missing key: ", key)
+	_check(keys_ok, "citizen dict has all required keys")
+	_check((sample["traits"] as Dictionary).size() == 8, "citizen has 8 traits")
+	_check((sample["needs"] as Dictionary).size() == 9, "citizen has 9 needs")
+	_check((sample["skills"] as Dictionary).size() == 10, "citizen has 10 skills")
+	_check(int(sample["credit_score"]) >= 300 and int(sample["credit_score"]) <= 850, "credit score in 300 to 850")
+
+
+	var engine2: RefCounted = EngineScript.new()
+	engine2.setup_new_town(12345)
+	_check(engine2.alive_citizens().size() == start_pop, "same seed gives same starting population")
+	_check(str(engine2.alive_citizens()[0]["first_name"]) == str(sample["first_name"]), "same seed gives same first citizen")
+
+	var job_changes: int = 0
+	var last_jobs: Dictionary = {}
+	for c in engine.alive_citizens():
+		last_jobs[int(c["id"])] = str(c["job_title"])
+	var summary: Dictionary = {}
+	for d in range(365):
+		summary = engine.tick_day()
+		for c2 in engine.alive_citizens():
+			var cid: int = int(c2["id"])
+			if last_jobs.has(cid) and str(last_jobs[cid]) != str(c2["job_title"]):
+				job_changes += 1
+			last_jobs[cid] = str(c2["job_title"])
+
+	var end_pop: int = int(summary.get("population_alive", 0))
+	print("After 365 days: ", summary)
+	print("Job changes seen: ", job_changes, " total births: ", engine.total_births, " total deaths: ", engine.total_deaths)
+	_check(end_pop >= 50 and end_pop <= 200, "population after 365 days stays sane, 50 to 200 (got %d)" % end_pop)
+	_check(engine.total_births > 0 or engine.total_deaths > 0 or job_changes > 0, "at least some births or deaths or job changes happened")
+	_check(int(summary.get("day", 0)) == 365, "summary day is 365")
+
+	var cash_ok: bool = true
+	for c3 in engine.citizens:
+		var cash: float = float(c3["cash"])
+		if is_nan(cash) or is_inf(cash):
+			cash_ok = false
+	_check(cash_ok, "no citizen cash is NaN or infinite")
+
+	var one: Dictionary = engine.get_citizen(0)
+	_check(not one.is_empty() and int(one["id"]) == 0, "get_citizen(0) returns citizen 0")
+	_check(engine.get_citizen(999999).is_empty(), "get_citizen with a bad id returns an empty dict")
+
+	if failures == 0:
+		print("PASS: all sim tests passed")
+		quit(0)
+	else:
+		print("FAIL: ", failures, " sim test(s) failed")
+		quit(1)

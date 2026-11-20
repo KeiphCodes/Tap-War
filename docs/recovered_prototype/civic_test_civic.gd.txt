@@ -1,0 +1,183 @@
+extends SceneTree
+
+const CivicClass = preload("res://civic/civic.gd")
+
+
+
+
+
+
+var _failures: int = 0
+
+
+func _check(condition: bool, label: String) -> bool:
+	if condition:
+		print("PASS: ", label)
+	else:
+		_failures += 1
+		printerr("FAIL: ", label)
+	return condition
+
+
+func _make_citizens(count: int) -> Array:
+	var citizens: Array = []
+	for i in range(count):
+		var traits: Dictionary = {
+			"sociability": 40 + (i % 50),
+			"kindness": 50,
+			"ambition": 40,
+			"greed": 30,
+			"honesty": 70,
+			"discipline": 60,
+			"risk": 40,
+			"intelligence": 55,
+		}
+		if i == 0:
+			traits["sociability"] = 95
+		var needs: Dictionary = {
+			"hunger": 30,
+			"health": 70,
+			"safety": 70,
+			"money_security": 50,
+			"shelter": 70,
+		}
+		citizens.append({
+			"id": i + 1,
+			"first_name": "Citizen",
+			"last_name": "Number%d" % (i + 1),
+			"age_years": 25 + (i % 30),
+			"alive": true,
+			"traits": traits,
+			"needs": needs,
+			"skills": {},
+			"cash": 500.0,
+			"home_lot": i % 24,
+			"history": [],
+			"reputation": 50,
+			"job_title": "Worker" if i % 2 == 0 else "",
+		})
+	return citizens
+
+
+func _init() -> void:
+	var rng: = RandomNumberGenerator.new()
+	rng.seed = 20261120
+
+	var civic = CivicClass.new()
+	_check(is_equal_approx(float(civic.city.get("budget", 0.0)), 50000.0), "city budget starts at 50000")
+	_check(is_equal_approx(float(civic.city.get("approval", 0.0)), 60.0), "city approval starts at 60")
+	var laws: Dictionary = civic.city.get("laws", {})
+	_check(is_equal_approx(float(laws.get("income_tax", 0.0)), 0.1), "income tax starts at 0.10")
+	_check(is_equal_approx(float(laws.get("minimum_wage", 0.0)), 60.0), "minimum wage starts at 60 per day")
+
+	var citizens: Array = _make_citizens(60)
+	var town_stats: Dictionary = {
+		"grocery_count": 0,
+		"clinic_count": 1,
+		"school_count": 1,
+		"avg_food_access": 20,
+		"population": 60,
+	}
+
+
+	var day: int = 0
+	while civic.petitions.is_empty() and day < 30:
+		day += 1
+		civic.daily_update(citizens, day, rng, town_stats)
+	if not _check(not civic.petitions.is_empty(), "a petition appears within 30 days"):
+		quit(1)
+		return
+
+	var petition: Dictionary = civic.petitions[0]
+	_check(String(petition.get("need_type", "")) == "grocery", "first petition is for a grocery")
+	_check(int(petition.get("starter_id", -1)) == 1, "petition starter is the high sociability citizen (id 1)")
+	_check(String(petition.get("why", "")).contains("60 people"), "petition why cites the population")
+	_check(String(petition.get("why", "")).contains("0 grocery stores"), "petition why cites zero groceries")
+	_check(String(petition.get("status", "")) == "open", "petition starts open")
+	_check(int(petition.get("signatures", 0)) >= 1, "petition has at least the starter signature")
+
+
+	var sigs_before: int = int(petition.get("signatures", 0))
+	for d in range(5):
+		day += 1
+		civic.daily_update(citizens, day, rng, town_stats)
+	_check(int(petition.get("signatures", 0)) > sigs_before, "signatures grow over time")
+
+
+	var starter: Dictionary = citizens[0]
+	_check((starter.get("history", []) as Array).size() >= 1, "starter history records the petition start")
+
+
+	var approval_before: float = float(civic.city.get("approval", 0.0))
+	var history_before: int = (starter.get("history", []) as Array).size()
+	civic.respond_to_petition(int(petition.get("id", -1)), "approved_as_asked", -1)
+	_check(String(petition.get("status", "")) == "approved_as_asked", "petition status is approved_as_asked after response")
+	_check(float(civic.city.get("approval", 0.0)) > approval_before, "approval rises after approving a signed petition")
+	_check((starter.get("history", []) as Array).size() > history_before, "starter history records the mayor answer")
+
+
+	var need: Dictionary = civic.publish_need("grocery", 5, "grant", 2000.0, day)
+	_check(String(need.get("need_type", "")) == "grocery", "published need is a grocery need")
+	_check(int(need.get("lot", -1)) == 5, "published need is on lot 5")
+	_check(String(need.get("incentive", "")) == "grant", "published need carries the grant incentive")
+	_check(int(need.get("filled_by_business_id", 0)) == -1, "published need starts unfilled")
+	_check(civic.published_needs.size() == 1, "published need is stored")
+
+
+	while day < 30:
+		day += 1
+		civic.daily_update(citizens, day, rng, town_stats)
+	_check(float(civic.city.get("total_tax_collected", 0.0)) > 0.0, "monthly tax is collected by day 30")
+
+
+	var project: Dictionary = civic.create_project("Fix Main Street", "road", 3, 60000.0, day, rng, false, "")
+	var bids: Array = project.get("bids", [])
+	_check(bids.size() >= 3, "project has at least 3 bids")
+	var all_outside: bool = true
+	for bid in bids:
+		if bool(bid.get("is_local", true)):
+			all_outside = false
+	_check(all_outside, "all bids are outside when no local construction exists")
+	_check(String(project.get("status", "")) == "bidding", "project starts in bidding")
+
+
+	var cheapest_index: int = 0
+	var cheapest_price: float = INF
+	for i in range(bids.size()):
+		var price: float = float(bids[i].get("price", 0.0))
+		if price < cheapest_price:
+			cheapest_price = price
+			cheapest_index = i
+	var budget_before: float = float(civic.city.get("budget", 0.0))
+	_check(cheapest_price <= budget_before, "cheapest bid fits the city budget in this test")
+	civic.award_project(int(project.get("id", -1)), cheapest_index, day)
+	_check(String(project.get("status", "")) == "building", "project is building after award")
+	_check(String(project.get("contractor", "")) == String(bids[cheapest_index].get("company", "")), "contractor name comes from the awarded bid")
+	_check(is_equal_approx(float(civic.city.get("budget", 0.0)), budget_before - cheapest_price), "bid price is paid from the budget on award")
+
+
+	var guard: int = 0
+	while String(project.get("status", "")) != "done" and guard < 300:
+		day += 1
+		guard += 1
+		civic.daily_update(citizens, day, rng, town_stats)
+	_check(String(project.get("status", "")) == "done", "project reaches done")
+	_check(int(project.get("quality", 0)) > 0, "finished project quality is above 0")
+	_check(int(project.get("completed_day", -1)) > 0, "finished project records its completion day")
+
+
+	var project2: Dictionary = civic.create_project("Build a clinic", "clinic", 7, 90000.0, day, rng, true, "Johnson Builders")
+	var bids2: Array = project2.get("bids", [])
+	var local_count: int = 0
+	for bid in bids2:
+		if bool(bid.get("is_local", false)):
+			local_count += 1
+			_check(String(bid.get("company", "")) == "Johnson Builders", "local bid carries the local company name")
+	_check(local_count == 1, "exactly one local bid when a local company exists")
+
+	if _failures > 0:
+		printerr("FAILED: %d check(s) failed" % _failures)
+		quit(1)
+		return
+	print("ALL PASS: civic self test complete")
+	quit(0)

@@ -1,0 +1,530 @@
+class_name LTSimEngine
+extends RefCounted
+
+
+
+
+
+
+const TRAIT_KEYS: Array = ["ambition", "risk", "discipline", "honesty", "sociability", "intelligence", "greed", "kindness"]
+const NEED_KEYS: Array = ["hunger", "energy", "shelter", "health", "safety", "money_security", "social", "fun", "respect"]
+const SKILL_KEYS: Array = ["cooking", "retail", "farming", "construction", "repair", "medicine", "teaching", "management", "logistics", "finance"]
+
+const FEMALE_FIRST: Array = ["Mary", "Anna", "Beth", "Carol", "Dana", "Emma", "Faith", "Grace", "Hannah", "Irene", "Jane", "Karen", "Laura", "Megan", "Nora", "Paula", "Rosa", "Sara", "Tina", "Vera", "Wendy", "Clara", "Diane", "Elsie", "Florence", "Gladys", "Harriet", "June", "Linda", "Mabel"]
+const MALE_FIRST: Array = ["James", "John", "Robert", "Michael", "David", "William", "Richard", "Joseph", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven", "Paul", "Andrew", "Joshua", "Kenneth", "Kevin", "Brian", "George", "Timothy", "Ronald", "Edward", "Jeffrey", "Ryan", "Jacob", "Gary"]
+const LAST_NAMES: Array = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson"]
+const OUTSIDE_JOBS: Array = ["Outside factory worker", "Outside warehouse worker", "Outside truck driver", "Outside office clerk", "Outside farm hand", "Outside construction laborer"]
+const BUSINESS_BY_SKILL: Dictionary = {
+	"cooking": "cafe",
+	"retail": "grocery store",
+	"farming": "farm",
+	"construction": "construction company",
+	"repair": "repair shop",
+	"medicine": "clinic",
+	"teaching": "school",
+	"management": "general store",
+	"logistics": "warehouse",
+	"finance": "bank",
+}
+
+var citizens: Array = []
+var day: int = 0
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _next_id: int = 0
+var _next_household: int = 0
+var total_births: int = 0
+var total_deaths: int = 0
+
+
+
+func setup_new_town(seed_value: int) -> void:
+	rng.seed = seed_value
+	citizens.clear()
+	day = 0
+	_next_id = 0
+	_next_household = 0
+	total_births = 0
+	total_deaths = 0
+
+	while citizens.size() < 98 and _next_household < 30:
+		_make_household()
+
+	while citizens.size() < 95 and _next_household < 34:
+		_make_household()
+
+func _make_household() -> void:
+	var hid: int = _next_household
+	_next_household += 1
+	var last_name: String = LAST_NAMES[rng.randi_range(0, LAST_NAMES.size() - 1)]
+	var roll: int = rng.randi_range(0, 99)
+	if roll < 55:
+
+		var wife_age: int = rng.randi_range(22, 55)
+		var husband_age: int = clampi(wife_age + rng.randi_range(-4, 6), 20, 80)
+		var wife: Dictionary = _make_adult(hid, last_name, "F", wife_age, true)
+		var husband: Dictionary = _make_adult(hid, last_name, "M", husband_age, true)
+		wife["spouse_id"] = husband["id"]
+		husband["spouse_id"] = wife["id"]
+		var kid_count: int = rng.randi_range(0, 3)
+
+		for k in range(kid_count):
+			var kid_age: int = rng.randi_range(0, 17)
+			if wife_age - kid_age < 19:
+				kid_age = maxi(0, wife_age - 19)
+			var kid: Dictionary = _make_child(hid, last_name, kid_age, wife, husband)
+			(wife["children_ids"] as Array).append(kid["id"])
+			(husband["children_ids"] as Array).append(kid["id"])
+	elif roll < 75:
+
+		var sex: String = "F" if rng.randi_range(0, 1) == 0 else "M"
+		var parent_age: int = rng.randi_range(24, 50)
+		var parent: Dictionary = _make_adult(hid, last_name, sex, parent_age, rng.randi_range(0, 99) < 70)
+		var kid_count2: int = rng.randi_range(1, 2)
+		for k2 in range(kid_count2):
+			var kid_age2: int = rng.randi_range(0, 15)
+			if parent_age - kid_age2 < 19:
+				kid_age2 = maxi(0, parent_age - 19)
+			var kid2: Dictionary = _make_child(hid, last_name, kid_age2, parent, {})
+			(parent["children_ids"] as Array).append(kid2["id"])
+	elif roll < 90:
+
+		var sex2: String = "F" if rng.randi_range(0, 1) == 0 else "M"
+		_make_adult(hid, last_name, sex2, rng.randi_range(20, 64), rng.randi_range(0, 99) < 60)
+	else:
+
+		var sex3: String = "F" if rng.randi_range(0, 1) == 0 else "M"
+		var senior: Dictionary = _make_adult(hid, last_name, sex3, rng.randi_range(65, 80), false)
+		if rng.randi_range(0, 99) < 50:
+			var other_sex: String = "M" if sex3 == "F" else "F"
+			var partner: Dictionary = _make_adult(hid, last_name, other_sex, rng.randi_range(63, 80), false)
+			senior["spouse_id"] = partner["id"]
+			partner["spouse_id"] = senior["id"]
+
+func _base_citizen(hid: int, last_name: String, sex: String, age_years: int) -> Dictionary:
+	var first: String
+	if sex == "F":
+		first = FEMALE_FIRST[rng.randi_range(0, FEMALE_FIRST.size() - 1)]
+	else:
+		first = MALE_FIRST[rng.randi_range(0, MALE_FIRST.size() - 1)]
+	var c: Dictionary = {
+		"id": _next_id,
+		"first_name": first,
+		"last_name": last_name,
+		"age_years": age_years,
+		"age_days": age_years * 365 + rng.randi_range(0, 364),
+		"sex": sex,
+		"alive": true,
+		"left_town": false,
+		"household_id": hid,
+		"traits": {},
+		"needs": {},
+		"skills": {},
+		"education": 0,
+		"cash": 0.0,
+		"job_title": "",
+		"employer_business_id": -1,
+		"spouse_id": -1,
+		"children_ids": [],
+		"history": [],
+		"credit_score": 300,
+		"reputation": 50,
+		"home_lot": hid,
+		"business_intent": "",
+	}
+	_next_id += 1
+	citizens.append(c)
+	return c
+
+func _random_traits() -> Dictionary:
+	var t: Dictionary = {}
+	for key in TRAIT_KEYS:
+		t[key] = rng.randi_range(5, 95)
+	return t
+
+func _inherited_traits(a: Dictionary, b: Dictionary) -> Dictionary:
+	var t: Dictionary = {}
+	var at: Dictionary = a.get("traits", {})
+	var bt: Dictionary = b.get("traits", {}) if not b.is_empty() else {}
+	for key in TRAIT_KEYS:
+		var base: int
+		if bt.is_empty():
+			base = int(at.get(key, 50))
+		else:
+			base = int((int(at.get(key, 50)) + int(bt.get(key, 50))) / 2)
+		t[key] = clampi(base + rng.randi_range(-15, 15), 0, 100)
+	return t
+
+func _random_skills(age_years: int, education: int) -> Dictionary:
+	var s: Dictionary = {}
+	for key in SKILL_KEYS:
+		if age_years < 13:
+			s[key] = rng.randi_range(0, 8)
+		elif age_years < 18:
+			s[key] = rng.randi_range(0, 25)
+		else:
+			s[key] = clampi(rng.randi_range(0, 45) + int(education / 4), 0, 90)
+
+	if age_years >= 18:
+		var best: String = SKILL_KEYS[rng.randi_range(0, SKILL_KEYS.size() - 1)]
+		s[best] = clampi(int(s[best]) + rng.randi_range(20, 40), 0, 98)
+	return s
+
+func _starter_needs() -> Dictionary:
+	return {
+		"hunger": rng.randi_range(60, 95),
+		"energy": rng.randi_range(60, 95),
+		"shelter": rng.randi_range(70, 100),
+		"health": rng.randi_range(60, 98),
+		"safety": rng.randi_range(65, 95),
+		"money_security": rng.randi_range(35, 80),
+		"social": rng.randi_range(40, 90),
+		"fun": rng.randi_range(40, 90),
+		"respect": rng.randi_range(40, 85),
+	}
+
+func _make_adult(hid: int, last_name: String, sex: String, age_years: int, may_work_outside: bool) -> Dictionary:
+	var c: Dictionary = _base_citizen(hid, last_name, sex, age_years)
+	c["traits"] = _random_traits()
+	c["education"] = rng.randi_range(30, 90) if age_years >= 18 else rng.randi_range(10, 50)
+	c["skills"] = _random_skills(age_years, int(c["education"]))
+	c["needs"] = _starter_needs()
+	c["cash"] = float(rng.randi_range(50, 4000)) + float(rng.randi_range(0, 99)) / 100.0
+	if age_years >= 65:
+		c["cash"] += float(rng.randi_range(500, 8000))
+	c["credit_score"] = rng.randi_range(520, 780)
+	c["reputation"] = rng.randi_range(40, 80)
+	if may_work_outside and age_years >= 18 and age_years < 65 and rng.randi_range(0, 99) < 55:
+		c["job_title"] = OUTSIDE_JOBS[rng.randi_range(0, OUTSIDE_JOBS.size() - 1)]
+		c["employer_business_id"] = -1
+		_add_history(c, "Starts the game working outside town at: " + str(c["job_title"]) + ". Reason: the town has no local jobs yet and the household needs income.")
+	elif age_years >= 18 and age_years < 65:
+		_add_history(c, "Starts the game with no job. Reason: no local employer has hired them yet.")
+	return c
+
+func _make_child(hid: int, last_name: String, age_years: int, parent_a: Dictionary, parent_b: Dictionary) -> Dictionary:
+	var sex: String = "F" if rng.randi_range(0, 1) == 0 else "M"
+	var c: Dictionary = _base_citizen(hid, last_name, sex, age_years)
+	c["traits"] = _inherited_traits(parent_a, parent_b)
+	c["education"] = clampi(age_years * 5, 0, 80)
+	c["skills"] = _random_skills(age_years, int(c["education"]))
+	c["needs"] = _starter_needs()
+	c["cash"] = 0.0
+	c["credit_score"] = 300
+	c["reputation"] = rng.randi_range(40, 70)
+	return c
+
+func _add_history(c: Dictionary, text: String) -> void:
+	(c["history"] as Array).append("Day %d: %s" % [day, text])
+
+	while (c["history"] as Array).size() > 200:
+		(c["history"] as Array).remove_at(0)
+
+
+
+func get_citizen(id: int) -> Dictionary:
+	for c in citizens:
+		if int(c["id"]) == id:
+			return c
+	return {}
+
+func alive_citizens() -> Array:
+	var out: Array = []
+	for c in citizens:
+		if bool(c["alive"]) and not bool(c.get("left_town", false)):
+			out.append(c)
+	return out
+
+
+
+func tick_day() -> Dictionary:
+	day += 1
+	var births: int = 0
+	var deaths: int = 0
+
+
+	var newborns: Array = []
+	for c in alive_citizens():
+		_tick_citizen(c)
+		if not bool(c["alive"]):
+			deaths += 1
+	for c in alive_citizens():
+		var baby: Dictionary = _maybe_birth(c)
+		if not baby.is_empty():
+			newborns.append(baby)
+	births = newborns.size()
+	_maybe_immigration()
+
+
+	if rng.randf() < 0.01:
+		var unhappy: Array = []
+		for c2 in alive_citizens():
+			if int(c2["age_years"]) >= 18 and float((c2["needs"] as Dictionary)["money_security"]) < 15.0 and str(c2["job_title"]) == "":
+				unhappy.append(c2)
+		if not unhappy.is_empty():
+			var leaver: Dictionary = unhappy[rng.randi_range(0, unhappy.size() - 1)]
+			leaver["left_town"] = true
+			_add_history(leaver, "Left town. Reason: no job, no money security, and no clear path to either here.")
+	var alive_list: Array = alive_citizens()
+	var employed: int = 0
+	var cash_sum: float = 0.0
+	for c3 in alive_list:
+		if str(c3["job_title"]) != "":
+			employed += 1
+		cash_sum += float(c3["cash"])
+	var avg_cash: float = 0.0
+	if not alive_list.is_empty():
+		avg_cash = cash_sum / float(alive_list.size())
+	return {
+		"day": day,
+		"population_alive": alive_list.size(),
+		"births": births,
+		"deaths": deaths,
+		"employed": employed,
+		"unemployed": alive_list.size() - employed,
+		"avg_cash": avg_cash,
+	}
+
+func _tick_citizen(c: Dictionary) -> void:
+
+	c["age_days"] = int(c["age_days"]) + 1
+	c["age_years"] = int(int(c["age_days"]) / 365)
+	var age: int = int(c["age_years"])
+	var needs: Dictionary = c["needs"]
+	var traits: Dictionary = c["traits"]
+
+
+	needs["hunger"] = clampi(int(needs["hunger"]) - 30, 0, 100)
+	needs["energy"] = clampi(int(needs["energy"]) - 35, 0, 100)
+	needs["social"] = clampi(int(needs["social"]) - rng.randi_range(2, 8), 0, 100)
+	needs["fun"] = clampi(int(needs["fun"]) - rng.randi_range(2, 9), 0, 100)
+
+	if int(c["home_lot"]) >= 0:
+		needs["energy"] = clampi(int(needs["energy"]) + 55, 0, 100)
+		needs["shelter"] = clampi(int(needs["shelter"]) + 5, 0, 100)
+	else:
+		needs["shelter"] = clampi(int(needs["shelter"]) - 10, 0, 100)
+		needs["energy"] = clampi(int(needs["energy"]) + 20, 0, 100)
+
+	if _household_has_other_living_member(c):
+		needs["social"] = clampi(int(needs["social"]) + rng.randi_range(3, 10), 0, 100)
+		needs["fun"] = clampi(int(needs["fun"]) + rng.randi_range(1, 6), 0, 100)
+
+
+
+
+	var food_cost: float = 14.0
+	if age >= 18:
+		if float(c["cash"]) >= food_cost:
+			c["cash"] = float(c["cash"]) - food_cost
+			needs["hunger"] = clampi(int(needs["hunger"]) + 55, 0, 100)
+		elif float(c["cash"]) > 0.0:
+			needs["hunger"] = clampi(int(needs["hunger"]) + int(float(c["cash"]) / food_cost * 55.0), 0, 100)
+			c["cash"] = 0.0
+
+	else:
+		if _household_has_solvent_adult(c):
+			needs["hunger"] = clampi(int(needs["hunger"]) + 55, 0, 100)
+
+
+
+	if age >= 18 and int(c["home_lot"]) >= 0:
+		var housing_cost: float = 30.0
+		if float(c["cash"]) >= housing_cost:
+			c["cash"] = float(c["cash"]) - housing_cost
+		else:
+			c["cash"] = 0.0
+			needs["shelter"] = clampi(int(needs["shelter"]) - 8, 0, 100)
+
+
+	if age >= 5 and age <= 17:
+		c["education"] = clampi(int(c["education"]) + (1 if day % 30 == 0 else 0), 0, 100)
+		if day % 7 == 0:
+			var skills: Dictionary = c["skills"]
+			skills["teaching"] = clampi(int(skills["teaching"]) + 0, 0, 100)
+			traits["intelligence"] = clampi(int(traits["intelligence"]) + (1 if rng.randi_range(0, 99) < 20 else 0), 0, 100)
+			for key in SKILL_KEYS:
+				if rng.randi_range(0, 99) < 15:
+					skills[key] = clampi(int(skills[key]) + 1, 0, 100)
+
+
+	if age >= 18 and age < 65:
+		if str(c["job_title"]) != "":
+			var wage: float = _daily_wage(str(c["job_title"]), c)
+			c["cash"] = float(c["cash"]) + wage
+			needs["energy"] = clampi(int(needs["energy"]) - 10, 0, 100)
+			needs["respect"] = clampi(int(needs["respect"]) + 1, 0, 100)
+
+			if rng.randf() < 0.001:
+				_add_history(c, "Lost the job: " + str(c["job_title"]) + ". Reason: the outside employer cut staff.")
+				c["job_title"] = ""
+				c["employer_business_id"] = -1
+		else:
+			_decide_unemployed(c)
+	elif age >= 65:
+
+
+		if float(c["cash"]) < 500.0:
+			c["cash"] = float(c["cash"]) + 22.0
+
+
+	var cash_now: float = float(c["cash"])
+	var target_security: int = clampi(int(cash_now / 40.0), 0, 100)
+	var current_security: int = int(needs["money_security"])
+	needs["money_security"] = clampi(current_security + clampi(target_security - current_security, -3, 3), 0, 100)
+
+
+	var health: int = int(needs["health"])
+	if int(needs["hunger"]) < 25:
+		health -= 2
+	if age >= 70:
+		health -= 1 if rng.randi_range(0, 99) < 30 else 0
+	if int(needs["hunger"]) >= 50 and int(needs["energy"]) >= 40:
+		health += 1 if rng.randi_range(0, 99) < 40 else 0
+	health += rng.randi_range(-1, 1)
+	needs["health"] = clampi(health, 0, 100)
+
+
+	if _death_today(c):
+		c["alive"] = false
+		total_deaths += 1
+		_add_history(c, "Died at age %d. Reason: age and health caught up with them." % age)
+
+func _daily_wage(job_title: String, c: Dictionary) -> float:
+	var base: float = 95.0
+	if job_title.find("truck driver") >= 0:
+		base = 130.0
+	elif job_title.find("office clerk") >= 0:
+		base = 105.0
+	elif job_title.find("factory") >= 0:
+		base = 115.0
+	elif job_title.find("construction") >= 0:
+		base = 120.0
+	elif job_title.find("warehouse") >= 0:
+		base = 100.0
+	elif job_title.find("farm hand") >= 0:
+		base = 85.0
+
+	if int(c["employer_business_id"]) >= 0:
+		var best: int = 0
+		for key in SKILL_KEYS:
+			best = maxi(best, int((c["skills"] as Dictionary)[key]))
+		base = 70.0 + float(best) * 0.7
+	return base
+
+func _decide_unemployed(c: Dictionary) -> void:
+	var traits: Dictionary = c["traits"]
+
+
+	var founder_score: int = int(traits["ambition"]) + int(traits["risk"])
+	if founder_score >= 130 and float(c["cash"]) >= 300.0:
+		var best_skill: String = "retail"
+		var best_value: int = -1
+		for key in SKILL_KEYS:
+			var v: int = int((c["skills"] as Dictionary)[key])
+			if v > best_value:
+				best_value = v
+				best_skill = key
+		var intent: String = str(BUSINESS_BY_SKILL.get(best_skill, "general store"))
+		if str(c["business_intent"]) != intent:
+			c["business_intent"] = intent
+			_add_history(c, "Decided to try to start a " + intent + ". Reason: high ambition and risk tolerance, strongest skill is " + best_skill + ", and some starting cash saved.")
+		return
+
+	var find_chance: float = 0.01 + float(traits["discipline"]) / 100.0 * 0.02 + float(c["reputation"]) / 100.0 * 0.01
+	if rng.randf() < find_chance:
+		var job: String = OUTSIDE_JOBS[rng.randi_range(0, OUTSIDE_JOBS.size() - 1)]
+		c["job_title"] = job
+		c["employer_business_id"] = -1
+		c["business_intent"] = ""
+		_add_history(c, "Found work outside town: " + job + ". Reason: kept applying, and an outside employer had an opening.")
+
+func _death_today(c: Dictionary) -> bool:
+	var age: int = int(c["age_years"])
+	var health: int = int((c["needs"] as Dictionary)["health"])
+	var annual: float = 0.0
+	if age >= 90:
+		annual = 0.35
+	elif age >= 80:
+		annual = 0.14
+	elif age >= 70:
+		annual = 0.05
+	elif age >= 60:
+		annual = 0.018
+	elif age >= 40:
+		annual = 0.004
+	else:
+		annual = 0.001
+	if health <= 10:
+		annual += 0.25
+	elif health <= 25:
+		annual += 0.06
+	if health <= 0:
+		annual += 0.4
+	return rng.randf() < annual / 365.0
+
+func _maybe_birth(mother_candidate: Dictionary) -> Dictionary:
+
+
+
+	if str(mother_candidate["sex"]) != "F":
+		return {}
+	var age: int = int(mother_candidate["age_years"])
+	if age < 18 or age > 42:
+		return {}
+	var spouse_id: int = int(mother_candidate["spouse_id"])
+	if spouse_id < 0:
+		return {}
+	var spouse: Dictionary = get_citizen(spouse_id)
+	if spouse.is_empty() or not bool(spouse["alive"]) or bool(spouse.get("left_town", false)):
+		return {}
+	if int(mother_candidate["home_lot"]) < 0:
+		return {}
+	var needs: Dictionary = mother_candidate["needs"]
+	if int(needs["money_security"]) < 45 or int(needs["shelter"]) < 50:
+		return {}
+	if (mother_candidate["children_ids"] as Array).size() >= 4:
+		return {}
+
+	if rng.randf() >= 0.0011:
+		return {}
+	var baby: Dictionary = _base_citizen(int(mother_candidate["household_id"]), str(mother_candidate["last_name"]), "F" if rng.randi_range(0, 1) == 0 else "M", 0)
+	baby["age_days"] = 0
+	baby["traits"] = _inherited_traits(mother_candidate, spouse)
+	baby["education"] = 0
+	baby["skills"] = _random_skills(0, 0)
+	baby["needs"] = _starter_needs()
+	baby["cash"] = 0.0
+	baby["credit_score"] = 300
+	baby["reputation"] = 50
+	baby["home_lot"] = int(mother_candidate["home_lot"])
+	(mother_candidate["children_ids"] as Array).append(baby["id"])
+	(spouse["children_ids"] as Array).append(baby["id"])
+	total_births += 1
+	_add_history(mother_candidate, "A child was born: " + str(baby["first_name"]) + " " + str(baby["last_name"]) + ". Reason: the couple had housing and decent money security and chose to grow their family.")
+	_add_history(baby, "Born in town to " + str(mother_candidate["first_name"]) + " " + str(mother_candidate["last_name"]) + " and " + str(spouse["first_name"]) + " " + str(spouse["last_name"]) + ".")
+	return baby
+
+func _maybe_immigration() -> void:
+
+
+
+	if citizens.size() >= 220:
+		return
+	if rng.randf() < 0.008:
+		var before: int = citizens.size()
+		_make_household()
+		if citizens.size() > before:
+			var newcomer: Dictionary = citizens[before]
+			_add_history(newcomer, "Moved to town. Reason: looking for a fresh start and a place to live.")
+
+func _household_has_other_living_member(c: Dictionary) -> bool:
+	for other in citizens:
+		if int(other["id"]) != int(c["id"]) and int(other["household_id"]) == int(c["household_id"]) and bool(other["alive"]) and not bool(other.get("left_town", false)):
+			return true
+	return false
+
+func _household_has_solvent_adult(c: Dictionary) -> bool:
+	for other in citizens:
+		if int(other["household_id"]) == int(c["household_id"]) and int(other["age_years"]) >= 18 and bool(other["alive"]) and float(other["cash"]) > 0.0:
+			return true
+	return false
