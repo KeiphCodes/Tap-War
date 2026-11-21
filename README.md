@@ -8,6 +8,8 @@ This repository builds everything in `docs/Living_Town_design_document.md` (lock
 
 ## Play it
 
+- **Online:** https://keiphcodes.github.io/Tap-War/ (published from `main` by CI).
+
 - **In a browser:** open the exported web build (`build/web/index.html`) through any static web server, for example `python3 -m http.server -d build/web 8000` and then http://localhost:8000. The build uses the single threaded web template, so it runs on plain static hosting such as GitHub Pages with no special headers.
 - **In the editor:** install Godot 4.4.1 (free), open this folder as a project, press Play.
 
