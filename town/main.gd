@@ -18,7 +18,8 @@ var hour: float = 9.0
 var _accum: float = 0.0
 var view: Node3D
 var hud: CanvasLayer
-var interrupt_kinds: Dictionary = {"bankruptcy": true, "death": true, "business": true, "petition": true, "city": true, "project": true, "estate": true, "protest": true}
+var sound: Node
+var interrupt_kinds: Dictionary = {"bankruptcy": true, "death": true, "business": true, "petition": true, "city": true, "project": true, "estate": true, "protest": true, "crime": true, "region": true, "election": true, "health": true}
 var _pending_interrupt: Array = []
 var last_fast_speed: int = 2
 
@@ -29,6 +30,8 @@ func _ready() -> void:
 	view.name = "TownView"
 	add_child(view)
 	view.setup(self)
+	sound = preload("res://ui/sound.gd").new()
+	add_child(sound)
 	hud = preload("res://ui/hud.gd").new()
 	hud.name = "HUD"
 	add_child(hud)
@@ -79,6 +82,8 @@ func act(a: Dictionary) -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	sound.weather = world.weather
+	sound.daytime = hour > 6.0 and hour < 20.0
 	var sp: Dictionary = SPEEDS[speed]
 	if int(sp["days"]) == 0:
 		view.animate(delta, hour, false)
@@ -110,6 +115,7 @@ func _advance(days: int) -> void:
 			if bool(e["important"]) and interrupt_kinds.get(str(e["kind"]), false):
 				important.append(e)
 		hud.feed(world.events_today)
+		_sounds(world.events_today)
 		# turbo and fast stop on events the player marked as important
 		if speed >= 3 and not important.is_empty() and _should_interrupt(important):
 			break
@@ -119,6 +125,21 @@ func _advance(days: int) -> void:
 		last_fast_speed = speed
 		speed = 0
 		hud.show_interrupt(important)
+
+
+func _sounds(events: Array) -> void:
+	for e in events:
+		if not bool(e["important"]):
+			continue
+		var t: String = str(e["text"])
+		var k: String = str(e["kind"])
+		if k in ["bankruptcy", "death", "crime", "protest"] or t.contains("closed") or t.contains("lost"):
+			sound.chime("bad")
+		elif k in ["business", "birth", "project"] and not t.contains("closed"):
+			sound.chime("good")
+		else:
+			sound.chime("note")
+		return
 
 
 func _should_interrupt(events: Array) -> bool:
@@ -134,6 +155,10 @@ func _should_interrupt(events: Array) -> bool:
 		elif k == "city" and str(e["text"]).begins_with("City budget crisis"):
 			return true
 		elif k == "project" and str(e["text"]).begins_with("Bids are in"):
+			return true
+		elif k == "election" or k == "region":
+			return true
+		elif (k == "crime" or k == "health") and world.involves_watched(e["refs"]):
 			return true
 	return false
 

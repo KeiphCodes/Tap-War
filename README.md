@@ -4,7 +4,7 @@ A city builder where the player does not build the city. The citizens do.
 
 You are the mayor of Prairie Hollow, a town of about 100 people. You zone land, pass laws, set taxes, answer petitions, publish city needs with incentives, and put public projects out to bid. Every business, job, house, debt, success and failure belongs to a simulated citizen (a Sim). Every big decision a Sim makes is written in their history with the reason, so you can open anyone and read why they did what they did.
 
-This repository is the V1 slice described in `docs/Living_Town_design_document.md` (locked 2026-11-20), built in Godot 4.4.1. What is done, what is simplified, and what waits for V2 is listed in `docs/STATUS.md`. Every judgment call made while building it is in `docs/DECISIONS.md`.
+This repository builds everything in `docs/Living_Town_design_document.md` (locked 2026-11-20), not only the V1 slice: 21 Sim run business types and a city chartered local bank, supply chains from farm to mill to bakery to grocery, crime with police, courts and jail, pregnancy, injuries, depression and addiction with treatment, divorce and child support, the full law list, city bonds, a county bus, annexing new land into new districts, the county economy around town with its booms, recessions and failing employers, storms and fires, a weekly town newspaper, optional elections, and procedural sound. Built in Godot 4.4.1. What is done, what is simplified, and what waits for V2 is listed in `docs/STATUS.md`. Every judgment call made while building it is in `docs/DECISIONS.md`.
 
 ## Play it
 
@@ -20,6 +20,8 @@ Time: **Pause** to plan. **Watch** runs one day in about two minutes and shows S
 ```
 godot --headless --import                      # once, builds the class cache
 godot --headless --script tests/acceptance.gd  # section 18 gates, writes reports/acceptance_summary.txt
+godot --headless --script tests/scenarios.gd   # every system beyond the slice, writes reports/scenario_summary.txt
+godot --headless --script tests/ui_smoke.gd    # plays the real scene, opens every tab and inspector
 godot --headless --script tests/stress.gd      # about 1,000 Sims, writes reports/stress_summary.txt
 godot --headless --script tests/seed_scan.gd   # one line per seed, for calibration
 ```
@@ -37,10 +39,15 @@ sim/            the whole simulation, plain data, no scene nodes
   finance.gd      debts, collections ladder, credit scores, bank, bankruptcy, estates, city debt
   civic.gd        laws and estimates, budget, city services and jobs, petitions, published needs
   projects.gd     public projects, contractor bids, construction stages, quality, private builds
+  services.gd     the other 15 business types, the service spend book, supply chains, the local bank
+  region.gd       Tier 3: the county economy, outside employers, shortages, storms
+  health.gd       pregnancy, work injuries, depression, addiction and treatment
+  justice.gd      crime, police detection, courts, fines, jail, records, health inspections
+  family.gd       divorce, child support, mentoring, business succession and sale, home buying
   geography.gd    lots, road graph and travel times, weather, road wear
   calendar.gd, money.gd, report.gd
 town/           the 3D view, built procedurally from the data (no bought or external assets)
-ui/             the mayor's desk
+ui/             the mayor's desk, charts, procedural sound
 tests/          acceptance, stress and calibration runs
 docs/           the design document, decisions, status, and the recovered original prototype
 ```

@@ -87,6 +87,12 @@ static func generate_town(w: LTWorld) -> void:
 	for h in w.households:
 		for m in w.household_members(h):
 			_seed_finances(w, m)
+	# a few couples are already expecting when the game starts
+	for c in w.citizens:
+		var a: int = w.age_years(c)
+		if str(c["sex"]) == "F" and a >= 20 and a <= 40 and int(c["spouse"]) >= 0 and w.rng.randf() < 0.08:
+			LTHealth.conceive(w, c, w.cit(int(c["spouse"])), "they wanted another child")
+			c["pregnant"]["due"] = w.rng.randi_range(10, 260)
 
 
 static func _setup_owner(w: LTWorld, h: Dictionary, l: Dictionary) -> void:
@@ -335,6 +341,8 @@ static func pick_outside_job(w: LTWorld, c: Dictionary) -> Dictionary:
 	var best: Dictionary = OUTSIDE_JOBS[0]
 	var best_s: float = -1e9
 	for j in OUTSIDE_JOBS:
+		if bool(c.get("disability", false)) and LTHealth.RISKY_JOBS.has(str(j["title"])):
+			continue
 		var s: float = float(c["skills"][str(j["skill"])]) + w.rng.randf_range(0.0, 30.0)
 		if s > best_s:
 			best_s = s
@@ -349,6 +357,8 @@ static func _outside_wage(w: LTWorld, c: Dictionary, j: Dictionary) -> int:
 
 static func set_job(w: LTWorld, c: Dictionary, kind: String, employer: int, title: String, daily_wage: int, skill: String) -> void:
 	c["job"] = {"kind": kind, "employer": employer, "title": title, "daily_wage": daily_wage, "since": w.day, "skill": skill}
+	if kind == "outside":
+		c["job"]["employer_name"] = LTRegion.employer_for(w, title)
 	c["days_unemployed"] = 0
 
 
@@ -408,6 +418,8 @@ static func morning(w: LTWorld) -> void:
 				_school_day(w, c, age)
 		if age >= 18 and not bool(c["retired"]):
 			_work_day(w, c)
+		if LTJustice.in_jail(w, c):
+			continue
 		if age >= 16 and (int(c["id"]) % 7 == w.day % 7 or bool(c.get("trigger", false))):
 			c["trigger"] = false
 			decide_weekly(w, c, age)
@@ -522,7 +534,7 @@ static func _work_day(w: LTWorld, c: Dictionary) -> void:
 		return
 	if LTCalendar.is_weekend(w.day) and kind != "owner":
 		return
-	if int(c["sick_days"]) > 0:
+	if int(c["sick_days"]) > 0 or LTHealth.on_leave(w, c):
 		return
 	var sk: String = str(job["skill"])
 	if sk != "":
@@ -532,10 +544,17 @@ static func _work_day(w: LTWorld, c: Dictionary) -> void:
 	if kind == "outside":
 		var hhl: int = int(w.hh(int(c["household"]))["lot"])
 		var mins: float = w.minutes_to_outside(hhl) if hhl >= 0 else 30.0
-		c["needs"]["energy"] = float(c["needs"]["energy"]) - mins * 0.12
+		var bus: bool = LTCivic.bus_rider(w, c)
+		c["needs"]["energy"] = float(c["needs"]["energy"]) - mins * (0.08 if bus else 0.12)
 		c["needs"]["fun"] = float(c["needs"]["fun"]) - mins * 0.05
-		w.ledger.pay(w.acct_p(c), "outside", COMMUTE_COST_DAILY, "commute_fuel")
-		if w.rng.randf() < 0.00045:
+		if bus:
+			w.ledger.pay(w.acct_p(c), "city", LTCivic.BUS_FARE, "bus_fares")
+		else:
+			w.ledger.pay(w.acct_p(c), "outside", COMMUTE_COST_DAILY, "commute_fuel")
+		if not LTRegion.employer_open(w, str(job.get("employer_name", ""))):
+			clear_job(w, c)
+			return
+		if w.rng.randf() < 0.00045 * LTRegion.layoff_mult(w):
 			w.log_sim(c, "Lost the job as a %s. Reason: the outside employer cut staff." % job["title"], true)
 			w.remember(c, "fired", -1, -20.0)
 			clear_job(w, c)
@@ -573,9 +592,17 @@ static func evening(w: LTWorld) -> void:
 			var n: Dictionary = m["needs"]
 			n["hunger"] = float(n["hunger"]) + 34.0 * fed + (6.0 if fed >= 1.0 else 0.0)
 			# a night's sleep: housed Sims wake rested, rough sleepers do not
-			if housed:
+			if LTJustice.in_jail(w, m):
+				n["energy"] = maxf(float(n["energy"]) + 30.0, 55.0)
+			elif housed:
 				n["energy"] = maxf(float(n["energy"]) + 40.0, 72.0 if crowd <= 1.2 else 60.0)
 				n["shelter"] = float(n["shelter"]) + (4.0 if crowd <= 1.0 else 1.0)
+				if bool(h.get("shutoff", false)):
+					n["shelter"] = float(n["shelter"]) - (12.0 if LTCalendar.season(w.day) == "Winter" else 5.0)
+					n["energy"] = float(n["energy"]) - 8.0
+			elif LTCivic.shelter_bed(w, m):
+				n["energy"] = maxf(float(n["energy"]) + 32.0, 55.0)
+				n["shelter"] = float(n["shelter"]) - 2.0
 			else:
 				n["energy"] = maxf(float(n["energy"]) + 25.0, 40.0)
 				n["shelter"] = float(n["shelter"]) - 9.0
@@ -657,19 +684,55 @@ static func utilities(w: LTWorld, h: Dictionary) -> int:
 static func _monthly_household(w: LTWorld, h: Dictionary) -> void:
 	if int(h["lot"]) < 0:
 		return
-	# utilities go to the outside power and gas company
+	# utilities go to the outside power and gas company; two short months and they shut it off
 	var util: int = utilities(w, h)
+	if bool(h.get("shutoff", false)):
+		util += LTMoney.dollars(75.0)
 	var paid_u: int = w.household_pay(h, "outside", util, "utilities")
 	if paid_u < util:
+		h["util_late"] = int(h.get("util_late", 0)) + 1
 		for m in w.household_adults(h):
 			w.log_sim(m, "Could not pay the full utility bill. Paid %s of %s." % [LTMoney.fmt(paid_u), LTMoney.fmt(util)], false)
 			m["needs"]["shelter"] = float(m["needs"]["shelter"]) - 8.0
+		if int(h["util_late"]) >= 2 and not bool(h.get("shutoff", false)):
+			h["shutoff"] = true
+			for m in w.household_members(h):
+				w.log_sim(m, "The power company shut off the utilities for unpaid bills. No heat or lights at home.", true)
+	else:
+		h["util_late"] = 0
+		if bool(h.get("shutoff", false)):
+			h["shutoff"] = false
+			for m in w.household_adults(h):
+				w.log_sim(m, "Paid the past due utility bill and the reconnection fee. The lights are back on.", true)
+	LTServices.monthly_household(w, h)
 	# seniors draw pensions from outside
 	for m in w.household_adults(h):
 		if bool(m["retired"]) or w.age_years(m) >= 67:
 			w.ledger.pay("outside", w.acct_p(m), PENSION_MONTHLY, "pensions")
 	if str(h["tenure"]) == "rent":
+		if LTCalendar.month_index(w.day) == 0 and w.day > 1:
+			_rent_review(w, h)
 		_pay_rent(w, h)
+
+
+## Once a year a landlord sets the rent: tight housing and greed push it up, the city's cap holds it down.
+static func _rent_review(w: LTWorld, h: Dictionary) -> void:
+	var l: Dictionary = w.lot(int(h["lot"]))
+	var vac: int = vacancy_count(w)
+	var greed: float = 50.0
+	if str(l["owner_kind"]) == "business":
+		var o: Dictionary = w.cit(int(w.biz(int(l["owner_id"]))["owners"][0]))
+		if not o.is_empty():
+			greed = float(o["traits"]["greed"])
+	var raise: float = 0.02 + (0.05 if vac == 0 else 0.0) + (greed - 50.0) / 1000.0 - float(vac) * 0.005
+	var cap: float = float(w.city["laws"].get("rent_cap", 0.1))
+	raise = clampf(raise, -0.03, cap)
+	var old: int = int(h["rent"])
+	h["rent"] = int(float(old) * (1.0 + raise))
+	l["unit_rent"] = maxi(int(l["unit_rent"]), int(h["rent"]))
+	if absi(int(h["rent"]) - old) >= 500:
+		for m in w.household_adults(h):
+			w.log_sim(m, "The landlord %s the rent to %s a month%s." % ["raised" if int(h["rent"]) > old else "lowered", LTMoney.fmt(int(h["rent"])), ", the most the city's rent cap allows" if is_equal_approx(raise, cap) else ""], true)
 
 
 static func _pay_rent(w: LTWorld, h: Dictionary) -> void:
@@ -864,8 +927,7 @@ static func decide_weekly(w: LTWorld, c: Dictionary, age: int) -> void:
 			options.append({"key": "borrow", "score": 20.0 + float(t["risk"]) * 0.2 - float(t["discipline"]) * 0.1, "reason": "cash ran short before the next paycheck"})
 		var desperation: float = (100.0 - float(n["hunger"])) * 0.4 + (100.0 - float(n["money_security"])) * 0.3 + float(t["greed"]) * 0.15
 		var restraint: float = float(t["honesty"]) * 0.6 + LTCivic.enforcement(w) * 40.0 + float(c["theft_record"]) * 5.0
-		if desperation - restraint > 5.0 and w.cash(c) < LTMoney.dollars(40.0):
-			options.append({"key": "steal", "score": desperation - restraint + 10.0, "reason": "hungry, broke, and did not think anyone would notice"})
+		pass
 	var choice: Dictionary = choose(w, c, options)
 	match str(choice.get("key", "stay")):
 		"job_search":
@@ -884,7 +946,7 @@ static func decide_weekly(w: LTWorld, c: Dictionary, age: int) -> void:
 					LTEconomy.found_business(w, c, plan)
 			else:
 				c["intent"] = {"type": plan["type"], "since": w.day, "weeks": 1}
-				w.log_sim(c, "Started planning to open a %s. Reason: %s. Will look at the numbers again for a few weeks before deciding." % [str(LTEconomy.TYPES[plan["type"]]["display"]).to_lower(), plan["reason"]], true)
+				w.log_sim(c, "Started planning to open a %s. Reason: %s. Will look at the numbers again for a few weeks before deciding." % [str(LTEconomy.tcfg(plan["type"])["display"]).to_lower(), plan["reason"]], true)
 		"borrow":
 			LTFinance.personal_loan(w, c, str(choice["reason"]))
 		"steal":
@@ -897,8 +959,11 @@ static func _job_search(w: LTWorld, c: Dictionary) -> void:
 		LTEconomy.hire(w, c, local, "Hired at %s as a %s. Reason: kept looking and the owner picked them from the applicants." % [local["name"], local["title"]])
 		return
 	var p: float = 0.025 + float(c["education"]) * 0.0006 + float(c["traits"]["discipline"]) * 0.0004 - float(c["credit"]["collections"]) * 0.01
-	if c["theft_record"] > 0:
+	if LTJustice.record_count(c) > 0:
 		p *= 0.5
+	p *= LTRegion.hire_mult(w)
+	if not bool(w.hh(int(c["household"]))["car"]) and not LTCivic.bus_available(w):
+		p *= 0.3
 	if w.rng.randf() < p:
 		var j: Dictionary = pick_outside_job(w, c)
 		var looked: int = int(c["days_unemployed"])
@@ -1020,7 +1085,7 @@ static func _maybe_birth(w: LTWorld, m: Dictionary) -> Dictionary:
 	if not w.is_present(sp) or str(sp["sex"]) != "M":
 		return {}
 	var h: Dictionary = w.hh(int(m["household"]))
-	if int(h["lot"]) < 0:
+	if int(h["lot"]) < 0 or not m.get("pregnant", {}).is_empty():
 		return {}
 	var kids: int = 0
 	for kid in m["children"]:
@@ -1037,27 +1102,36 @@ static func _maybe_birth(w: LTWorld, m: Dictionary) -> Dictionary:
 	score *= 0.8 + LTCivic.family_friendliness(w) * 0.4
 	if w.rng.randf() >= 0.0005 * score:
 		return {}
-	var baby: Dictionary = _blank_citizen(w, int(h["id"]), str(sp["last_name"]), "F" if w.rng.randf() < 0.5 else "M", 0)
+	var reason: String = "the couple had a home and enough money security to feel ready"
+	if float(n["money_security"]) < 45.0:
+		reason = "they wanted a child even though money was tight"
+	LTHealth.conceive(w, m, sp, reason)
+	return {}
+
+
+static func give_birth(w: LTWorld, m: Dictionary, sp: Dictionary) -> Dictionary:
+	var h: Dictionary = w.hh(int(m["household"]))
+	var last: String = str(sp["last_name"]) if not sp.is_empty() else str(m["last_name"])
+	var baby: Dictionary = _blank_citizen(w, int(h["id"]), last, "F" if w.rng.randf() < 0.5 else "M", 0)
 	_unique_first_name(w, baby)
 	baby["age_days"] = 0
 	inherit_traits(w, baby, m, sp)
 	_roll_skills(w, baby, 0)
 	baby["mother"] = int(m["id"])
-	baby["father"] = int(sp["id"])
 	m["children"].append(int(baby["id"]))
-	sp["children"].append(int(baby["id"]))
 	_relate(m, baby, "child", 85.0, 95.0)
-	_relate(sp, baby, "child", 85.0, 95.0)
 	_relate(baby, m, "parent", 80.0, 90.0)
-	_relate(baby, sp, "parent", 80.0, 90.0)
+	if not sp.is_empty():
+		baby["father"] = int(sp["id"])
+		sp["children"].append(int(baby["id"]))
+		_relate(sp, baby, "child", 85.0, 95.0)
+		_relate(baby, sp, "parent", 80.0, 90.0)
 	w.counters["births"] = int(w.counters["births"]) + 1
-	var reason: String = "the couple had a home and enough money security to feel ready"
-	if float(n["money_security"]) < 45.0:
-		reason = "they wanted a child even though money was tight"
-	w.log_sim(m, "Had a baby, %s. Reason: %s." % [baby["first_name"], reason], true)
-	w.log_sim(sp, "Had a baby, %s." % baby["first_name"], true)
-	w.log_sim(baby, "Born to %s and %s." % [w.full_name(m), w.full_name(sp)], true)
-	w.chronicle_add("%s was born to %s and %s." % [w.full_name(baby), m["first_name"], w.full_name(sp)], "birth", w.involves_watched([m["id"], sp["id"]]), [baby["id"], m["id"], sp["id"]])
+	w.log_sim(m, "Had a baby, %s." % baby["first_name"], true)
+	if not sp.is_empty() and w.is_present(sp):
+		w.log_sim(sp, "Had a baby, %s." % baby["first_name"], true)
+	w.log_sim(baby, "Born to %s%s." % [w.full_name(m), " and " + w.full_name(sp) if not sp.is_empty() else ""], true)
+	w.chronicle_add("%s was born to %s%s." % [w.full_name(baby), w.full_name(m), " and " + w.full_name(sp) if not sp.is_empty() else ""], "birth", w.involves_watched([m["id"], int(sp.get("id", -1))]), [baby["id"], m["id"]])
 	return baby
 
 
@@ -1239,9 +1313,15 @@ static func _household_leaves(w: LTWorld, h: Dictionary, score: float) -> void:
 	if str(h["tenure"]) == "own" and lot_id >= 0:
 		LTFinance.sell_house(w, h, "moving away")
 	for m in w.household_members(h):
-		if str(m["job"]["kind"]) != "none":
-			if str(m["job"]["kind"]) == "owner":
-				continue
+		for bid in m["owns"].duplicate():
+			var ob: Dictionary = w.biz(int(bid))
+			if not ob.is_empty() and str(ob["status"]) == "open":
+				if ob["owners"].size() > 1:
+					ob["owners"].erase(int(m["id"]))
+					m["owns"].erase(int(bid))
+				else:
+					LTEconomy.close_business(w, ob, "the owner moved away")
+		if str(m["job"]["kind"]) != "none" and str(m["job"]["kind"]) != "owner":
 			LTEconomy.leave_job(w, m, "moved away")
 		m["left_town"] = true
 		m["left_day"] = w.day

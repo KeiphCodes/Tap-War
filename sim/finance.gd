@@ -147,19 +147,45 @@ static func total_owed(w: LTWorld, c: Dictionary) -> int:
 	return t
 
 
+## How heavy debt sits on a Sim: the household's monthly payments against the
+## household's income, plus every debt that is behind. Shared debts count once.
 static func debt_stress(w: LTWorld, c: Dictionary) -> float:
+	if int(w.market.get("stress_day", -1)) != w.day:
+		w.market["stress_day"] = w.day
+		w.market["stress"] = {}
+	var cache: Dictionary = w.market["stress"]
+	if cache.has(int(c["id"])):
+		return float(cache[int(c["id"])])
+	var v: float = _debt_stress(w, c)
+	cache[int(c["id"])] = v
+	return v
+
+
+static func _debt_stress(w: LTWorld, c: Dictionary) -> float:
+	var h: Dictionary = w.hh(int(c["household"]))
+	var seen: Dictionary = {}
 	var monthly: int = 0
 	var late: int = 0
-	for d in personal_exposure(w, c):
-		if str(d["debtor_kind"]) == "p":
-			monthly += min_due(d)
-		if str(d["status"]) != "current" and str(d["status"]) != "assumed":
-			late += 1
-	var income: float = float(c["job"]["daily_wage"]) * 21.0
-	if bool(c["retired"]):
-		income = float(LTPeople.PENSION_MONTHLY)
-	var ratio: float = float(monthly) / maxf(income, 30000.0)
-	return clampf(ratio * 1.2 + float(late) * 0.25, 0.0, 1.0)
+	var income: int = 0
+	for a in w.household_adults(h):
+		income += monthly_income(w, a)
+		for d in personal_exposure(w, a):
+			if seen.has(int(d["id"])):
+				continue
+			seen[int(d["id"])] = true
+			if str(d["debtor_kind"]) == "p":
+				monthly += min_due(d)
+			if int(d["id"]) >= 0 and personal_exposure_has(d, c) and str(d["status"]) != "current" and str(d["status"]) != "assumed":
+				late += 1
+	if income <= 0:
+		income = LTMoney.dollars(300.0)
+	var ratio: float = float(monthly) / float(income)
+	return clampf((ratio - 0.15) * 1.3 + float(late) * 0.25, 0.0, 1.0)
+
+
+static func personal_exposure_has(d: Dictionary, c: Dictionary) -> bool:
+	var cid: int = int(c["id"])
+	return (str(d["debtor_kind"]) == "p" and int(d["debtor_id"]) == cid) or d["joint"].has(cid) or int(d["guarantor"]) == cid or str(d["debtor_kind"]) == "b"
 
 
 static func min_due(d: Dictionary) -> int:
@@ -308,6 +334,21 @@ static func bank_decision(w: LTWorld, c: Dictionary, dtype: String, amount: int,
 	return {"ok": true, "reason": "credit %d and income cover it" % score, "rate": rate, "max": amount, "term": term}
 
 
+## Pays out a new loan from the local bank if the town has one with the money, else
+## from the outside bank. The debt record names whichever lender it really was.
+static func fund_loan(w: LTWorld, d: Dictionary, to_acct: String, amount: int) -> void:
+	var lb: Dictionary = LTServices.local_bank(w)
+	if not lb.is_empty() and w.biz_cash(lb) - amount > LTMoney.dollars(15000.0) and str(d["debtor_kind"]) != "city":
+		d["creditor"] = "business"
+		d["creditor_id"] = int(lb["id"])
+		w.ledger.pay(w.acct_b(lb), to_acct, amount, "loans_out_local")
+		lb["loans_made"] = int(lb.get("loans_made", 0)) + 1
+		_dhist(w, d, "Funded by %s, the local bank. The interest stays in town." % lb["name"])
+		w.log_biz(lb, "Lent %s to %s." % [LTMoney.fmt(amount), debtor_name(w, d)])
+		return
+	w.ledger.pay("bank", to_acct, amount, "loans_out")
+
+
 static func monthly_income(w: LTWorld, c: Dictionary) -> int:
 	if bool(c["retired"]):
 		return LTPeople.PENSION_MONTHLY
@@ -324,7 +365,7 @@ static func personal_loan(w: LTWorld, c: Dictionary, reason: String) -> void:
 		return
 	amount = mini(amount, int(dec["max"]))
 	var d: Dictionary = new_debt(w, "p", int(c["id"]), "bank", -1, "personal_loan", amount, float(dec["rate"]), 24, "", -1, [])
-	w.ledger.pay("bank", w.acct_p(c), amount, "loans_out")
+	LTFinance.fund_loan(w, d, w.acct_p(c), amount)
 	w.bank["lent_12m"] = int(w.bank["lent_12m"]) + amount
 	w.counters["loans_made"] = int(w.counters["loans_made"]) + 1
 	if not bool(c["credit"]["has_file"]):
@@ -440,6 +481,10 @@ static func _cycle(w: LTWorld, d: Dictionary) -> void:
 			paid += w.ledger.pay("city", to_acct, due, "city_debt_service")
 	d["balance"] = int(d["balance"]) - paid
 	d["paid_total"] = int(d["paid_total"]) + paid
+	if str(d["creditor"]) == "business":
+		var cb: Dictionary = w.biz(int(d["creditor_id"]))
+		if not cb.is_empty() and str(cb["type"]) == "bank":
+			cb["month_revenue"] = int(cb["month_revenue"]) + mini(paid, interest)
 	var people: Array = _score_people(w, d)
 	if int(d["balance"]) <= 0:
 		d["balance"] = 0
@@ -480,7 +525,7 @@ static func _score_people(w: LTWorld, d: Dictionary) -> Array:
 
 static func _missed(w: LTWorld, d: Dictionary, paid: int, due: int, people: Array) -> void:
 	d["missed"] = int(d["missed"]) + 1
-	d["balance"] = int(d["balance"]) + LATE_FEE
+	d["balance"] = int(d["balance"]) + mini(LATE_FEE, int(w.city["laws"].get("late_fee_cap", LATE_FEE)))
 	var m: int = int(d["missed"])
 	var steps: Array = ["current", "late30", "late60", "late90", "collections"]
 	d["status"] = steps[mini(m, 4)]
@@ -699,6 +744,9 @@ static func _advice(w: LTWorld, c: Dictionary) -> float:
 		var o: Dictionary = w.cit(int(k))
 		if w.is_present(o) and float(c["rel"][k]["trust"]) > 55.0:
 			best = maxf(best, float(o["skills"]["finance"]) * 0.2)
+	# a lawyer in town gives sharper advice about when filing makes sense
+	if not w.open_businesses("law_office").is_empty():
+		best += 8.0
 	return best
 
 
@@ -709,6 +757,7 @@ static func file_bankruptcy(w: LTWorld, c: Dictionary, trigger: String, unsecure
 	var income: int = monthly_income(w, c)
 	var median: int = LTMoney.dollars(3200.0)
 	var chapter: int = 7
+	LTServices.spend(w, w.acct_p(c), "legal", LTMoney.dollars(1200.0), int(h["lot"]), c)
 	if income > median and spare > LTMoney.dollars(150.0):
 		chapter = 13
 	elif owns_house and spare > LTMoney.dollars(200.0) and wants_house + float(c["traits"]["discipline"]) * 0.3 > 40.0:
@@ -864,6 +913,7 @@ static func sell_house(w: LTWorld, h: Dictionary, why: String) -> void:
 	if seller.is_empty():
 		return
 	w.ledger.pay("outside", w.acct_p(seller), sale, "house_sales")
+	LTServices.spend(w, w.acct_p(seller), "real_estate", int(float(sale) * 0.05), int(l["id"]), seller)
 	if int(h["mortgage"]) >= 0:
 		var d: Dictionary = w.debt(int(h["mortgage"]))
 		if is_active(d):
@@ -938,6 +988,7 @@ static func settle_estate(w: LTWorld, c: Dictionary) -> void:
 			# nobody to take it: the estate sells it
 			var sale: int = int(float(l["value"]) * 0.9)
 			w.ledger.pay("outside", estate, sale, "house_sales")
+			LTServices.spend(w, estate, "real_estate", int(float(sale) * 0.05), int(l["id"]))
 			l["owner_kind"] = "outside"
 			l["owner_id"] = -1
 			l["unit_rent"] = LTMoney.dollars(1050.0)
@@ -950,7 +1001,8 @@ static func settle_estate(w: LTWorld, c: Dictionary) -> void:
 					md["status"] = "paid" if int(md["balance"]) <= 0 else md["status"]
 					_dhist(w, md, "Paid %s from the house sale in the estate." % LTMoney.fmt(mp))
 	# 2. funeral and administration
-	var funeral: int = w.ledger.pay(estate, "outside", FUNERAL_COST + ESTATE_ADMIN, "funeral_admin")
+	var funeral: int = LTServices.spend(w, estate, "funeral", FUNERAL_COST, int(h["lot"]))
+	funeral += LTServices.spend(w, estate, "legal", ESTATE_ADMIN, int(h["lot"]))
 	if funeral < FUNERAL_COST + ESTATE_ADMIN:
 		var rest: int = FUNERAL_COST + ESTATE_ADMIN - funeral
 		var covered: bool = false

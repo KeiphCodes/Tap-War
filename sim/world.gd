@@ -4,7 +4,7 @@ extends RefCounted
 ## these records. Nothing here is a scene node, so the town can run headless and
 ## grow past the starting size without changing any system.
 
-const SAVE_VERSION: int = 1
+const SAVE_VERSION: int = 2
 
 var seed_value: int = 0
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -26,6 +26,9 @@ var city_needs: Array = []    # published needs, index == id
 var projects: Array = []      # index == id
 var companies: Array = []     # outside contractors, index == id
 var laws_log: Array = []      # every law change with its estimate and tracked result
+var cases: Array = []         # court cases, index == id
+var region: Dictionary = {}   # Tier 3: the county around town
+var spend_book: Dictionary = {}  # where the town spends on each service, local or outside
 var city: Dictionary = {}
 var bank: Dictionary = {}
 var chronicle: Array = []
@@ -79,6 +82,9 @@ func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
 	projects.clear()
 	companies.clear()
 	laws_log.clear()
+	cases.clear()
+	region = {}
+	spend_book = {}
 	chronicle.clear()
 	events_today.clear()
 	stats_history.clear()
@@ -95,6 +101,7 @@ func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
 		"loans_made": 0, "loans_denied": 0, "debts_paid_off": 0, "debts_charged_off": 0,
 		"foreclosures": 0, "repossessions": 0, "evictions": 0, "thefts": 0,
 		"hires": 0, "layoffs": 0, "quits": 0, "petitions": 0, "projects_done": 0, "marriages": 0,
+		"divorces": 0, "convictions": 0, "fires": 0,
 	}
 	ledger.open("outside")
 	ledger.open("city")
@@ -102,6 +109,7 @@ func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
 	ledger.pay("outside", "bank", int(config["bank_reserve"]), "bank_capital")
 	ledger.pay("outside", "city", int(config["city_start_cash"]), "city_start_reserve")
 	LTGeography.build(self)
+	LTRegion.setup(self)
 	LTCivic.setup_city(self)
 	LTFinance.setup_bank(self)
 	LTProjects.setup_companies(self)
@@ -122,13 +130,23 @@ func tick_day() -> void:
 		dist_cache.clear()
 	debt_index_dirty = true
 	LTGeography.roll_weather(self)
+	LTRegion.daily(self)
+	if LTCalendar.is_month_start(day):
+		LTServices.month_roll(self)
 	LTPeople.morning(self)
+	LTHealth.daily(self)
 	LTEconomy.daily(self)
 	LTPeople.evening(self)
 	LTFinance.daily(self)
 	LTCivic.daily(self)
+	LTJustice.daily(self)
 	LTProjects.daily(self)
 	LTPeople.life_events(self)
+	if LTCalendar.day_of_month(day) == 25:
+		LTFamily.monthly(self)
+	if LTCalendar.weekday(day) == "Sunday":
+		LTCivic.newspaper(self)
+	LTCivic.elections_daily(self)
 	LTEconomy.analyze_market(self)
 	if LTCalendar.day_of_month(day) == LTCalendar.MONTH_DAYS[LTCalendar.month_index(day)]:
 		stats_history.append(snapshot())
@@ -165,6 +183,15 @@ func apply_action(a: Dictionary) -> Dictionary:
 			result = LTProjects.cancel(self, int(act["project_id"]))
 		"city_borrow":
 			result = LTFinance.city_borrow(self, int(act["amount"]), str(act.get("purpose", "general")))
+		"issue_bond":
+			result = LTCivic.issue_bond(self, int(act["amount"]), str(act.get("purpose", "city projects")))
+		"annex":
+			result = LTGeography.annex_row(self)
+		"elections":
+			city["elections"] = bool(act["on"])
+			if bool(act["on"]) and int(city["next_election_day"]) <= day:
+				city["next_election_day"] = day + 365
+			result = {"ok": true, "message": "Elections are %s. %s" % ["on" if bool(act["on"]) else "off", "The next one is %s." % LTCalendar.short(int(city["next_election_day"])) if bool(act["on"]) else "You stay mayor for as long as you like."]}
 		"watch":
 			var cid: int = int(act["citizen_id"])
 			if watch_list.has(cid):
@@ -438,6 +465,8 @@ func to_save() -> Dictionary:
 		"businesses": {"businesses": businesses},
 		"finance": {"ledger": ledger.to_dict(), "debts": debts, "bank": bank},
 		"city": {"city": city, "petitions": petitions, "city_needs": city_needs, "projects": projects, "companies": companies, "laws_log": laws_log},
+		"justice": {"cases": cases},
+		"region": {"region": region, "spend_book": spend_book},
 	}
 
 
@@ -501,6 +530,9 @@ func load_from_file(path: String) -> Error:
 	projects = data["city"]["projects"]
 	companies = data["city"]["companies"]
 	laws_log = data["city"]["laws_log"]
+	cases = data["justice"]["cases"]
+	region = data["region"]["region"]
+	spend_book = data["region"]["spend_book"]
 	dist_cache.clear()
 	debt_index_dirty = true
 	_path_cache.clear()

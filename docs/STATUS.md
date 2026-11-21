@@ -1,56 +1,35 @@
-# V1 slice status against the locked design
+# Status against the locked design
 
-Legend: **Done** works end to end in the slice. **Simplified** works, with a simpler rule than the full design. **Later** is out of the slice by design (section 16) or listed for V2 and V3 (section 17).
+Everything the design document describes is built, including what section 16 left out of the slice and what sections 17 and 20 schedule for later. Two things are deliberately not built, with the reason: multiplayer (the design never designs it and its platform target is single player, offline) and direct family control (section 20 answers "watch only"). See `docs/DECISIONS.md`.
 
-## Section 16, the slice must haves
-
-| Must have | Status | Where it shows |
-|---|---|---|
-| One neighborhood, about 24 lots, about 100 Sims in about 30 households, jobs only from outside employers and imports at the start | Done | `LTWorld.default_config`, `LTPeople.generate_town` |
-| Daily life and aging for a full year at all speeds | Done | five speeds, full tick at every speed |
-| Work, shopping, needs, memory | Done | `people.gd`, `economy.gd` |
-| A grocery started by a Sim (or failing to start, with the reason visible), supplied by imports and by a local farm if one starts | Done | founding plans, "looked and decided against it" logs, Valley Wholesale plus local produce |
-| A bank or outside lender, mortgages or rent, credit building | Done | Prairie State Bank, mortgages, rent, on time rent starts a credit file |
-| At least one realistic path into bankruptcy and one estate settlement | Done | natural runs, plus scenario gates in `tests/acceptance.gd` |
-| Grocery and clinic or school petitions from real need, with a suggested site, and responses that change outcomes | Done | Requests tab, gate 4 compares against a control run |
-| One road or civic project through outside bids, awarded, built in stages, quality recorded | Done | Projects tab, gate 5 compares two contractors |
-| Mayor: zoning, a tax lever, minimum wage, publishing a need with an incentive, the budget | Done | Mayor tab, lot inspector |
+Checks: `tests/acceptance.gd` (the section 18 gates) and `tests/scenarios.gd` (every system beyond the slice) both pass. Reports are in `reports/`.
 
 ## Section by section
 
-| Section | Status | Notes |
-|---|---|---|
-| 1, 2 Core idea and locked decisions | Done | The player cannot place, hire, price or delete. Every mayor verb goes through `apply_action`. |
-| 3 Mayor verbs | Done | Zoning, needs with four incentive kinds, nine laws, budget, city borrowing, five petition responses, bids and awards, watch list. Building and health codes, licensing rules and pollution rules are Later. |
-| 4.1 Needs | Done | Ten needs with personal weights. Urgent needs block business plans. |
-| 4.2 Personality | Done | Eight traits, inherited and shaped by schooling. The six types emerge and are named in the Sim panel, not hard coded. |
-| 4.3 Ability | Done | Ten skills plus education, growth with practice and school, fade with disuse. Disability and addiction are Later. |
-| 4.4, 4.5 Money, memory, relationships | Done | Bounded memory with decay, directional relationships with trust and affection. |
-| 4.6 Decision engine | Done | Utility scoring with a randomness term scaled by risk tolerance, decision points weekly and on events (a published need, a denied petition). Every major decision logs a plain reason. |
-| 4.7 Life stages, birth, immigration | Done | Babies to seniors, school, dropouts, retirement, couples deciding on children, arrivals and departures scored from the town's pull and each household's push and ties. |
-| 5.1 Starting a business | Done | Opportunity, the Sim's own optimistic estimate, funding (savings, family loans, bank, city grant or guarantee), legal checks (zoning, license). |
-| 5.2 Running one | Simplified | Stock, prices, wages, staff, condition, cleanliness, reputation, customer experience and memory are simulated daily. Opening hours and per visit wait times are folded into one experience score. |
-| 5.3 Business types | Done for the slice | Grocery, farm, cafe, general store, construction company, landlord and rental housing. The bank is outside (Later: city chartered local bank). |
-| 5.4 Supply chains | Simplified | Groceries and meals use local farm produce first and imports for the rest, with markup and delay. Milling, bakeries and trucking are folded into wholesale. |
-| 6 Work and housing | Done | Jobs only in businesses, the city and outside employers, minimum wage, unemployment support, rent, eviction, relatives taking families in, homelessness, moving out, mortgages, foreclosure, private apartment building. |
-| 7.1 to 7.4 Debt records and collections | Done | Every field in 7.1, the full late ladder, late fees, collections, judgment and garnishment, repossession, foreclosure, small debts charged off. |
-| 7.2 Credit score | Done | From on time payments, lates, collections, charge offs, utilization, history length, inquiries, bankruptcy. No history is "unknown", not bad. |
-| 7.3 Sole proprietor vs LLC | Done | Shown in plain words in the Sim and business panels. Banks require personal guarantees from new LLC founders. |
-| 7.5 Bankruptcy | Simplified | Both paths, a Sim decision with pride, advice and desperation. Rules simplified, listed in DECISIONS item 15, flagged for review. |
-| 7.6 Estates | Done | Legal order, joint and co-signed debts, mortgage travels with the house, business shares carry their debts, voluntary payment as a scored choice, the "looked rich, died in debt" shock. |
-| 7.7 City debt | Done | Bank loans with a credit rating from debt service and late payments. Bonds are Later. |
-| 8 Petitions | Done | Generated from real data with the numbers in the text, starters chosen by personality, signatures over time, suggested sites, offers from Sims, five responses, consequences including protests and Sims solving it themselves. |
-| 9 Time | Done | Pause, Watch, Normal, Fast, Turbo with interrupts. Seasons and weather affect farming, construction, illness, heating and travel. |
-| 10 Projects and bids | Done | All seven steps, including dishonest low bids, change orders, kickback offers with a paper trail, warranty repairs, and quality that sets the next repair. |
-| 11 Laws | Done | Estimate before passing, tracked results after, on the City tab. |
-| 12 Crime and health | Simplified | Theft hook, illness, chronic conditions, medical debt, clinic as a service. Courts, jail, addiction and mental health are Later (V2). |
-| 13 Art | Done for the slice | Procedural kits, signs from real business names, visible states (lit and stocked, SALE and dim, boarded), seasons, Sims by age and work, commuter cars, delivery trucks, construction stages, road wear. |
-| 14 Architecture | Done | Data records, tiered visuals (Tier 3 regions Later), determinism, road graph, ledger, chunked versioned saves, profiled at about 1,000 Sims. |
-| 15 Screens | Done | Town view, Mayor desk, zoning (lot inspector), Requests inbox, Projects and bids, Sim panel, Business panel, City dashboard with charts, Chronicle. |
-| 18 Acceptance gates | Done except the human review | `reports/acceptance_summary.txt` |
+| Section | What is built |
+|---|---|
+| 1, 2 Core idea, locked decisions | The player never places, hires, prices or deletes. Every mayor verb goes through one logged action path. The player stays mayor unless they turn on the optional elections mode. |
+| 3 Mayor verbs | Plot new land (annex rows into new districts), zone, publish needs with four incentive kinds, 20 laws, budget, bank loans and bonds, five petition responses, bids and awards, the watch list. |
+| 4.1 to 4.5 The Sim mind | Ten needs, eight traits, ten skills plus education, money and standing, bounded memory, directional relationships, mentoring between generations. |
+| 4.6 Decisions | Utility scoring with a risk scaled random term, weekly and on events, with a plain reason in the history for every major decision. Illegal choices (theft, burglary, fraud, tax evasion, skipping a license, drugs) enter when need or greed is high and honesty and enforcement are low. |
+| 4.7 Life stages | Pregnancy, birth, childhood, school (public, county or private), teen risk and dropouts, adulthood, marriage, divorce, retirement, business hand down or sale, death and estates, arrivals and departures, leaving town at night under debt. |
+| 5 Businesses | 21 types: grocery, farm, cafe, general store, construction, landlord, clinic, pharmacy, private school, repair shop, factory, warehouse, trucking, motel, tavern, child care, funeral home, law office, realty, mill, bakery, plus a city chartered local bank. Founding with savings, family loans, partners, bank loans, city incentives and outside investors. LLC or sole proprietor. Daily operations, pricing, hiring, layoffs, health inspections, closure wind downs. |
+| 5.4 Supply chains | Farm to mill to bakery to grocery; farm produce to grocery and cafe; factory goods to the general store; imports with markup, freight (a local trucking firm hauls if one exists) and delay (a local warehouse shortens it); regional shortages; exports. |
+| 6 Work and housing | Jobs at businesses, the city and named county employers; minimum wage; unemployment support; injuries and disability; rent with yearly reviews under a city cap; eviction; relatives and shelters; homelessness; renters buying homes; private apartment building at the zoned density. |
+| 7 Debt | Every field of 7.1, the full collection ladder with a city cap on late fees, credit scores, sole proprietor versus LLC with personal guarantees, both bankruptcy paths, estates in legal order, child support and fraud restitution that survive bankruptcy, city bank loans and bonds, a bank tightness feedback loop, a local bank whose losses fall on a local owner. |
+| 8 Petitions | Generated from real numbers, signatures over time, suggested sites, Sim offers, five responses with consequences, protests, recalls in elections mode. |
+| 9 Time | Five speeds with interrupts, seasons and weather affecting farming, construction, illness, heating, travel, storms and fires. |
+| 10 Projects | All seven steps, honest and dishonest bidders, change orders, kickback offers with a paper trail, warranty repairs, the building code's quality floor, quality that sets the next repair, paving annexed streets. |
+| 11 Laws | Minimum wage, four taxes, school, police, fire and health funding, welfare and shelter, license fees, building code, health code, pollution rules, zoning density, rent cap, late fee cap, bus service, bank charter. Each shows an estimate before passing and tracked results after. |
+| 12 Crime and health | Police detection, courts with optional lawyers, fines, jail that costs jobs and strains families, probation, records that follow job applications; illness, injuries, pregnancy, depression and counseling, addiction to alcohol, gambling or drugs with treatment and relapse; utility shutoffs; shelters. Nothing graphic. |
+| 13 Art | Procedural kits for every building type with visible state, signs from real names, Sims by age, work and income, commuter cars, delivery trucks marked with the real hauler, the county bus, tractors, excavators, smoke when a factory pollutes, construction stages, road wear, seasons. |
+| 14 Architecture | Data records, tiered simulation (Tier 1 drawn, Tier 2 full daily truth, Tier 3 the statistical county), deterministic replay, a growable road graph, the ledger, versioned chunked saves (version 2). |
+| 15 Screens | Town view; Mayor desk; zoning in the lot inspector; Requests; Projects and bids; People; Business; City dashboard (charts, the county, where money is spent, health, courts, districts, laws versus estimates, roads); News (the weekly Prairie Hollow Ledger and the chronicle); Help; inspectors for Sims, businesses, lots, petitions, projects and debts. |
+| 17 Roadmap items | Built now: more neighborhoods (annexing), crime and courts, health and clinic play, school cohorts, local construction bidding, LLCs and partnerships, succession and sale, districts, deeper supply chains, transport (bus), city bonds, the newspaper, elections as an optional mode. |
+| 20 Open questions | Sound: procedural ambience and chimes. Family control: watch only. Mod support: business types, laws and outside employers are data tables in one place each, ready for a data file loader later. Name and accent color: still Keith's call. |
 
 ## Performance (headless, this build machine)
 
-- 100 Sims: about 5 ms per daily tick, plus about 20 ms to refresh the UI.
-- About 930 Sims on 168 lots: about 75 ms per daily tick on average, 136 ms worst (see `reports/stress_summary.txt`). Normal speed allows 3,000 ms per day.
-- Rendering: about 150 draw calls for the starting town. In a software rendered headless browser it runs slowly because that renderer draws on the CPU; on a normal GPU it should hold a smooth frame rate, but this has not yet been measured on a real "modest PC", which section 14 requires before the gate can be called closed.
+- About 100 Sims: a few milliseconds per daily tick, plus about 20 ms to refresh the UI.
+- About 930 Sims on 168 lots with every system on: about 150 ms per day on average, about 290 ms worst (`reports/stress_summary.txt`). Normal speed allows 3,000 ms per day.
+- Rendering: about 150 draw calls for the starting town. Not yet measured on a real "modest PC", which section 14 requires before that gate is closed.

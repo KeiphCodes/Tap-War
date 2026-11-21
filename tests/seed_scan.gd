@@ -22,4 +22,15 @@ func _init() -> void:
 		var c: Dictionary = w.counters
 		var s: Dictionary = w.snapshot()
 		print("seed %d pop %d unemp %d%% happy %d | biz open %d closed %d | late_ever %d caught %d bk %d chargeoff %d repo %d evict %d forecl %d | deaths %d estates %d births %d | city %s" % [sd, s["population"], int(s["unemployment"] * 100), int(s["happiness"]), c["businesses_opened"], c["businesses_closed"], late_ever, caught, c["bankruptcies"], c["debts_charged_off"], c["repossessions"], c["evictions"], c["foreclosures"], c["deaths"], c["estates"], c["births"], LTMoney.fmt(s["city_cash"])])
+		var services: Array = []
+		for b in w.businesses:
+			if str(b["status"]) != "never_opened":
+				services.append("%s%s" % [b["type"], "" if str(b["status"]) == "open" else "(x)"])
+		print("    moved in %d out %d | divorces %d convictions %d thefts %d | region %s %.2f | %s" % [c["moved_in"], c["moved_out"], c.get("divorces", 0), c.get("convictions", 0), c["thefts"], w.region["phase"], float(w.region["index"]), ", ".join(services)])
+		var why: Dictionary = {}
+		for e in w.chronicle:
+			if str(e["kind"]) == "move" and str(e["text"]).contains("left town"):
+				var r: String = str(e["text"]).split("Reason: ")[-1]
+				why[r] = int(why.get(r, 0)) + 1
+		print("    left because: ", why)
 	quit(0)

@@ -238,6 +238,12 @@ func _build_top() -> void:
 	hb.add_child(_btn("Save", func(): show_toast(main.save_game())))
 	hb.add_child(_btn("Load", func(): show_toast(main.load_game())))
 	hb.add_child(_btn("New town", func(): main.new_town(randi() % 1000000)))
+	var mute: Button = _btn("Sound on", func(): pass)
+	mute.toggle_mode = true
+	mute.toggled.connect(func(v):
+		main.sound.muted = v
+		mute.text = "Sound off" if v else "Sound on")
+	hb.add_child(mute)
 
 
 func _build_left() -> void:
@@ -405,7 +411,8 @@ func refresh_top() -> void:
 		refresh_clock()
 	else:
 		lbl_date.text = LTCalendar.text(ww.day)
-	lbl_stats.text = "%s, %s  |  %d people  |  city cash %s  |  approval %d%%  |  %d businesses open" % [LTCalendar.season(ww.day), ww.weather, ww.alive_count(), _money(ww.ledger.bal("city")), int(LTCivic.approval(ww)), ww.open_businesses().size() - ww.open_businesses("landlord").size()]
+	lbl_stats.text = "%s, %s | %d people | %s | approval %d%% | %d shops" % [LTCalendar.season(ww.day), ww.weather, ww.alive_count(), _money(ww.ledger.bal("city")), int(LTCivic.approval(ww)), ww.open_businesses().size() - ww.open_businesses("landlord").size()]
+	lbl_stats.tooltip_text = "Season and weather, people in town, city cash, approval of the city, Sim run businesses open"
 	for i in speed_btns.size():
 		(speed_btns[i] as Button).button_pressed = i == main.speed
 
@@ -468,10 +475,44 @@ func _tab_mayor() -> void:
 	amt.step = 10000
 	amt.value = 100000
 	amt.prefix = "$"
+	amt.custom_minimum_size = Vector2(130, 0)
 	borrow.add_child(_lbl("Borrow"))
 	borrow.add_child(amt)
 	borrow.add_child(_btn("Borrow from the bank", func(): show_toast(str(main.act({"kind": "city_borrow", "amount": int(amt.value) * 100, "purpose": "city needs"})["message"]))))
 	box.add_child(borrow)
+	box.add_child(_sep())
+	box.add_child(_h("Land, bonds and elections"))
+	var cols_n: int = int(ww.config["lot_cols"])
+	var land: HBoxContainer = HBoxContainer.new()
+	land.add_child(_btn("Plot new land (%d lots, %s)" % [cols_n, _money(cols_n * LTMoney.dollars(9000.0))], func():
+		var r: Dictionary = main.act({"kind": "annex"})
+		if bool(r["ok"]):
+			main.view.rebuild()
+		show_toast(str(r["message"])), "Buy a row of farmland from the county. It arrives unzoned, with a gravel road to pave."))
+	box.add_child(land)
+	var bond: HBoxContainer = HBoxContainer.new()
+	var bamt: SpinBox = SpinBox.new()
+	bamt.min_value = 50000
+	bamt.max_value = 2000000
+	bamt.step = 50000
+	bamt.value = 250000
+	bamt.prefix = "$"
+	bamt.custom_minimum_size = Vector2(130, 0)
+	bond.add_child(_lbl("Bonds"))
+	bond.add_child(bamt)
+	bond.add_child(_btn("Sell 20 year bonds", func(): show_toast(str(main.act({"kind": "issue_bond", "amount": int(bamt.value) * 100, "purpose": "city projects"})["message"]))))
+	box.add_child(bond)
+	var el: CheckBox = CheckBox.new()
+	el.text = "Hold elections every %d years" % int(ww.city["term_years"])
+	el.tooltip_text = "Optional mode. Off means you stay mayor for as long as you like."
+	el.button_pressed = bool(ww.city.get("elections", false))
+	el.toggled.connect(func(v): show_toast(str(main.act({"kind": "elections", "on": v})["message"])))
+	box.add_child(el)
+	if bool(ww.city.get("elections", false)):
+		var ch: Dictionary = ww.cit(int(ww.city.get("challenger", -1)))
+		box.add_child(_rtl("Next election %s.%s" % [LTCalendar.short(int(ww.city["next_election_day"])), " Running against you: %s, promising %s." % [sim_link(int(ch["id"])), ww.city["platform"]] if not ch.is_empty() and ww.is_present(ch) else ""]))
+	if not bool(ww.city.get("mayor_in_office", true)):
+		box.add_child(_rtl("[color=#ef6b5b][b]You lost the election.[/b] The town goes on. You can keep watching, or start a new town.[/color]"))
 	box.add_child(_sep())
 	box.add_child(_h("Laws"))
 	box.add_child(_lbl("A law changes the numbers Sims and businesses decide with. It never sets an outcome. Each change shows an estimate first, and the City tab tracks what really happened.", 13, Color(0.7, 0.75, 0.8)))
@@ -481,8 +522,10 @@ func _tab_mayor() -> void:
 	box.add_child(_h("Publish a city need"))
 	box.add_child(_lbl("Say what the town needs and offer help. A Sim still decides whether to take it, and the one who does may not be good at it.", 13, Color(0.7, 0.75, 0.8)))
 	var need_opt: OptionButton = OptionButton.new()
-	for k in ["grocery", "cafe", "general_store", "farm", "construction"]:
-		need_opt.add_item(str(LTEconomy.TYPES[k]["display"]))
+	for k in LTEconomy.all_types():
+		if k == "landlord":
+			continue
+		need_opt.add_item(str(LTEconomy.tcfg(k)["display"]))
 		need_opt.set_item_metadata(need_opt.item_count - 1, k)
 	box.add_child(need_opt)
 	var lot_opt: OptionButton = OptionButton.new()
@@ -502,7 +545,7 @@ func _tab_mayor() -> void:
 		var tb: String = ""
 		if int(n["taken_by"]) >= 0:
 			tb = ", taken by %s" % biz_link(int(n["taken_by"]))
-		open_needs.append("%s on %s: %s%s" % [str(LTEconomy.TYPES[n["need"]]["display"]), lot_link(int(n["lot"])), n["status"], tb])
+		open_needs.append("%s on %s: %s%s" % [str(LTEconomy.tcfg(n["need"])["display"]), lot_link(int(n["lot"])), n["status"], tb])
 	if not open_needs.is_empty():
 		box.add_child(_rtl("[b]Published needs[/b]\n" + "\n".join(open_needs)))
 
@@ -857,7 +900,7 @@ func _tab_business() -> void:
 		var ph: Array = b["month_profit_hist"]
 		if not ph.is_empty():
 			profit = ", last month %s" % _money(int(ph[ph.size() - 1]))
-		lines.append("%s (%s), %s. Owner %s. Staff %d%s." % [biz_link(int(b["id"])), str(LTEconomy.TYPES[b["type"]]["display"]).to_lower(), st, sim_link(int(owner.get("id", -1))), b["staff"].size(), profit])
+		lines.append("%s (%s), %s. Owner %s. Staff %d%s." % [biz_link(int(b["id"])), str(LTEconomy.tcfg(b["type"])["display"]).to_lower(), st, sim_link(int(owner.get("id", -1))), b["staff"].size(), profit])
 	box.add_child(_rtl("\n".join(lines) if not lines.is_empty() else "No businesses yet."))
 	box.add_child(_sep())
 	box.add_child(_h("Contractors"))
@@ -896,6 +939,64 @@ func _tab_city() -> void:
 			vals.append(h[se[1]])
 		ch.set_data(se[0], vals, se[2], se[3])
 		box.add_child(ch)
+	box.add_child(_h("The county around town"))
+	var r: Dictionary = ww.region
+	var emps: Array = []
+	for e in r["employers"]:
+		emps.append("%s%s" % [e["name"], "" if bool(e["open"]) else " (closed)"])
+	box.add_child(_rtl("Economy: [b]%s[/b], index %.2f. County unemployment %d%%. Storms this game %d.\nEmployers: %s.%s" % [r["phase"], float(r["index"]), int(float(r["unemployment"]) * 100.0), r["storms"], ", ".join(emps), _shortage_text()]))
+	box.add_child(_h("Where the town spends"))
+	var sl: Array = []
+	for k in ww.spend_book:
+		var e2: Dictionary = ww.spend_book[k]
+		var loc: int = int(e2["last_local"])
+		var outv: int = int(e2["last_outside"])
+		var lat: int = int(e2["last_latent"])
+		if loc + outv + lat == 0:
+			continue
+		sl.append("%s: %s in town, %s out of town%s" % [LTServices._cat_words(str(k)).capitalize(), _money(loc), _money(outv), ", %s wanted with nobody to sell it" % _money(lat) if lat > 0 else ""])
+	box.add_child(_rtl("A month, on average:\n" + ("\n".join(sl) if not sl.is_empty() else "Shows after the first month.")))
+	box.add_child(_h("Health"))
+	var preg: int = 0
+	var dep: int = 0
+	var add: int = 0
+	var dis: int = 0
+	var jail: int = 0
+	for cc in ww.citizens:
+		if not ww.is_present(cc):
+			continue
+		if not cc.get("pregnant", {}).is_empty():
+			preg += 1
+		if bool(cc.get("depressed", false)):
+			dep += 1
+		if LTHealth.level(cc) >= 60.0:
+			add += 1
+		if bool(cc.get("disability", false)):
+			dis += 1
+		if LTJustice.in_jail(ww, cc):
+			jail += 1
+	box.add_child(_rtl("Expecting: %d. Depressed: %d. Struggling with addiction: %d. Living with a disability: %d." % [preg, dep, add, dis]))
+	box.add_child(_h("Courts"))
+	var cl: Array = []
+	for i in range(ww.cases.size() - 1, maxi(-1, ww.cases.size() - 13), -1):
+		var cs: Dictionary = ww.cases[i]
+		cl.append("%s: %s, %s. %s%s" % [LTCalendar.short(int(cs["filed_day"])), sim_link(int(cs["defendant"])), LTJustice.CHARGES[cs["charge"]]["label"], cs["status"], ", " + str(cs["sentence"]) if str(cs["sentence"]) != "" else ""])
+	box.add_child(_rtl("In the county jail now: %d.\n%s" % [jail, "\n".join(cl) if not cl.is_empty() else "No cases yet."]))
+	box.add_child(_h("Happiness by district"))
+	var dd: Dictionary = {}
+	for cc2 in ww.citizens:
+		if not ww.is_present(cc2):
+			continue
+		var hl2: int = int(ww.hh(int(cc2["household"]))["lot"])
+		var key2: String = "No home" if hl2 < 0 else LTGeography.district(ww, hl2)
+		if not dd.has(key2):
+			dd[key2] = [0.0, 0]
+		dd[key2][0] += LTPeople.happiness(cc2)
+		dd[key2][1] += 1
+	var dl: Array = []
+	for k2 in dd:
+		dl.append("%s: %s (%d people)" % [k2, _bar(float(dd[k2][0]) / float(dd[k2][1])), dd[k2][1]])
+	box.add_child(_rtl("\n".join(dl)))
 	box.add_child(_h("Happiness by street"))
 	var rows: Dictionary = {}
 	for cc in ww.citizens:
@@ -932,13 +1033,32 @@ func _services_text() -> String:
 	return "none yet. Kids ride a bus to the county school and the nearest clinic is the county medical center" if out.is_empty() else ", ".join(out)
 
 
+func _shortage_text() -> String:
+	var ww: LTWorld = w()
+	var out: Array = []
+	for k in ww.region["shortages"]:
+		if int(ww.region["shortages"][k]) >= ww.day:
+			out.append(str(k).replace("_", " "))
+	return "" if out.is_empty() else "\nShortages at Valley Wholesale right now: %s." % ", ".join(out)
+
+
 func _tab_chronicle() -> void:
 	var box: VBoxContainer = tab_boxes["News"]
 	_clear(box)
 	var ww: LTWorld = w()
+	var papers: Array = ww.city.get("newspapers", [])
+	if not papers.is_empty():
+		var ed: Dictionary = papers[papers.size() - 1]
+		box.add_child(_h("The Prairie Hollow Ledger, No. %d" % int(ed["number"])))
+		var pt: String = "[color=#9fb0c0]Week ending %s. Edited by %s.[/color]\n[font_size=18][b]%s[/b][/font_size]\n" % [LTCalendar.short(int(ed["day"])), sim_link(int(ed["editor"])), ed["headline"]]
+		for st in ed["stories"]:
+			pt += "- %s\n" % _linkify(str(st["text"]), st["refs"])
+		pt += "[i]From the editor:[/i] %s" % ed["editorial"]
+		box.add_child(_rtl(pt))
+		box.add_child(_sep())
 	box.add_child(_h("Town chronicle"))
 	var f: OptionButton = OptionButton.new()
-	var kinds: Array = ["all", "business", "debt", "bankruptcy", "estate", "death", "birth", "family", "move", "petition", "project", "city", "law", "housing", "work", "crime", "protest"]
+	var kinds: Array = ["all", "business", "debt", "bankruptcy", "estate", "death", "birth", "family", "move", "petition", "project", "city", "law", "housing", "work", "crime", "protest", "health", "region", "election"]
 	for k in kinds:
 		f.add_item(k)
 	if chron_filter != null:
@@ -1120,6 +1240,34 @@ func _sim_text(id: int) -> String:
 		var e: Dictionary = c["estate"]
 		t += "Estate: %s in, %s paid to creditors, %s unpaid and lost by creditors, %s to heirs.\n" % [_money(int(e["assets"])), _money(int(e["paid"])), _money(int(e["unpaid"])), _money(int(e["to_heirs"]))]
 	t += "Trust in the city: %d.\n" % int(c["trust_city"])
+	var notes: Array = []
+	if LTJustice.in_jail(ww, c):
+		notes.append("[color=#ef6b5b]In the county jail until %s.[/color]" % LTCalendar.short(int(c["jail_until"])))
+	elif int(c.get("probation_until", -1)) > ww.day:
+		notes.append("On probation until %s." % LTCalendar.short(int(c["probation_until"])))
+	var rec: Array = []
+	for r2 in c.get("record", []):
+		rec.append("%s (%s)" % [LTJustice.CHARGES[r2["charge"]]["label"], LTCalendar.short(int(r2["day"]))])
+	if not rec.is_empty() or int(c["theft_record"]) > 0:
+		notes.append("Criminal record: %s." % (", ".join(rec) if not rec.is_empty() else "theft"))
+	if not c.get("pregnant", {}).is_empty():
+		notes.append("Expecting a baby around %s." % LTCalendar.short(int(c["pregnant"]["due"])))
+	if int(c.get("leave_until", -1)) > ww.day:
+		notes.append("On leave until %s." % LTCalendar.short(int(c["leave_until"])))
+	if bool(c.get("depressed", false)):
+		notes.append("Struggling with depression.")
+	var ad: Dictionary = c.get("addiction", {})
+	for k3 in ad:
+		if float(ad[k3]) >= 30.0:
+			notes.append("%s habit: %d of 100%s." % [{"alcohol": "Drinking", "gambling": "Gambling", "drugs": "Drug"}[k3], int(ad[k3]), ", an addiction" if float(ad[k3]) >= 60.0 else ""])
+	if int(c.get("treatment_until", -1)) > ww.day:
+		notes.append("In a treatment program until %s." % LTCalendar.short(int(c["treatment_until"])))
+	if bool(c.get("disability", false)):
+		notes.append("Has a lasting disability from an injury.")
+	if int(c.get("mentored_by", -1)) >= 0:
+		notes.append("Mentored by %s." % sim_link(int(c["mentored_by"])))
+	if not notes.is_empty():
+		t += "\n[b]Life right now[/b]\n" + "\n".join(notes) + "\n"
 	# needs, traits, skills
 	t += "\n[b]Needs[/b]  (happiness %d)\n" % int(LTPeople.happiness(c))
 	for k in LTPeople.NEED_KEYS:
@@ -1158,7 +1306,7 @@ func _biz_text(id: int) -> String:
 	var owners: Array = []
 	for o in b["owners"]:
 		owners.append(sim_link(int(o)))
-	var t: String = "[font_size=19][b]%s[/b][/font_size]\n%s on %s. %s since %s.\n" % [b["name"], str(LTEconomy.TYPES[b["type"]]["display"]), lot_link(int(b["lot"])), "Open" if str(b["status"]) == "open" else "Closed " + LTCalendar.short(int(b["closed_day"])) + ": " + str(b["close_reason"]), LTCalendar.short(maxi(1, int(b["opened_day"])))]
+	var t: String = "[font_size=19][b]%s[/b][/font_size]\n%s on %s. %s since %s.\n" % [b["name"], str(LTEconomy.tcfg(b["type"])["display"]), lot_link(int(b["lot"])), "Open" if str(b["status"]) == "open" else "Closed " + LTCalendar.short(int(b["closed_day"])) + ": " + str(b["close_reason"]), LTCalendar.short(maxi(1, int(b["opened_day"])))]
 	t += "Owner: %s. Legal form: %s.\n" % [", ".join(owners), "LLC, so its debts stay with the company unless the owner guaranteed them" if str(b["legal_form"]) == "llc" else "sole proprietorship, so the owner and the business are one legal pocket"]
 	t += "Cash %s. Reputation %d. Condition %d, cleanliness %d.\n" % [_money(ww.biz_cash(b)), int(b["reputation"]), int(b["condition"]), int(b["cleanliness"])]
 	if str(b["type"]) != "landlord":
@@ -1173,6 +1321,12 @@ func _biz_text(id: int) -> String:
 		t += "Produce in storage: %d units. Sells to town first, surplus to the outside co-op.\n" % int(b["produce"])
 	elif str(b["type"]) == "construction":
 		t += "Public jobs done %d. Crew quality %d.\n" % [b["jobs_done"], int(float(b["crew_quality"]) * 100.0)]
+	if bool(b.get("unlicensed", false)):
+		t += "[color=#ef6b5b]Running without a business license.[/color]\n"
+	if float(b.get("pollution", 0.0)) > 0.05:
+		t += "Pollution reaching nearby homes: %.2f.\n" % float(b["pollution"])
+	if str(b["type"]) == "bank":
+		t += "Loans made: %d.\n" % int(b.get("loans_made", 0))
 	if bool(b["free_lot"]) or int(b["tax_break_until"]) > ww.day:
 		t += "City incentives: %s%s.\n" % ["free lot " if bool(b["free_lot"]) else "", "no business tax until " + LTCalendar.short(int(b["tax_break_until"])) if int(b["tax_break_until"]) > ww.day else ""]
 	var ph: Array = b["month_profit_hist"]

@@ -606,10 +606,13 @@ func _business(root: Node3D, l: Dictionary) -> void:
 		return
 	var btype: String = str(b["type"])
 	var open: bool = str(b["status"]) == "open"
-	var struggling: bool = open and (int(b["loss_months"]) >= 1 or float(b["stock"]) < 5.0 and btype != "farm" and btype != "construction")
-	var accent: Color = {"grocery": Color(0.2, 0.55, 0.3), "cafe": Color(0.7, 0.35, 0.2), "general_store": Color(0.25, 0.4, 0.65), "farm": Color(0.6, 0.2, 0.15), "construction": Color(0.85, 0.65, 0.1)}.get(btype, Color(0.5, 0.5, 0.5))
+	var stocked: bool = ["grocery", "cafe", "general_store", "bakery"].has(btype)
+	var struggling: bool = open and (int(b["loss_months"]) >= 1 or (stocked and float(b["stock"]) < 5.0))
+	var accent: Color = {"grocery": Color(0.2, 0.55, 0.3), "cafe": Color(0.7, 0.35, 0.2), "general_store": Color(0.25, 0.4, 0.65), "farm": Color(0.6, 0.2, 0.15), "construction": Color(0.85, 0.65, 0.1), "bakery": Color(0.85, 0.6, 0.3), "pharmacy": Color(0.2, 0.6, 0.4), "repair_shop": Color(0.3, 0.3, 0.35), "law_office": Color(0.3, 0.25, 0.4), "real_estate": Color(0.2, 0.45, 0.6), "private_school": Color(0.55, 0.15, 0.15)}.get(btype, Color(0.5, 0.5, 0.5))
 	if btype == "farm":
 		_farm(root, b, open)
+	elif ["factory", "mill", "warehouse", "trucking", "hotel", "bank", "clinic", "bar", "childcare", "funeral_home"].has(btype):
+		_special(root, b, btype, open, struggling)
 	elif btype == "construction":
 		_box(root, Vector3(8.0, 4.0, 6.0), Vector3(-1.5, 2.0, -2.0), Color(0.6, 0.6, 0.62))
 		_box(root, Vector3(3.0, 1.6, 1.6), Vector3(3.5, 0.9, 3.0), accent)
@@ -642,6 +645,74 @@ func _business(root: Node3D, l: Dictionary) -> void:
 	s.pixel_size = 0.05
 
 
+func _special(root: Node3D, b: Dictionary, btype: String, open: bool, struggling: bool) -> void:
+	var lit: bool = open and not struggling
+	var win: Color = Color(1.0, 0.9, 0.6) if lit else (Color(0.5, 0.48, 0.42) if open else Color(0.15, 0.15, 0.17))
+	match btype:
+		"factory":
+			_box(root, Vector3(12.0, 5.0, 8.0), Vector3(0, 2.5, -1.0), Color(0.55, 0.52, 0.5) if open else Color(0.4, 0.38, 0.36))
+			_roof(root, Vector3(12.4, 1.6, 8.4), Vector3(0, 5.8, -1.0), Color(0.35, 0.35, 0.38))
+			_cyl(root, 0.6, 9.0, Vector3(4.5, 4.5, -3.5), Color(0.5, 0.35, 0.3))
+			if open and float(b.get("pollution", 0.0)) > 0.05:
+				for i in 3:
+					_ball(root, 0.9 + i * 0.4, Vector3(4.5 + i * 0.6, 9.8 + i * 1.1, -3.5), Color(0.45, 0.45, 0.45))
+			for i in 4:
+				_box(root, Vector3(1.8, 1.2, 0.1), Vector3(-4.5 + i * 3.0, 3.0, 3.05), win, lit)
+		"mill":
+			_box(root, Vector3(6.0, 7.0, 6.0), Vector3(-2.5, 3.5, -1.0), Color(0.75, 0.7, 0.6))
+			_roof(root, Vector3(6.4, 2.0, 6.4), Vector3(-2.5, 8.0, -1.0), Color(0.4, 0.3, 0.25))
+			_cyl(root, 1.8, 9.0, Vector3(3.5, 4.5, -1.0), Color(0.78, 0.78, 0.8))
+			_ball(root, 1.8, Vector3(3.5, 9.0, -1.0), Color(0.7, 0.7, 0.72))
+		"warehouse":
+			_box(root, Vector3(13.0, 5.0, 9.0), Vector3(0, 2.5, -1.0), Color(0.62, 0.6, 0.55))
+			for i in 3:
+				_box(root, Vector3(2.4, 3.0, 0.1), Vector3(-4.0 + i * 4.0, 1.5, 3.55), Color(0.35, 0.4, 0.45))
+		"trucking":
+			_box(root, Vector3(8.0, 4.0, 6.0), Vector3(-2.5, 2.0, -2.0), Color(0.6, 0.6, 0.62))
+			for i in 2:
+				_box(root, Vector3(2.2, 2.2, 5.5), Vector3(2.5 + i * 3.0, 1.4, 2.0), Color(0.9, 0.9, 0.9))
+				_box(root, Vector3(2.2, 1.6, 1.6), Vector3(2.5 + i * 3.0, 1.0, 5.4), Color(0.6, 0.15, 0.1))
+		"hotel":
+			_box(root, Vector3(13.0, 3.4, 5.0), Vector3(0, 1.7, -2.0), Color(0.9, 0.85, 0.7))
+			_box(root, Vector3(13.4, 0.3, 6.0), Vector3(0, 3.5, -1.6), Color(0.6, 0.25, 0.2))
+			for i in 6:
+				_box(root, Vector3(0.9, 2.0, 0.1), Vector3(-5.5 + i * 2.2, 1.0, 0.55), Color(0.3, 0.45, 0.6))
+				_box(root, Vector3(0.9, 0.7, 0.1), Vector3(-5.0 + i * 2.2, 2.2, 0.55), win, lit)
+			_cyl(root, 0.15, 6.0, Vector3(6.0, 3.0, 4.5), Color(0.5, 0.5, 0.5))
+			_box(root, Vector3(2.4, 1.2, 0.2), Vector3(6.0, 6.2, 4.5), Color(0.9, 0.3, 0.3) if lit else Color(0.4, 0.3, 0.3), lit)
+		"bank":
+			_box(root, Vector3(10.0, 5.0, 7.0), Vector3(0, 2.5, -1.0), Color(0.85, 0.83, 0.78))
+			_roof(root, Vector3(10.6, 1.6, 2.4), Vector3(0, 5.8, 2.3), Color(0.8, 0.78, 0.72))
+			for i in 4:
+				_cyl(root, 0.35, 4.6, Vector3(-3.6 + i * 2.4, 2.3, 3.2), Color(0.92, 0.9, 0.86))
+			_box(root, Vector3(1.6, 2.6, 0.1), Vector3(0, 1.3, 2.55), Color(0.3, 0.2, 0.15))
+		"clinic":
+			_box(root, Vector3(9.0, 3.6, 6.5), Vector3(0, 1.8, -1.0), Color(0.93, 0.93, 0.95))
+			_box(root, Vector3(1.6, 0.4, 0.1), Vector3(0, 3.0, 2.3), Color(0.15, 0.4, 0.85), true)
+			_box(root, Vector3(0.4, 1.6, 0.1), Vector3(0, 3.0, 2.3), Color(0.15, 0.4, 0.85), true)
+			_box(root, Vector3(5.0, 1.4, 0.1), Vector3(0, 1.4, 2.3), win, lit)
+		"bar":
+			_box(root, Vector3(9.0, 4.0, 7.0), Vector3(0, 2.0, -1.0), Color(0.4, 0.28, 0.2))
+			_box(root, Vector3(4.0, 1.4, 0.1), Vector3(-1.5, 1.8, 2.55), win, lit)
+			_box(root, Vector3(2.4, 0.6, 0.15), Vector3(2.5, 3.2, 2.6), Color(1.0, 0.3, 0.6) if lit else Color(0.3, 0.2, 0.25), lit)
+		"childcare":
+			_box(root, Vector3(8.0, 3.2, 6.0), Vector3(-1.5, 1.6, -2.0), Color(0.95, 0.85, 0.5))
+			_roof(root, Vector3(8.4, 1.6, 6.4), Vector3(-1.5, 4.0, -2.0), Color(0.3, 0.5, 0.8))
+			_box(root, Vector3(0.2, 1.8, 2.0), Vector3(4.0, 0.9, 3.0), Color(0.9, 0.3, 0.3))
+			_box(root, Vector3(2.0, 0.15, 2.0), Vector3(4.0, 0.08, 3.0), Color(0.9, 0.8, 0.5))
+			_ball(root, 0.5, Vector3(2.0, 0.5, 4.0), Color(0.3, 0.7, 0.3))
+			for i in 3:
+				_box(root, Vector3(1.2, 1.0, 0.1), Vector3(-4.0 + i * 2.5, 1.8, 1.05), win, lit)
+		"funeral_home":
+			_box(root, Vector3(9.0, 4.0, 7.0), Vector3(0, 2.0, -1.0), Color(0.82, 0.8, 0.78))
+			_roof(root, Vector3(9.4, 2.4, 7.4), Vector3(0, 5.2, -1.0), Color(0.2, 0.2, 0.22))
+			_box(root, Vector3(1.4, 4.0, 1.4), Vector3(0, 7.5, 2.0), Color(0.82, 0.8, 0.78))
+			_roof(root, Vector3(1.6, 2.0, 1.6), Vector3(0, 10.5, 2.0), Color(0.2, 0.2, 0.22))
+	if bool(b.get("unlicensed", false)) and open:
+		var u: Label3D = _sign(root, "no license posted", Vector3(-3.0, 1.0, 3.2), 22, Color(1.0, 0.6, 0.4))
+		u.pixel_size = 0.03
+
+
 func _farm(root: Node3D, b: Dictionary, open: bool) -> void:
 	var inner: float = CELL - ROAD_W - 1.0
 	var crop: Color
@@ -662,6 +733,12 @@ func _farm(root: Node3D, b: Dictionary, open: bool) -> void:
 	_box(root, Vector3(4.0, 4.0, 5.0), Vector3(inner * 0.32, 2.0, 0.0), Color(0.62, 0.18, 0.14) if open else Color(0.45, 0.3, 0.28))
 	_roof(root, Vector3(4.4, 1.8, 5.4), Vector3(inner * 0.32, 4.9, 0.0), Color(0.3, 0.3, 0.3))
 	_cyl(root, 0.9, 5.0, Vector3(inner * 0.32, 2.5, -3.6), Color(0.75, 0.75, 0.78))
+	if open and b["staff"].size() + 1 > 0 and _season != "Winter":
+		# the tractor works the rows it has planted
+		var tz: float = -inner * 0.42 + float(w.day % 6) * inner * 0.16
+		_box(root, Vector3(1.4, 1.0, 2.2), Vector3(-inner * 0.1, 0.9, tz), Color(0.75, 0.15, 0.1))
+		_cyl(root, 0.55, 0.4, Vector3(-inner * 0.1 - 0.8, 0.55, tz - 0.6), Color(0.15, 0.15, 0.15))
+		_cyl(root, 0.55, 0.4, Vector3(-inner * 0.1 + 0.8, 0.55, tz - 0.6), Color(0.15, 0.15, 0.15))
 
 
 func _civic(root: Node3D, l: Dictionary) -> void:
@@ -717,6 +794,9 @@ func _site(root: Node3D, l: Dictionary) -> void:
 	if prog > 0.85:
 		_roof(root, Vector3(10.6, 1.8, 7.6), Vector3(0, 5.0, -1.0), Color(0.35, 0.33, 0.3))
 	_cyl(root, 0.18, 12.0, Vector3(inner * 0.4, 6.0, inner * 0.4), Color(0.95, 0.75, 0.1))
+	if prog < 0.4:
+		_box(root, Vector3(2.4, 1.2, 3.2), Vector3(-inner * 0.3, 0.9, inner * 0.3), Color(0.95, 0.7, 0.1))
+		_box(root, Vector3(0.4, 0.4, 3.0), Vector3(-inner * 0.3, 2.0, inner * 0.3 - 2.4), Color(0.95, 0.7, 0.1), false, Vector3(0.5, 0, 0))
 	_box(root, Vector3(8.0, 0.3, 0.3), Vector3(inner * 0.4 - 3.5, 12.0, inner * 0.4), Color(0.95, 0.75, 0.1))
 	var s: Label3D = _sign(root, "%s\n%s, %d%%" % [p["winner_name"], p["stage"], int(prog * 100.0)], Vector3(0, 8.0, 0), 28)
 	s.pixel_size = 0.042
@@ -984,7 +1064,7 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 			n.get_node("Body").rotation.z = sin(Time.get_ticks_msec() / 120.0) * 0.08
 	for t in truck_nodes:
 		var tn: Node3D = t["node"]
-		var tt: float = (hour - 9.5) / 1.5 if watch else 0.5
+		var tt: float = (hour - float(t["start"])) / 1.5 if watch else 0.5
 		var plan2: Dictionary = _between(_exit_pos() + Vector3(-60, 0, 0), lot_center(int(t["lot"])) + Vector3(5.0, 0, 5.0), tt, true, -1, int(t["lot"]))
 		tn.visible = watch and tt > 0.0 and tt < 1.0
 		tn.position = plan2["pos"]
@@ -1008,9 +1088,25 @@ func _refresh_trucks() -> void:
 		people_root.add_child(n)
 		_box(n, Vector3(2.2, 2.2, 5.5), Vector3(0, 1.5, -0.6), Color(0.9, 0.9, 0.9))
 		_box(n, Vector3(2.2, 1.6, 1.6), Vector3(0, 1.1, 2.8), Color(0.2, 0.35, 0.6))
-		var l: Label3D = _sign(n, "Valley Wholesale", Vector3(0, 3.2, 0), 24)
+		var l: Label3D = _sign(n, _local_trucker() if _local_trucker() != "" else "Valley Wholesale", Vector3(0, 3.2, 0), 24)
 		l.pixel_size = 0.04
-		truck_nodes.append({"node": n, "lot": int(b["lot"])})
+		truck_nodes.append({"node": n, "lot": int(b["lot"]), "start": 9.5, "trucker": _local_trucker()})
+	if LTCivic.bus_available(w):
+		# the county bus runs in for the morning and back in the evening
+		for start in [6.5, 17.2]:
+			var bn: Node3D = Node3D.new()
+			people_root.add_child(bn)
+			_box(bn, Vector3(2.6, 2.8, 9.0), Vector3(0, 1.8, 0), Color(0.95, 0.8, 0.2))
+			_box(bn, Vector3(2.65, 0.9, 8.0), Vector3(0, 2.4, 0), Color(0.3, 0.4, 0.5))
+			var bl: Label3D = _sign(bn, "County Bus", Vector3(0, 4.0, 0), 24)
+			bl.pixel_size = 0.04
+			truck_nodes.append({"node": bn, "lot": 0, "start": start, "trucker": ""})
+
+
+func _local_trucker() -> String:
+	for t in w.open_businesses("trucking"):
+		return str(t["name"])
+	return ""
 
 
 # ------------------------------------------------------------------ camera and picking

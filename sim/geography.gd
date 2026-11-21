@@ -20,6 +20,10 @@ static func build(w: LTWorld) -> void:
 		for i in cols:
 			street["segments"].append(_add_segment(w, j * (cols + 1) + i, j * (cols + 1) + i + 1, street["id"]))
 		w.streets.append(street)
+	w.config["row_streets"] = range(rows + 1)
+	w.config["avenue_base"] = w.streets.size()
+	w.config["exit_node"] = (rows / 2) * (cols + 1)
+	w.config["districts"] = [{"name": "Old Town", "rows": [0, rows - 1]}]
 	for i in cols + 1:
 		var ave: Dictionary = {"id": w.streets.size(), "name": AVENUE_NAMES[i % AVENUE_NAMES.size()], "segments": [], "kind": "avenue"}
 		for j in rows:
@@ -44,7 +48,7 @@ static func build(w: LTWorld) -> void:
 				"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
 				"owner_kind": "city", "owner_id": -1,
 				"value": land_value(zone), "condition": 80.0,
-				"building": "", "built_day": 0, "name": "",
+				"building": "", "built_day": 0, "name": "", "street": r, "district": "Old Town",
 			})
 
 
@@ -97,9 +101,7 @@ static func lot_access_node(w: LTWorld, lot_id: int) -> int:
 
 
 static func exit_node(w: LTWorld) -> int:
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
-	return (rows / 2) * (cols + 1)
+	return int(w.config["exit_node"])
 
 
 static func segment_minutes(w: LTWorld, s: Dictionary) -> float:
@@ -216,12 +218,63 @@ static func _heap_pop(h: Array) -> Array:
 static func lot_front_segments(w: LTWorld, lot_id: int) -> Array:
 	var l: Dictionary = w.lot(lot_id)
 	var cols: int = int(w.config["lot_cols"])
-	var street: Dictionary = w.streets[int(l["row"])]
+	var street: Dictionary = w.streets[int(l["street"])]
 	return [street["segments"][int(l["col"])]] if int(l["col"]) < cols else []
 
 
 static func lot_street(w: LTWorld, lot_id: int) -> Dictionary:
-	return w.streets[int(w.lot(lot_id)["row"])]
+	return w.streets[int(w.lot(lot_id)["street"])]
+
+
+static func district(w: LTWorld, lot_id: int) -> String:
+	return str(w.lot(lot_id).get("district", "Old Town"))
+
+
+## The mayor plots new land: the city buys a row of farmland from the county, the
+## road graph grows, and the new street is gravel until a contractor paves it.
+static func annex_row(w: LTWorld) -> Dictionary:
+	var cols: int = int(w.config["lot_cols"])
+	var rows: int = int(w.config["lot_rows"])
+	var cost: int = cols * LTMoney.dollars(9000.0)
+	if w.ledger.bal("city") < cost:
+		return {"ok": false, "message": "Buying a new row of %d lots from the county costs %s. The city has %s." % [cols, LTMoney.fmt(cost), LTMoney.fmt(w.ledger.bal("city"))]}
+	w.ledger.pay("city", "outside", cost, "land_purchase")
+	var j: int = rows + 1
+	for i in cols + 1:
+		w.road_nodes.append({"id": w.road_nodes.size(), "x": i, "y": j, "edges": []})
+	var sname: String = STREET_NAMES[j % STREET_NAMES.size()]
+	for st in w.streets:
+		if str(st["name"]) == sname:
+			sname = "South " + sname
+	var street: Dictionary = {"id": w.streets.size(), "name": sname, "segments": [], "kind": "street"}
+	for i in cols:
+		var sid: int = _add_segment(w, j * (cols + 1) + i, j * (cols + 1) + i + 1, street["id"])
+		street["segments"].append(sid)
+		w.roads[sid]["condition"] = 18.0
+		w.roads[sid]["quality"] = 0.2
+	w.streets.append(street)
+	for i in cols + 1:
+		var ave: Dictionary = w.streets[int(w.config["avenue_base"]) + i]
+		var sid2: int = _add_segment(w, (j - 1) * (cols + 1) + i, j * (cols + 1) + i, ave["id"])
+		ave["segments"].append(sid2)
+		w.roads[sid2]["condition"] = 18.0
+		w.roads[sid2]["quality"] = 0.2
+	w.config["row_streets"].append(int(street["id"]))
+	var dname: String = "South Addition" if w.config["districts"].size() == 1 else "South Addition %d" % w.config["districts"].size()
+	w.config["districts"].append({"name": dname, "rows": [rows, rows]})
+	var top_street: int = int(w.config["row_streets"][rows])
+	for c in cols:
+		w.lots.append({
+			"id": w.lots.size(), "col": c, "row": rows, "zone": "none",
+			"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
+			"owner_kind": "city", "owner_id": -1,
+			"value": land_value("none"), "condition": 80.0,
+			"building": "", "built_day": 0, "name": "", "street": top_street, "district": dname,
+		})
+	w.config["lot_rows"] = rows + 1
+	w.dist_cache.clear()
+	w.chronicle_add("The city bought %d lots of farmland from the county for %s. The %s has a gravel road, %s, until a contractor paves it. Zone the lots to open them up." % [cols, LTMoney.fmt(cost), dname, sname], "city", true, [])
+	return {"ok": true, "message": "Annexed %s: %d new lots. Zone them, and put %s out to bid to pave it." % [dname, cols, sname]}
 
 
 static func lot_label(w: LTWorld, lot_id: int) -> String:
@@ -286,23 +339,51 @@ static func vacant_lots(w: LTWorld, zones: Array) -> Array:
 
 ## Lot that fits a zone and is closest to a set of homes. Used for suggested sites.
 static func best_site(w: LTWorld, zones: Array, near_lots: Array) -> int:
+	var key: String = "%d|%s|%s" % [w.day, str(zones), str(near_lots)]
+	if not w.market.has("site_cache") or int(w.market.get("site_day", -1)) != w.day:
+		w.market["site_cache"] = {}
+		w.market["site_day"] = w.day
+	if w.market["site_cache"].has(key):
+		var cached: int = int(w.market["site_cache"][key])
+		if cached < 0 or str(w.lot(cached)["use"]) == "empty":
+			return cached
+	var r: int = _best_site(w, zones, near_lots)
+	w.market["site_cache"][key] = r
+	return r
+
+
+static func _best_site(w: LTWorld, zones: Array, near_lots: Array) -> int:
+	# the open, unreserved lots of each zone, worked out once a day
+	if int(w.market.get("vac_day", -1)) != w.day:
+		var reserved: Dictionary = {}
+		for n in w.city_needs:
+			if str(n["status"]) == "open":
+				reserved[int(n["lot"])] = true
+		for p in w.projects:
+			if not ["cancelled", "done"].has(str(p["status"])):
+				reserved[int(p.get("lot", -1))] = true
+		var byz: Dictionary = {}
+		for l in w.lots:
+			if str(l["use"]) == "empty" and not reserved.has(int(l["id"])):
+				if not byz.has(str(l["zone"])):
+					byz[str(l["zone"])] = []
+				byz[str(l["zone"])].append(l)
+		w.market["vac_by_zone"] = byz
+		w.market["vac_day"] = w.day
+	var byz2: Dictionary = w.market["vac_by_zone"]
 	var best: int = -1
 	var best_d: float = 1e9
-	for l in vacant_lots(w, zones):
-		var reserved: bool = false
-		for n in w.city_needs:
-			if int(n["lot"]) == int(l["id"]) and str(n["status"]) == "open":
-				reserved = true
-		for p in w.projects:
-			if int(p.get("lot", -1)) == int(l["id"]) and not ["cancelled", "done"].has(str(p["status"])):
-				reserved = true
-		if reserved:
-			continue
-		var d: float = 0.0
-		for nl in near_lots:
-			var a: Dictionary = w.lot(int(nl))
-			d += absf(float(a["col"]) - float(l["col"])) + absf(float(a["row"]) - float(l["row"]))
-		if d < best_d:
-			best_d = d
-			best = int(l["id"])
+	for z in zones:
+		for l in byz2.get(str(z), []):
+			if str(l["use"]) != "empty":
+				continue
+			var d: float = 0.0
+			for nl in near_lots:
+				if int(nl) < 0:
+					continue
+				var a2: Dictionary = w.lot(int(nl))
+				d += absf(float(a2["col"]) - float(l["col"])) + absf(float(a2["row"]) - float(l["row"]))
+			if d < best_d or (d == best_d and int(l["id"]) < best):
+				best_d = d
+				best = int(l["id"])
 	return best

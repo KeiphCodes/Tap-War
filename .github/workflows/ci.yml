@@ -36,6 +36,12 @@ jobs:
       - name: Acceptance run (section 18 gates)
         run: ~/godot/godot --headless --script tests/acceptance.gd
 
+      - name: Scenario checks (every system beyond the slice)
+        run: ~/godot/godot --headless --script tests/scenarios.gd
+
+      - name: UI smoke test (every tab and inspector in the real scene)
+        run: ~/godot/godot --headless --script tests/ui_smoke.gd
+
       - name: Stress run (about 1,000 Sims)
         run: ~/godot/godot --headless --script tests/stress.gd
 

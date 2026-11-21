@@ -173,7 +173,8 @@ static func _outside_bid(w: LTWorld, p: Dictionary, co: Dictionary) -> Dictionar
 	var ptype: String = str(p["ptype"])
 	var base: float = float(BASE_COST[ptype])
 	var skill: float = float(co["skill"])
-	var true_cost: float = base * (1.0 + (1.0 - skill) * 0.25) * (1.0 + float(co["workload"]) * 0.03)
+	var code: float = float(w.city["laws"].get("building_code", 1.0))
+	var true_cost: float = base * (1.0 + (1.0 - skill) * 0.25) * (1.0 + float(co["workload"]) * 0.03) * (0.9 + code * 0.1)
 	var markup: float = 1.08 + float(co["greed"]) / 500.0 + 0.05  # profit plus travel and lodging for an outside crew
 	var price: float = true_cost * markup
 	var plans_change_orders: bool = false
@@ -216,7 +217,8 @@ static func _local_bid(w: LTWorld, p: Dictionary, b: Dictionary) -> Dictionary:
 	for q in w.projects:
 		if str(q["status"]) == "building" and str(q["winner"].get("kind", "")) == "local" and int(q["winner"]["id"]) == int(b["id"]):
 			busy += 1
-	var true_cost: float = base * (1.0 + (1.0 - skill) * 0.3) * (1.0 + float(busy) * 0.15)
+	var code: float = float(w.city["laws"].get("building_code", 1.0))
+	var true_cost: float = base * (1.0 + (1.0 - skill) * 0.3) * (1.0 + float(busy) * 0.15) * (0.9 + code * 0.1)
 	var price: float = true_cost * (1.05 + float(t["greed"]) / 500.0)
 	var plans: bool = false
 	if int(t["honesty"]) < 35 and int(t["greed"]) > 55:
@@ -425,7 +427,8 @@ static func _maybe_kickback(w: LTWorld, p: Dictionary) -> void:
 
 static func _finish(w: LTWorld, p: Dictionary) -> void:
 	_progress_payment(w, p)
-	var q: float = clampf(float(p["quality_target"]) + w.rng.randf_range(-0.04, 0.04), 0.1, 1.0)
+	var floor_q: float = 0.1 + float(w.city["laws"].get("building_code", 1.0)) * 0.12
+	var q: float = clampf(float(p["quality_target"]) + w.rng.randf_range(-0.04, 0.04), floor_q, 1.0)
 	var defect: bool = w.rng.randf() < (0.5 - q * 0.5)
 	if defect:
 		q *= 0.85
@@ -479,7 +482,10 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		var l: Dictionary = w.lot(int(p["lot"]))
 		l["use"] = "apartment"
 		l["building"] = "apartment"
-		l["units"] = [-1, -1, -1, -1]
+		var units: Array = []
+		for k in int(w.city["laws"].get("zoning_density", 4)):
+			units.append(-1)
+		l["units"] = units
 		l["unit_rent"] = LTMoney.dollars(880.0)
 		l["condition"] = 60.0 + q * 40.0
 		l["built_day"] = w.day
@@ -577,7 +583,7 @@ static func _developers(w: LTWorld) -> void:
 			if str(b["legal_form"]) == "llc":
 				d["guarantor"] = int(owner["id"])
 				w.debt_index_dirty = true
-			w.ledger.pay("bank", w.acct_b(b), loan, "loans_out")
+			LTFinance.fund_loan(w, d, w.acct_b(b), loan)
 			w.bank["lent_12m"] = int(w.bank["lent_12m"]) + loan
 			dev = {"kind": "business", "id": int(b["id"]), "name": b["name"], "acct": w.acct_b(b)}
 			w.log_sim(owner, "Decided to build a 4 unit apartment house. Reason: no vacancies in town and a %s construction loan came through." % LTMoney.fmt(loan), true)

@@ -24,6 +24,20 @@ const OUTSIDE_TRIP_FUEL: int = 900
 const SUFFIXES: Dictionary = {"grocery": ["Market", "Grocery", "Foods", "Fresh Market"], "cafe": ["Cafe", "Coffee House", "Diner", "Kitchen"], "general_store": ["General Store", "Supply", "Mercantile", "Hardware and Supply"], "farm": ["Farm", "Acres", "Family Farm", "Gardens"], "construction": ["Construction", "Builders", "Contracting", "and Sons Building"], "landlord": ["Rentals", "Property", "Apartments", "Housing"]}
 
 
+## One lookup for every business type, the first six here and the rest in LTServices.
+static func tcfg(btype) -> Dictionary:
+	var k: String = str(btype)
+	if TYPES.has(k):
+		return TYPES[k]
+	return LTServices.TYPES.get(k, {})
+
+
+static func all_types() -> Array:
+	var out: Array = TYPES.keys()
+	out.append_array(LTServices.TYPES.keys())
+	return out
+
+
 # ================================================================ market reading
 
 static func analyze_market(w: LTWorld) -> void:
@@ -95,7 +109,9 @@ static func consider_founding(w: LTWorld, c: Dictionary) -> Dictionary:
 	if drive < 38.0:
 		return {}
 	var best: Dictionary = {}
-	for btype in ["grocery", "cafe", "general_store", "farm", "construction"]:
+	for btype in all_types():
+		if btype == "landlord" or _recently_opened(w, btype):
+			continue
 		var plan: Dictionary = _evaluate(w, c, btype)
 		if plan.is_empty():
 			continue
@@ -103,19 +119,30 @@ static func consider_founding(w: LTWorld, c: Dictionary) -> Dictionary:
 			best = plan
 	if best.is_empty():
 		return {}
+	best["reason"] = plan_reason(w, c, best)
 	if float(best["score"]) < 28.0:
 		if w.rng.randf() < 0.15:
 			w.counters["founding_failed"] = int(w.counters["founding_failed"]) + 1
-			w.log_sim(c, "Looked at starting a %s and decided against it. Reason: %s." % [str(TYPES[best["type"]]["display"]).to_lower(), best["doubt"]], true)
+			w.log_sim(c, "Looked at starting a %s and decided against it. Reason: %s." % [str(tcfg(best["type"])["display"]).to_lower(), best["doubt"]], true)
 		return {}
 	return best
 
 
+## Founders watch each other: right after one opens, others wait to see how it does.
+static func _recently_opened(w: LTWorld, btype: String) -> bool:
+	for b in w.businesses:
+		if str(b["type"]) == btype and str(b["status"]) == "open" and w.day - int(b["opened_day"]) < 120:
+			return true
+	return false
+
+
 static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
-	var cfg: Dictionary = TYPES[btype]
+	var cfg: Dictionary = tcfg(btype)
 	var t: Dictionary = c["traits"]
 	var skill: float = float(c["skills"][str(cfg["skill"])])
-	if skill < 22.0:
+	if skill < float(cfg.get("min_skill", 22)):
+		return {}
+	if btype == "bank" and not bool(w.city["laws"].get("bank_charter", 0)):
 		return {}
 	var m: Dictionary = w.market
 	var need: Dictionary = LTCivic.open_need_for(w, btype)
@@ -132,6 +159,7 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	var monthly_gross: float = 0.0
 	var gross_margin: float = 0.0
 	var doubt: String = ""
+	var service_why: String = ""
 	match btype:
 		"grocery":
 			var share: float = 0.7 / float(int(m["grocery_count"]) + 1)
@@ -164,6 +192,12 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 			monthly_gross = pipeline / 8.0 + upkeep_market / float(int(m["construction_count"]) + 1) + 30.0 * 3000.0
 			gross_margin = 0.30
 			doubt = "not enough building work in town to keep a crew busy"
+		_:
+			var est_s: Dictionary = LTServices.estimate(w, btype)
+			monthly_gross = float(est_s["gross"])
+			gross_margin = float(est_s["margin"])
+			doubt = str(est_s["doubt"])
+			service_why = str(est_s["why"])
 	var staff: int = int(cfg["staff"])
 	var wage: int = maxi(int(cfg["wage"]), LTCivic.min_daily_wage(w))
 	var costs: float = float(staff * wage) * 22.0
@@ -198,6 +232,9 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 			if family + w.cash(c) + grant >= startup:
 				can_fund = true
 				funding_note = "savings and money borrowed from family"
+		if not can_fund and startup >= LTMoney.dollars(40000.0) and float(c["skills"]["finance"]) + float(c["skills"]["management"]) > 90.0 and w.cash(c) >= startup / 10:
+			can_fund = true
+			funding_note = "savings and outside investors who take a share"
 		if not can_fund:
 			doubt = "the start up cost of %s is more than savings, family money, and what the bank would lend" % LTMoney.fmt(startup)
 	if grant > 0:
@@ -212,6 +249,18 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 		score_v -= 40.0
 	if est <= 0.0:
 		score_v -= 20.0
+	return {"type": btype, "lot": lot_id, "score": score_v, "est_monthly": int(est), "startup": startup, "loan_need": loan_need, "grant": grant, "need_id": int(need.get("id", -1)), "funding": funding_note, "reason": "", "doubt": doubt, "skill": skill, "service_why": service_why, "has_need": not need.is_empty()}
+
+
+## The plain words a Sim gives for a plan, built only for the plan they pick.
+static func plan_reason(w: LTWorld, c: Dictionary, plan: Dictionary) -> String:
+	var btype: String = str(plan["type"])
+	var cfg: Dictionary = tcfg(btype)
+	var m: Dictionary = w.market
+	var skill: float = float(plan["skill"])
+	var est: float = float(plan["est_monthly"])
+	var service_why: String = str(plan["service_why"])
+	var need: Dictionary = {"x": 1} if bool(plan["has_need"]) else {}
 	var why: Array = []
 	match btype:
 		"grocery":
@@ -227,11 +276,14 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 			why.append("the grocery imports fresh food that could be grown here" if int(m["grocery_count"]) > 0 else "there is open farmland and the outside co-op buys produce")
 		"construction":
 			why.append("the city and landlords hire outside builders for everything")
+		_:
+			if service_why != "":
+				why.append(service_why)
 	why.append("%s skill is %d" % [cfg["skill"], int(skill)])
 	why.append("expects about %s a month after costs" % LTMoney.fmt(int(est)))
 	if not need.is_empty():
 		why.append("the city published this need with incentives")
-	return {"type": btype, "lot": lot_id, "score": score_v, "est_monthly": int(est), "startup": startup, "loan_need": loan_need, "grant": grant, "need_id": int(need.get("id", -1)), "funding": funding_note, "reason": ", ".join(why), "doubt": doubt}
+	return ", ".join(why)
 
 
 static func _family_money(w: LTWorld, c: Dictionary) -> int:
@@ -248,7 +300,7 @@ static func _family_money(w: LTWorld, c: Dictionary) -> int:
 
 static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 	var btype: String = str(plan["type"])
-	var cfg: Dictionary = TYPES[btype]
+	var cfg: Dictionary = tcfg(btype)
 	w.counters["founding_attempts"] = int(w.counters["founding_attempts"]) + 1
 	var lot_id: int = int(plan["lot"])
 	if str(w.lot(lot_id)["use"]) != "empty":
@@ -284,7 +336,7 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 			if guarantee:
 				d["city_guarantee"] = true
 				LTFinance._dhist(w, d, "The city guarantees this loan if it defaults.")
-			w.ledger.pay("bank", acct, gap, "loans_out")
+			LTFinance.fund_loan(w, d, acct, gap)
 			w.bank["lent_12m"] = int(w.bank["lent_12m"]) + gap
 			w.counters["loans_made"] = int(w.counters["loans_made"]) + 1
 			sources.append("a %s bank loan at %.1f%%%s" % [LTMoney.fmt(gap), float(dec["rate"]) * 100.0, " with a personal guarantee" if legal == "llc" else ""])
@@ -305,6 +357,19 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 					fam += lend
 			if fam > 0:
 				sources.append("%s borrowed from family" % LTMoney.fmt(fam))
+			if w.biz_cash(b) < int(float(startup) * 0.8) and startup >= LTMoney.dollars(40000.0) and float(c["skills"]["finance"]) + float(c["skills"]["management"]) > 90.0:
+				var inv: int = startup - w.biz_cash(b)
+				w.ledger.pay("outside", acct, inv, "outside_investment")
+				b["investor_share"] = float(inv) / float(startup)
+				sources.append("%s from outside investors for a %d%% share" % [LTMoney.fmt(inv), int(float(b["investor_share"]) * 100.0)])
+			if w.biz_cash(b) < int(float(startup) * 0.8):
+				var partner: Dictionary = LTFamily.find_partner(w, c, startup - w.biz_cash(b))
+				if not partner.is_empty():
+					var put: int = w.ledger.pay(w.acct_p(partner), acct, startup - w.biz_cash(b), "partner_investment")
+					b["owners"].append(int(partner["id"]))
+					partner["owns"].append(int(b["id"]))
+					sources.append("%s from a partner, %s" % [LTMoney.fmt(put), w.full_name(partner)])
+					w.log_sim(partner, "Became a partner in %s by putting in %s. Reason: trusts %s and liked the plan." % [b["name"], LTMoney.fmt(put), c["first_name"]], true)
 			if w.biz_cash(b) < int(float(startup) * 0.8):
 				# not enough: unwind, nothing is created or destroyed
 				w.counters["loans_denied"] = int(w.counters["loans_denied"]) + 1
@@ -324,7 +389,15 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		w.ledger.pay(acct, "outside", fitout - local_part, "fitout_materials")
 	else:
 		w.ledger.pay(acct, "outside", fitout, "fitout_outside")
-	w.ledger.pay(acct, "city", int(cfg["license"]), "license_fees")
+	# the license: some founders who were told no by the city, or who are short and not too honest, skip it
+	var fee: int = int(float(cfg["license"]) * LTCivic.law(w, "license_fee"))
+	var t2: Dictionary = c["traits"]
+	var skip: float = float(t2["greed"]) * 0.3 - float(t2["honesty"]) * 0.6 + float(fee) / 1000.0 + w.memory_weight(c, "petition_denied") * -0.8 - LTCivic.enforcement(w) * 20.0
+	if skip > 12.0:
+		b["unlicensed"] = true
+		w.log_sim(c, "Opened without a business license to save %s. Reason: %s." % [LTMoney.fmt(fee), "the city ignored what the neighborhood asked for" if w.memory_weight(c, "petition_denied") < -1.0 else "the fee felt like one cost too many"], true)
+	else:
+		w.ledger.pay(acct, "city", fee, "license_fees")
 	if legal == "llc":
 		w.ledger.pay(acct, "outside", 50000, "llc_filing")
 	var l: Dictionary = w.lot(lot_id)
@@ -381,8 +454,8 @@ static func _unwind(w: LTWorld, b: Dictionary, c: Dictionary) -> void:
 
 
 static func _new_business(w: LTWorld, btype: String, c: Dictionary, lot_id: int, legal: String) -> Dictionary:
-	var cfg: Dictionary = TYPES[btype]
-	var sfx: Array = SUFFIXES[btype]
+	var cfg: Dictionary = tcfg(btype)
+	var sfx: Array = SUFFIXES.get(btype, LTServices.SUFFIXES.get(btype, ["Company"]))
 	var name: String = "%s %s" % [c["last_name"], sfx[w.rng.randi_range(0, sfx.size() - 1)]]
 	if str(sfx[0]) == "and Sons Building":
 		name = "%s and Sons Building" % c["last_name"]
@@ -450,6 +523,7 @@ static func daily(w: LTWorld) -> void:
 				_farm_day(w, b)
 	_household_shopping(w)
 	_cafe_visits(w)
+	LTServices.daily(w)
 	for b in w.businesses:
 		if str(b["status"]) != "open":
 			continue
@@ -516,12 +590,21 @@ static func order_stock(w: LTWorld, b: Dictionary, opening: bool = false) -> voi
 				w.ledger.pay(acct, w.acct_b(f), cost, "local_produce")
 				f["produce"] = float(f["produce"]) - take
 				f["month_revenue"] = int(f["month_revenue"]) + cost
+				f["lifetime_revenue"] = int(f["lifetime_revenue"]) + cost
 				f["sales_today"] = int(f["sales_today"]) + cost
 				b["month_costs"] = int(b["month_costs"]) + cost
 				b["stock"] = float(b["stock"]) + take
 				b["supplier"] = "%s and Valley Wholesale" % f["name"]
 				want -= take
 				local_units -= take
+	if btype == "grocery" and want > 0.5:
+		var bread: float = LTServices.grocery_buys_bread(w, b, want * 0.15)
+		b["stock"] = float(b["stock"]) + bread
+		want -= bread
+	if btype == "general_store" and want > 0.5:
+		var goods: float = LTServices.store_buys_goods(w, b, want)
+		b["stock"] = float(b["stock"]) + goods
+		want -= goods
 	if want <= 0.5:
 		return
 	var reserve: int = maxi(0, w.biz_cash(b) - LTMoney.dollars(600.0))
@@ -530,10 +613,15 @@ static func order_stock(w: LTWorld, b: Dictionary, opening: bool = false) -> voi
 		if not opening:
 			w.log_biz(b, "Could not afford a full stock order from Valley Wholesale.")
 		return
-	var cost2: int = int(units) * unit_cost + IMPORT_DELIVERY_FEE
+	var cost2: int = int(units) * unit_cost
+	if LTRegion.shortage(w, btype):
+		units = floorf(units * 0.4)
+		cost2 = int(units) * unit_cost
+		w.log_biz(b, "Valley Wholesale could only fill part of the order. There is a shortage in the region.")
 	w.ledger.pay(acct, "outside", cost2, "imports")
 	b["month_costs"] = int(b["month_costs"]) + cost2
-	var delay: int = 2 if w.weather != "Snow" and w.weather != "Storm" else 4
+	LTServices.pay_freight(w, b)
+	var delay: int = LTServices.delivery_days(w, b, 2 if w.weather != "Snow" and w.weather != "Storm" else 4)
 	if opening:
 		b["stock"] = float(b["stock"]) + units
 	else:
@@ -588,7 +676,7 @@ static func _service_experience(w: LTWorld, b: Dictionary, customers: int) -> fl
 	var skill: float = 0.0
 	var mood: float = 0.0
 	var owner: Dictionary = w.cit(int(b["owners"][0]))
-	var cfg: Dictionary = TYPES[str(b["type"])]
+	var cfg: Dictionary = tcfg(str(b["type"]))
 	var people: Array = []
 	if w.is_present(owner) and int(owner["sick_days"]) == 0:
 		people.append(owner)
@@ -825,13 +913,11 @@ static func _hire_if_needed(w: LTWorld, b: Dictionary) -> void:
 		return
 	if w.biz_cash(b) < int(b["wage"]) * 10:
 		return
-	var cfg: Dictionary = TYPES[str(b["type"])]
+	var cfg: Dictionary = tcfg(str(b["type"]))
 	var best: Dictionary = {}
 	var best_s: float = 25.0
-	for c in w.citizens:
-		if not w.is_present(c) or w.age_years(c) < 16 or bool(c["retired"]):
-			continue
-		if str(c["job"]["kind"]) != "none":
+	for c in _seekers(w):
+		if not w.is_present(c) or str(c["job"]["kind"]) != "none":
 			continue
 		var s: float = applicant_score(w, b, c)
 		if s > best_s:
@@ -843,10 +929,23 @@ static func _hire_if_needed(w: LTWorld, b: Dictionary) -> void:
 	hire(w, best, opening, "Hired at %s as a %s. Reason: needed work, and %s picked them from the people looking." % [b["name"], cfg["title"], w.cit(int(b["owners"][0])).get("first_name", "the owner")])
 
 
+static func _seekers(w: LTWorld) -> Array:
+	if int(w.market.get("seekers_day", -1)) != w.day:
+		var out: Array = []
+		for c in w.citizens:
+			if w.is_present(c) and w.age_years(c) >= 16 and not bool(c["retired"]) and str(c["job"]["kind"]) == "none" and not LTJustice.in_jail(w, c):
+				out.append(c)
+		w.market["seekers"] = out
+		w.market["seekers_day"] = w.day
+	return w.market["seekers"]
+
+
 static func applicant_score(w: LTWorld, b: Dictionary, c: Dictionary) -> float:
-	var cfg: Dictionary = TYPES[str(b["type"])]
+	var cfg: Dictionary = tcfg(str(b["type"]))
 	var s: float = float(c["skills"][str(cfg["skill"])]) * 0.5 + float(c["traits"]["discipline"]) * 0.2 + float(c["education"]) * 0.1
-	s -= float(c["theft_record"]) * 25.0
+	s -= float(LTJustice.record_count(c)) * 25.0
+	if LTJustice.in_jail(w, c) or (bool(c.get("disability", false)) and LTHealth.RISKY_JOBS.has(str(cfg["title"]))):
+		s -= 100.0
 	var owner: Dictionary = w.cit(int(b["owners"][0]))
 	if not owner.is_empty() and owner["rel"].has(int(c["id"])):
 		s += float(owner["rel"][int(c["id"])]["trust"] - 50.0) * 0.3
@@ -864,7 +963,7 @@ static func best_local_opening(w: LTWorld, c: Dictionary) -> Dictionary:
 	for b in w.businesses:
 		if str(b["status"]) != "open" or b["staff"].size() >= int(b["target_staff"]) or b["owners"].has(int(c["id"])):
 			continue
-		var cfg: Dictionary = TYPES[str(b["type"])]
+		var cfg: Dictionary = tcfg(str(b["type"]))
 		var v: float = float(b["wage"]) / 100.0 + float(c["skills"][str(cfg["skill"])]) * 0.3 + (float(b["reputation"]) - 50.0) * 0.2
 		if v > best_v:
 			best_v = v
@@ -972,7 +1071,15 @@ static func _payday(w: LTWorld) -> void:
 			var t: Dictionary = owner["traits"]
 			var share: float = 0.35 + float(t["greed"]) / 300.0 - float(t["discipline"]) / 400.0
 			var draw: int = int(float(extra) * clampf(share, 0.15, 0.7))
-			w.ledger.pay(acct, w.acct_p(owner), draw, "owner_draws")
+			var inv_cut: int = int(float(draw) * float(b.get("investor_share", 0.0)))
+			if inv_cut > 0:
+				w.ledger.pay(acct, "outside", inv_cut, "investor_dividends")
+			var partners: Array = b["owners"]
+			var each: int = (draw - inv_cut) / maxi(1, partners.size())
+			for pid in partners:
+				var po: Dictionary = w.cit(int(pid))
+				if w.is_present(po):
+					w.ledger.pay(acct, w.acct_p(po), each, "owner_draws")
 		elif w.is_present(owner) and str(b["type"]) != "landlord" and w.cash(owner) < LTMoney.dollars(150.0):
 			# a broke owner still has to eat: takes a small draw even when the business cannot spare it
 			w.ledger.pay(acct, w.acct_p(owner), LTMoney.dollars(200.0), "owner_draws")
@@ -1065,7 +1172,7 @@ static func _owner_monthly_decision(w: LTWorld, b: Dictionary, owner: Dictionary
 			if str(b["legal_form"]) == "llc":
 				d["guarantor"] = int(owner["id"])
 				w.debt_index_dirty = true
-			w.ledger.pay("bank", w.acct_b(b), amt, "loans_out")
+			LTFinance.fund_loan(w, d, w.acct_b(b), amt)
 			w.bank["lent_12m"] = int(w.bank["lent_12m"]) + amt
 			w.counters["loans_made"] = int(w.counters["loans_made"]) + 1
 			w.log_sim(owner, "Borrowed %s more to keep %s going. Reason: sure it will turn around." % [LTMoney.fmt(amt), b["name"]], true)
@@ -1152,7 +1259,7 @@ static func close_business(w: LTWorld, b: Dictionary, reason: String) -> void:
 
 
 static func heir_keeps_business(w: LTWorld, heir: Dictionary, b: Dictionary) -> bool:
-	var cfg: Dictionary = TYPES[str(b["type"])]
+	var cfg: Dictionary = tcfg(str(b["type"]))
 	var s: float = float(heir["traits"]["ambition"]) * 0.3 + float(heir["skills"][str(cfg["skill"])]) * 0.4 + float(heir["traits"]["kindness"]) * 0.1
 	if str(b["type"]) == "landlord":
 		s += 25.0
@@ -1175,6 +1282,6 @@ static func transfer_business(w: LTWorld, b: Dictionary, from: Dictionary, to: D
 	if str(b["type"]) != "landlord" and str(to["job"]["kind"]) != "owner":
 		if str(to["job"]["kind"]) != "none":
 			leave_job(w, to, "took over the family business")
-		LTPeople.set_job(w, to, "owner", int(b["id"]), "owner of " + str(b["name"]), 0, str(TYPES[str(b["type"])]["skill"]))
+		LTPeople.set_job(w, to, "owner", int(b["id"]), "owner of " + str(b["name"]), 0, str(tcfg(str(b["type"]))["skill"]))
 	w.log_biz(b, "Passed to %s after %s died. The business keeps its own debts." % [w.full_name(to), w.full_name(from)])
 	w.log_sim(to, "Took over %s after %s died, along with the business debts that come with it." % [b["name"], from["first_name"]], true)

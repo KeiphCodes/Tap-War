@@ -13,7 +13,17 @@ const LAWS: Dictionary = {
 	"school_funding": {"label": "School funding (1.0 is the state average)", "min": 0.5, "max": 2.0, "step": 0.1},
 	"police_funding": {"label": "Police funding (1.0 is the county average)", "min": 0.5, "max": 2.0, "step": 0.1},
 	"health_funding": {"label": "Health care support", "min": 0.0, "max": 2.0, "step": 0.1},
-	"welfare": {"label": "Unemployment and food support", "min": 0.0, "max": 2.0, "step": 0.1},
+	"welfare": {"label": "Unemployment, food and shelter support", "min": 0.0, "max": 2.0, "step": 0.1},
+	"fire_funding": {"label": "Fire protection (1.0 is the county average)", "min": 0.5, "max": 2.0, "step": 0.1},
+	"license_fee": {"label": "Business license fees (1.0 is standard)", "min": 0.0, "max": 3.0, "step": 0.25},
+	"building_code": {"label": "Building code (0 loose, 1 standard, 2 strict)", "min": 0.0, "max": 2.0, "step": 1.0},
+	"health_code": {"label": "Health code inspections (0 none, 1 standard, 2 strict)", "min": 0.0, "max": 2.0, "step": 1.0},
+	"pollution_rule": {"label": "Pollution rules (0 none, 1 strict)", "min": 0.0, "max": 1.0, "step": 0.25},
+	"zoning_density": {"label": "Homes allowed per apartment lot", "min": 4, "max": 8, "step": 2},
+	"rent_cap": {"label": "Most a landlord may raise rent each year", "min": 0.0, "max": 0.15, "step": 0.01, "pct": true},
+	"late_fee_cap": {"label": "Most a lender may charge as a late fee", "min": 1000, "max": 3500, "step": 500, "money": true},
+	"bus_service": {"label": "Bus to the county seat (0 none, 1 weekdays)", "min": 0.0, "max": 1.0, "step": 1.0},
+	"bank_charter": {"label": "Charter a local bank (0 no, 1 yes, needs 120 people)", "min": 0.0, "max": 1.0, "step": 1.0},
 }
 const DENY_REASONS: Array = ["no money in the budget this year", "this is not the city's job", "the need is not as big as the petition says", "maybe next year"]
 const PETITION_KINDS: Dictionary = {
@@ -30,7 +40,13 @@ const PETITION_KINDS: Dictionary = {
 static func setup_city(w: LTWorld) -> void:
 	w.city = {
 		"name": "Prairie Hollow",
-		"laws": {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5},
+		"laws": {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0},
+		"elections": false,
+		"term_years": 4,
+		"next_election_day": 365 * 4 - 60,
+		"mayor_in_office": true,
+		"bonds": [],
+		"newspapers": [],
 		"services": [],
 		"jobs": [],
 		"income_12m": LTMoney.dollars(60000.0),
@@ -112,6 +128,15 @@ static func school_quality(w: LTWorld) -> float:
 
 
 static func safety_level(w: LTWorld) -> float:
+	if int(w.market.get("safety_day", -1)) == w.day:
+		return float(w.market["safety"])
+	var v: float = _safety_level(w)
+	w.market["safety_day"] = w.day
+	w.market["safety"] = v
+	return v
+
+
+static func _safety_level(w: LTWorld) -> float:
 	var thefts: int = w.city["thefts_90d"].size()
 	var unemp: float = 0.0
 	if not w.stats_history.is_empty():
@@ -195,7 +220,14 @@ static func _month_budget(w: LTWorld) -> void:
 	w.ledger.pay("outside", "city", w.alive_count() * LTMoney.dollars(22.0), "state aid")
 	_spend(w, "outside", school_cost, "schools")
 	_spend(w, "outside", int(float(LTMoney.dollars(1800.0)) * float(laws["police_funding"])), "police (county sheriff contract)")
-	_spend(w, "outside", LTMoney.dollars(800.0), "fire protection")
+	_spend(w, "outside", int(float(LTMoney.dollars(800.0)) * float(laws.get("fire_funding", 1.0))), "fire protection")
+	if float(laws.get("bus_service", 0.0)) > 0.0:
+		_spend(w, "outside", LTMoney.dollars(2400.0), "bus service contract")
+	var sheltered: int = int(w.city.get("shelter_nights", 0))
+	if sheltered > 0:
+		_spend(w, "outside", sheltered * LTMoney.dollars(18.0), "homeless shelter")
+		w.city["shelter_nights"] = 0
+	_fires(w)
 	if has_service(w, "clinic"):
 		_spend(w, "outside", int(float(LTMoney.dollars(1500.0)) * maxf(0.5, float(laws["health_funding"]))), "clinic supplies")
 	if has_service(w, "park"):
@@ -298,7 +330,7 @@ static func best_city_opening(w: LTWorld, c: Dictionary) -> Dictionary:
 
 
 static func city_would_hire(w: LTWorld, opening: Dictionary, c: Dictionary) -> bool:
-	return float(c["skills"][str(opening["skill"])]) >= 35.0 and int(c["theft_record"]) == 0
+	return float(c["skills"][str(opening["skill"])]) >= 35.0 and LTJustice.record_count(c) == 0
 
 
 static func hire_city(w: LTWorld, c: Dictionary, opening: Dictionary, reason: String) -> void:
@@ -333,7 +365,7 @@ static func _fill_city_jobs(w: LTWorld) -> void:
 			var s: float = float(c["skills"][str(j["skill"])])
 			if str(c["job"]["kind"]) == "outside":
 				s -= 5.0
-			if s > best_s and int(c["theft_record"]) == 0:
+			if s > best_s and LTJustice.record_count(c) == 0 and not LTJustice.in_jail(w, c):
 				best_s = s
 				best = c
 		if not best.is_empty():
@@ -391,7 +423,16 @@ static func seek_care(w: LTWorld, c: Dictionary, serious: bool) -> void:
 		var adults: Array = w.household_adults(w.hh(int(c["household"])))
 		if not adults.is_empty():
 			payer = adults[0]
-	var paid: int = w.ledger.pay(w.acct_p(payer), "outside", own, "medical_bills")
+	var home: int = int(w.hh(int(payer["household"]))["lot"])
+	var paid: int = 0
+	if local and not serious:
+		paid = w.ledger.pay(w.acct_p(payer), "city", own, "clinic_fees")
+	else:
+		var private: bool = not w.open_businesses("clinic").is_empty()
+		paid = LTServices.spend(w, w.acct_p(payer), "medical", own, home, payer)
+		if private and not serious:
+			local = true
+	LTServices.spend(w, w.acct_p(payer), "pharmacy", LTMoney.dollars(35.0), home, payer)
 	if not local:
 		w.city["care_outside_90d"].append({"day": w.day, "id": int(c["id"]), "serious": serious})
 		w.ledger.pay(w.acct_p(payer), "outside", LTEconomy.OUTSIDE_TRIP_FUEL, "commute_fuel")
@@ -431,13 +472,10 @@ static func theft(w: LTWorld, c: Dictionary, reason: String) -> void:
 		victim["needs"]["safety"] = float(victim["needs"]["safety"]) - 20.0
 	w.counters["thefts"] = int(w.counters["thefts"]) + 1
 	w.city["thefts_90d"].append(w.day)
-	var caught: bool = w.rng.randf() < enforcement(w) * 0.6
+	var caught: bool = w.rng.randf() < LTJustice.detection(w, "theft") * 0.6
 	if caught:
-		c["theft_record"] = int(c["theft_record"]) + 1
-		var fine: int = w.ledger.pay(w.acct_p(c), "city", LTMoney.dollars(250.0), "fines")
-		income_note(w, "fines", fine)
-		w.log_sim(c, "Stole from %s and was caught. Fined %s. Now has a record that employers will see. Reason for stealing: %s." % [target_name, LTMoney.fmt(fine), reason], true)
-		w.chronicle_add("%s was caught stealing from %s." % [w.full_name(c), target_name], "crime", w.involves_watched([c["id"]]), [c["id"]])
+		w.log_sim(c, "Stole from %s and was caught. Reason for stealing: %s." % [target_name, reason], true)
+		LTJustice.charge(w, c, "theft", "stole from %s" % target_name, -1, 0)
 	else:
 		w.log_sim(c, "Stole from %s and was not caught. Reason: %s." % [target_name, reason], true)
 
@@ -511,7 +549,7 @@ static func _affected_for(w: LTWorld, kind: String) -> Dictionary:
 			if worst < 0 or worst_c > 40.0:
 				return {}
 			for l in w.lots:
-				if int(l["row"]) == worst or int(l["row"]) == worst - 1:
+				if int(l["street"]) == worst:
 					for u in l["units"]:
 						if int(u) >= 0:
 							affected.append_array(w.household_adults(w.hh(int(u))))
@@ -888,12 +926,12 @@ static func _follow_up_petitions(w: LTWorld) -> void:
 # ================================================================ published needs
 
 static func publish_need(w: LTWorld, btype: String, lot_id: int, incentives: Dictionary, petition_id: int) -> Dictionary:
-	if not LTEconomy.TYPES.has(btype) or btype == "landlord":
+	if LTEconomy.tcfg(btype).is_empty() or btype == "landlord":
 		return {"ok": false, "message": "Unknown business type."}
 	for n in w.city_needs:
 		if str(n["need"]) == btype and str(n["status"]) == "open":
 			return {"ok": false, "message": "A %s need is already published." % btype}
-	var zones: Array = LTEconomy.TYPES[btype]["zones"]
+	var zones: Array = LTEconomy.tcfg(btype)["zones"]
 	if lot_id >= 0:
 		var l: Dictionary = w.lot(lot_id)
 		if str(l["use"]) != "empty":
@@ -920,12 +958,12 @@ static func publish_need(w: LTWorld, btype: String, lot_id: int, incentives: Dic
 		parts.append("a city loan guarantee")
 	var inc_text: String = "no incentives" if parts.is_empty() else ", ".join(parts)
 	# a published need is a decision point for Sims who could take it
-	var skill: String = str(LTEconomy.TYPES[btype]["skill"])
+	var skill: String = str(LTEconomy.tcfg(btype)["skill"])
 	for c in w.citizens:
 		if w.is_present(c) and w.age_years(c) >= 21 and float(c["skills"][skill]) >= 30.0:
 			c["trigger"] = true
-	w.chronicle_add("The city published a need: this town needs a %s, at %s, with %s." % [str(LTEconomy.TYPES[btype]["display"]).to_lower(), LTGeography.lot_label(w, lot_id), inc_text], "city", true, [])
-	return {"ok": true, "message": "Published a need for a %s on %s with %s. A Sim still has to decide to take it." % [str(LTEconomy.TYPES[btype]["display"]).to_lower(), LTGeography.lot_label(w, lot_id), inc_text]}
+	w.chronicle_add("The city published a need: this town needs a %s, at %s, with %s." % [str(LTEconomy.tcfg(btype)["display"]).to_lower(), LTGeography.lot_label(w, lot_id), inc_text], "city", true, [])
+	return {"ok": true, "message": "Published a need for a %s on %s with %s. A Sim still has to decide to take it." % [str(LTEconomy.tcfg(btype)["display"]).to_lower(), LTGeography.lot_label(w, lot_id), inc_text]}
 
 
 static func open_need_for(w: LTWorld, btype: String) -> Dictionary:
@@ -1020,13 +1058,46 @@ static func law_estimate(w: LTWorld, key: String, value: float) -> Dictionary:
 				if w.is_present(c) and w.age_years(c) >= 18 and str(c["job"]["kind"]) == "none" and not bool(c["retired"]):
 					un += 1
 			yearly = -int(float(un) * float(LTMoney.dollars(150.0)) * 52.0 * (value - old))
-			hits = "%d adults out of work and hungry households. Cost changes by about %s a year at today's unemployment." % [un, LTMoney.fmt(-yearly)]
+			hits = "%d adults out of work, hungry households, and anyone sleeping in the shelter. Cost changes by about %s a year at today's unemployment." % [un, LTMoney.fmt(-yearly)]
+		"fire_funding":
+			yearly = -int(float(LTMoney.dollars(800.0)) * 12.0 * (value - old))
+			hits = "Every building. Better fire service means fewer fires and less storm damage. Cost changes by about %s a year." % LTMoney.fmt(-yearly)
+		"license_fee":
+			var n_new: int = 0
+			for b in w.businesses:
+				if w.day - int(b["opened_day"]) < 365:
+					n_new += 1
+			yearly = int(float(n_new) * float(LTMoney.dollars(250.0)) * (value - old))
+			hits = "Anyone starting a business pays %s the fee. High fees push a few founders, the less honest ones, to skip the license. City income changes by about %s a year." % ["more" if value > old else "less", LTMoney.fmt(yearly)]
+		"building_code":
+			hits = "Builders: a stricter code costs about %d%% more per project but sets a floor on quality and storm damage. A loose code is cheaper now and costs later." % int(absf(value - old) * 12.0)
+		"health_code":
+			hits = "Food shops, bars, clinics, child care and the motel. Inspectors visit more often; owners spend on cleaning; failing shops lose reputation or face charges."
+		"pollution_rule":
+			hits = "Factories pay more to run clean. Neighbors' health improves. A strict rule can make a factory not worth starting."
+		"zoning_density":
+			hits = "New apartment buildings will hold %d homes instead of %d. More homes per lot, more crowding on the street." % [int(value), int(old)]
+		"rent_cap":
+			var renters: int = 0
+			for h in w.households:
+				if str(h["tenure"]) == "rent":
+					renters += 1
+			hits = "%d renting households. A low cap protects them; landlords earn less and build less." % renters
+		"late_fee_cap":
+			hits = "Borrowers who fall behind pay at most %s per missed payment. Lenders lose a little income." % LTMoney.fmt(int(value))
+		"bus_service":
+			yearly = -int(float(LTMoney.dollars(2400.0)) * 12.0 * (value - old))
+			hits = "Commuters and households without a car. Riders pay a small fare to the city instead of gas money to the outside. Cost about %s a year." % LTMoney.fmt(-yearly)
+		"bank_charter":
+			hits = "A Sim with finance skill may start a local bank. Its loans keep interest in town, and its losses fall on a local owner."
 	return {"hits": hits, "yearly": yearly}
 
 
 static func set_law(w: LTWorld, key: String, value) -> Dictionary:
 	if not LAWS.has(key):
 		return {"ok": false, "message": "Unknown law."}
+	if key == "bank_charter" and float(value) > 0.0 and w.alive_count() < 120:
+		return {"ok": false, "message": "The state will not charter a bank for a town under 120 people. The town has %d." % w.alive_count()}
 	var cfg: Dictionary = LAWS[key]
 	var v: float = clampf(float(value), float(cfg["min"]), float(cfg["max"]))
 	var old: float = float(w.city["laws"][key])
@@ -1086,3 +1157,210 @@ static func approval(w: LTWorld) -> float:
 			t += float(c["trust_city"]) * 0.6 + LTPeople.happiness(c) * 0.4
 			n += 1
 	return 0.0 if n == 0 else t / float(n)
+
+
+# ================================================================ bus, shelter, fires
+
+const BUS_FARE: int = 250
+
+
+static func bus_available(w: LTWorld) -> bool:
+	return float(w.city["laws"].get("bus_service", 0.0)) > 0.0
+
+
+## Riders: anyone without a car, and others when the fare beats gas and the drive is long.
+static func bus_rider(w: LTWorld, c: Dictionary) -> bool:
+	if not bus_available(w):
+		return false
+	var h: Dictionary = w.hh(int(c["household"]))
+	if not bool(h["car"]):
+		return true
+	return float(c["traits"]["discipline"]) > 55.0 or w.cash(c) < LTMoney.dollars(300.0)
+
+
+## The welfare law funds shelter beds; a kind Sim may also open their church hall.
+static func shelter_bed(w: LTWorld, c: Dictionary) -> bool:
+	if law(w, "welfare") >= 0.5:
+		w.city["shelter_nights"] = int(w.city.get("shelter_nights", 0)) + 1
+		return true
+	return w.city.get("charity_shelter", -1) >= 0
+
+
+static func _fires(w: LTWorld) -> void:
+	# about one serious fire per 250 buildings a year at standard funding and code
+	var risk: float = 0.00033 * (2.0 - law(w, "fire_funding")) * (1.3 - law(w, "building_code") * 0.2)
+	if LTCalendar.season(w.day) == "Winter":
+		risk *= 1.5
+	for l in w.lots:
+		if not ["house", "apartment", "business"].has(str(l["use"])) or w.rng.randf() > risk:
+			continue
+		var dmg: float = w.rng.randf_range(15.0, 50.0) / law(w, "fire_funding")
+		w.counters["fires"] = int(w.counters.get("fires", 0)) + 1
+		l["condition"] = maxf(0.0, float(l["condition"]) - dmg)
+		var people: Array = []
+		for u in l["units"]:
+			if int(u) >= 0:
+				for m in w.household_members(w.hh(int(u))):
+					m["needs"]["safety"] = float(m["needs"]["safety"]) - 25.0
+					w.log_sim(m, "A fire damaged their home on %s." % LTGeography.lot_label(w, int(l["id"])), true)
+					people.append(m["id"])
+		var cost: int = int(dmg * float(LTMoney.dollars(400.0)))
+		match str(l["owner_kind"]):
+			"sim":
+				var o: Dictionary = w.cit(int(l["owner_id"]))
+				if w.is_present(o):
+					LTServices.spend(w, w.acct_p(o), "repairs", cost, int(l["id"]), o)
+			"business":
+				LTServices.spend(w, w.acct_b(w.biz(int(l["owner_id"]))), "repairs", cost, int(l["id"]))
+		if str(l["use"]) == "business":
+			var b: Dictionary = w.biz(int(l["ref"]))
+			b["condition"] = maxf(0.0, float(b["condition"]) - dmg)
+			b["stock"] = float(b["stock"]) * 0.6
+		w.chronicle_add("A fire damaged %s. %s" % [LTGeography.lot_label(w, int(l["id"])), "Nobody was hurt." if people.is_empty() or w.rng.randf() < 0.9 else "Two people were treated for smoke."], "city", true, people)
+
+
+# ================================================================ city bonds
+
+static func issue_bond(w: LTWorld, amount: int, purpose: String) -> Dictionary:
+	if amount < LTMoney.dollars(50000.0):
+		return {"ok": false, "message": "Bonds start at $50,000."}
+	var rating: String = LTFinance.city_credit_rating(w)
+	if rating == "C":
+		return {"ok": false, "message": "Investors will not buy bonds from a city rated C."}
+	var rate: float = 0.038 + (0.0 if rating == "A" else 0.012) + (1.0 - LTRegion.index(w)) * 0.02
+	var d: Dictionary = LTFinance.new_debt(w, "city", 0, "bondholders", -1, "city_bond", amount, rate, 240, "", -1, [])
+	w.ledger.pay("outside", "city", amount, "bond_sales")
+	w.city["bonds"].append(int(d["id"]))
+	w.chronicle_add("The city sold %s in 20 year bonds at %.1f%% for %s. Payments are %s a month to bondholders outside town." % [LTMoney.fmt(amount), rate * 100.0, purpose, LTMoney.fmt(int(d["payment"]))], "city", true, [])
+	return {"ok": true, "message": "Sold %s in bonds at %.1f%%. %s a month for 20 years." % [LTMoney.fmt(amount), rate * 100.0, LTMoney.fmt(int(d["payment"]))]}
+
+
+# ================================================================ the weekly paper
+
+static func newspaper(w: LTWorld) -> void:
+	var week: Array = []
+	for i in range(w.chronicle.size() - 1, -1, -1):
+		var e: Dictionary = w.chronicle[i]
+		if int(e["day"]) <= w.day - 7:
+			break
+		week.append(e)
+	if week.is_empty():
+		return
+	week.sort_custom(func(a, b): return _news_weight(a) > _news_weight(b))
+	var editor: Dictionary = {}
+	var best: float = -1.0
+	for c in w.citizens:
+		if w.is_present(c) and w.age_years(c) >= 25:
+			var sc: float = float(c["skills"]["teaching"]) + float(c["traits"]["sociability"]) * 0.5 + float(c["traits"]["honesty"]) * 0.3
+			if sc > best:
+				best = sc
+				editor = c
+	var lead: Dictionary = week[0]
+	var stories: Array = []
+	for e in week.slice(0, 7):
+		stories.append({"day": int(e["day"]), "text": str(e["text"]), "kind": str(e["kind"]), "refs": e["refs"]})
+	var s: Dictionary = w.snapshot()
+	var editorial: String = _editorial(w, s)
+	var edition: Dictionary = {"day": w.day, "number": w.city["newspapers"].size() + 1, "headline": _headline(lead), "stories": stories, "editor": int(editor.get("id", -1)), "editorial": editorial, "approval": int(approval(w))}
+	w.city["newspapers"].append(edition)
+	if w.city["newspapers"].size() > 120:
+		w.city["newspapers"].remove_at(0)
+
+
+static func _news_weight(e: Dictionary) -> int:
+	return {"bankruptcy": 9, "business": 8, "death": 7, "crime": 7, "protest": 8, "region": 6, "project": 6, "law": 6, "petition": 5, "estate": 5, "election": 10, "birth": 3, "family": 4, "health": 4, "housing": 4, "city": 5}.get(str(e["kind"]), 2) + (3 if bool(e["important"]) else 0)
+
+
+static func _headline(e: Dictionary) -> String:
+	var t: String = str(e["text"])
+	var cut: int = t.find(".")
+	if cut > 10:
+		t = t.substr(0, cut)
+	return t
+
+
+static func _editorial(w: LTWorld, s: Dictionary) -> String:
+	var worst: Dictionary = {}
+	for p in w.petitions:
+		if ["gathering", "submitted"].has(str(p["status"])) and (worst.is_empty() or float(p["strength"]) > float(worst["strength"])):
+			worst = p
+	var line: String = "Unemployment stands at %d%% and the city has %s in the bank." % [int(float(s["unemployment"]) * 100.0), LTMoney.fmt(int(s["city_cash"]))]
+	if not worst.is_empty():
+		line += " Readers keep asking about one thing: %s. %d neighbors have signed." % [str(worst["title"]).to_lower(), worst["signers"].size()]
+	var cuts: Array = []
+	for e in w.laws_log:
+		if w.day - int(e["day"]) > 365 * 3 and str(e["law"]) == "school_funding" and float(e["new"]) < float(e["old"]):
+			cuts.append(e)
+	if not cuts.is_empty():
+		line += " Teachers say the school cuts from years ago show in this year's graduates."
+	return line
+
+
+# ================================================================ elections (optional mode)
+
+static func elections_daily(w: LTWorld) -> void:
+	if not bool(w.city.get("elections", false)) or not bool(w.city.get("mayor_in_office", true)):
+		return
+	var eday: int = int(w.city["next_election_day"])
+	if w.day == eday - 60:
+		_find_challenger(w)
+	elif w.day == eday:
+		_hold_election(w)
+	# a recall if approval stays very low
+	if LTCalendar.is_month_start(w.day):
+		var a: float = approval(w)
+		w.city["low_months"] = int(w.city.get("low_months", 0)) + 1 if a < 30.0 else 0
+		if int(w.city["low_months"]) >= 6:
+			w.city["low_months"] = 0
+			w.chronicle_add("Citizens gathered enough signatures for a recall election. It will be held in 30 days.", "election", true, [])
+			w.city["next_election_day"] = w.day + 30
+			_find_challenger(w)
+
+
+static func _find_challenger(w: LTWorld) -> void:
+	var best: Dictionary = {}
+	var bs: float = -1.0
+	for c in w.citizens:
+		if w.is_present(c) and w.age_years(c) >= 30:
+			var sc: float = float(c["traits"]["ambition"]) * 0.5 + float(c["traits"]["sociability"]) * 0.4 + float(c["reputation"] if c.has("reputation") else 50) * 0.1 + (100.0 - float(c["trust_city"])) * 0.4
+			if sc > bs:
+				bs = sc
+				best = c
+	if best.is_empty():
+		return
+	var platform: String = "lower taxes and less waste"
+	for p in w.petitions:
+		if str(p["status"]) == "denied":
+			platform = "doing what the city refused: %s" % str(p["title"]).to_lower()
+	w.city["challenger"] = int(best["id"])
+	w.city["platform"] = platform
+	w.log_sim(best, "Announced a run for mayor on a platform of %s. Reason: ambition and frustration with city hall." % platform, true)
+	w.chronicle_add("%s is running for mayor, promising %s. The election is in 60 days." % [w.full_name(best), platform], "election", true, [best["id"]])
+
+
+static func _hold_election(w: LTWorld) -> void:
+	var yes: int = 0
+	var no: int = 0
+	var ch: Dictionary = w.cit(int(w.city.get("challenger", -1)))
+	for c in w.citizens:
+		if not w.is_present(c) or w.age_years(c) < 18:
+			continue
+		# voters weigh their trust in the city, their own life, and the challenger
+		var v: float = float(c["trust_city"]) * 0.6 + LTPeople.happiness(c) * 0.3
+		if not ch.is_empty() and c["rel"].has(int(ch["id"])):
+			v -= float(c["rel"][int(ch["id"])]["affection"]) * 0.2
+		v += w.rng.randf_range(-12.0, 12.0)
+		if w.rng.randf() < 0.35:
+			continue
+		if v >= 45.0:
+			yes += 1
+		else:
+			no += 1
+	var total: int = maxi(1, yes + no)
+	w.city["next_election_day"] = w.day + 365 * int(w.city["term_years"])
+	var who: String = w.full_name(ch) if not ch.is_empty() else "the challenger"
+	if yes >= no:
+		w.chronicle_add("The mayor won reelection with %d%% of the vote against %s." % [yes * 100 / total, who], "election", true, [])
+	else:
+		w.city["mayor_in_office"] = false
+		w.chronicle_add("The mayor lost the election to %s, %d%% to %d%%. The town will go on without you." % [who, no * 100 / total, yes * 100 / total], "election", true, [])

@@ -1,0 +1,46 @@
+LIVING TOWN SCENARIO CHECKS
+Generated 2026-11-21T01:06:21 by tests/scenarios.gd.
+
+[PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
+  Faith Gonzalez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 104 days in the county jail. Job before: line cook, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 104 days in the county jail.
+
+[PASS] Divorce: the household splits, child support is set by income, and bankruptcy cannot erase it
+  Faith Gonzalez and Earl Gonzalez divorced. Child support: $983 a month, owed by Earl Gonzalez, status after the payer's bankruptcy: 60 days late.
+
+[PASS] Addiction: a heavy habit costs money and health until the Sim chooses treatment, which lowers it
+  Faith Gonzalez started with a drinking level of 75. After 120 days: level 19, went to treatment: true, cash $15,785 to $25,124.
+
+[PASS] Pregnancy: about nine months, prenatal visits, a birth, and maternity leave
+  Clara Williams was due Oct 14, Y1. Children 2 to 3. On leave until Nov 25, Y1.
+
+[PASS] A Sim run clinic captures doctor visits that used to leave town
+  Gonzalez Family Clinic opened. Revenue so far $688. Medical spending kept in town recently: $497.
+
+[PASS] Supply chain: farm grain to the mill, flour to the bakery, bread to the grocery, all paid through the ledger
+  Farm Gonzalez Gardens revenue $3,592. Mill Williams Mill revenue $820. Bakery Williams Bakery revenue $5,731. Grocery Clark Fresh Market supplier: Gonzalez Gardens and Valley Wholesale.
+
+[PASS] A chartered local bank lends to townspeople and the interest stays in town
+  Gonzalez Savings Bank lent $1,431 to Joan Clark. Creditor on the record: Gonzalez Savings Bank. Paid back so far: $137.
+
+[PASS] Plotting land: the city annexes a row, the road graph grows, the gravel street is paved through bids
+  Annexed South Addition: 6 new lots. Zone them, and put Oak Street out to bid to pave it. Lots 24 to 30. Travel from lot 0 to the new lot: 10 minutes. Oak Street is now done, condition 80.
+
+[PASS] City bonds, bus service and the new laws all work, and a small town cannot charter a bank
+  Bonds: Sold $200,000 in bonds at 3.8%. $1,192 a month for 20 years. Bus: riders paid $785 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 98 people: The state will not charter a bank for a town under 120 people. The town has 98.
+
+[PASS] Elections mode: a challenger runs on real grievances, Sims vote, the result stands
+  Challenger: Walt Olson. Platform: lower taxes and less waste. Mayor still in office: true.
+
+[PASS] The region: when a county employer fails, the town Sims who worked there lose their jobs
+  Great Plains Meatpacking failed. 4 town Sims worked there and all are now looking for work.
+
+[PASS] Storms damage buildings and roads, and owners pay real repair bills
+  Building condition total 1750 to 1464. Repairs paid: $13,103.
+
+[PASS] Saves carry every new system (cases, region, spend book, pregnancies, addictions) and continue identically
+  Hashes after 100 more days: 2480043415 and 2480043415.
+
+[PASS] Every business type opens, runs for two months, and keeps the ledger balanced
+  Opened: grocery, cafe, general_store, farm, construction, clinic, pharmacy, private_school, repair_shop, factory, warehouse, trucking, hotel, bar, childcare, funeral_home, law_office, real_estate, mill, bakery, bank. Could not open: none. Still open after 60 days: 21.
+
+RESULT: ALL SCENARIOS PASS

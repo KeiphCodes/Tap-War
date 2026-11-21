@@ -1,59 +1,60 @@
 LIVING TOWN V1 SLICE ACCEPTANCE RUN
-Generated 2026-11-21T00:08:53 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 1937 ms.
+Generated 2026-11-21T01:06:00 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 4614 ms.
 
 [PASS] 365 daily ticks complete with the ledger balanced every day (no mystery money)
-  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 114, "transfers": 19268 }.
+  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 109, "transfers": 19911 }.
 
 [PASS] At least one business was started by a Sim decision, with its start reason readable
-  4 businesses started by Sims. First: Robinson Fresh Market, opened day 23 by Richard Robinson. Reason in its history: "Opened by Richard Robinson on Lot 14 (Elm Street, commercial). Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 95, expects about $2,458 a month after costs, the city published this need with incentives. Funded with $6,474 of savings, a $10,000 city grant, a $15,525 bank loan at 9.9%."
+  5 businesses started by Sims. First: Moore Foods, opened day 15 by Anna Moore. Reason in its history: "Opened by Anna Moore on Lot 13 (Elm Street, commercial). Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 71, expects about $1,539 a month after costs. Funded with $5,565 of savings, a $26,434 bank loan at 9.4%."
 
 [PASS] At least one debt spiral reached a realistic resolution (repaying the arrears, bankruptcy, charge off, or estate) with its paper trail
-  Debt #52: medical owed by Timothy Williams to County Medical Center. Status: paid off.
-    Day 43: Opened: $158 of medical, unsecured owed to County Medical Center at 0.0%.
-    Day 60: Missed payment. Paid $38 of $50. Late fee added. Now 30 days late.
-    Day 91: Caught up. Back to current.
-    Day 182: Paid off.
+  Debt #12: credit card owed by Elsie Rodriguez to Prairie State Bank. Status: discharged in bankruptcy.
+    Day 0: Opened: $7,481 of credit card, unsecured owed to Prairie State Bank at 22.9%.
+    Day 244: Missed payment. Paid $192 of $272. Late fee added. Now 30 days late.
+    Day 274: Missed payment. Paid $213 of $270. Late fee added. Now 60 days late.
+    Day 293: Discharged in bankruptcy. The trustee paid $20, the creditor lost $5,941.
 
 [PASS] A petition came from real unmet need data, and the mayor's response measurably changed what happened next
-  Petition: "We need a grocery store in town". Why: 30 of 30 households drive to the next town for groceries, about 68 minutes round trip, and the gas money leaves town. Started by George Johnson, 15 signatures, suggested site Lot 14 (Elm Street, commercial).
-    With the response (run A): groceries: Robinson Fresh Market opened day 23 on the incentive lot. Petition status: resolved. Signers' trust in the city: 67.7.
-    Without a response (run B, same seed): groceries: Robinson Grocery opened day 33. Petition status: submitted. Signers' trust in the city: 58.8.
+  Petition: "We need a grocery store in town". Why: 21 of 30 households drive to the next town for groceries, about 69 minutes round trip, and the gas money leaves town. Started by Mark Schmidt, 15 signatures, suggested site Lot 14 (Elm Street, commercial).
+    With the response (run A): groceries: Moore Foods opened day 15. Petition status: resolved. Signers' trust in the city: 71.6.
+    Without a response (run B, same seed): groceries: Moore Foods opened day 15. Petition status: submitted. Signers' trust in the city: 60.1.
 
 [PASS] A contract was bid, awarded, and built in stages, and its quality persists and sets the next repair need
-  Run A awarded the cheapest bid: Riverbend Contractors, quality 22, finished day 88, expected to need repair about 184 days later; it actually needed repair on day 297.
-    Run C awarded the best record instead: Prairie Road Builders, quality 68, finished day 78, expected to need repair about 977 days later.
-    The street segments store the finished quality (0.23) and wear at a rate set by it. Paper trail of run A:
+  Run A awarded the cheapest bid: Riverbend Contractors, quality 18, finished day 81, expected to need repair about 163 days later; it actually needed repair on day 259.
+    Run C awarded the best record instead: Capital Construction Co, quality 73, finished day 72, expected to need repair about 1212 days later.
+    The street segments store the finished quality (0.19) and wear at a rate set by it. Paper trail of run A:
       Day 3: Defined with a budget ceiling of $130,500. Out to bid for 14 days.
       Day 17: Bidding closed with 3 bids.
-      Day 17: Awarded to Riverbend Contractors for $92,966, 55 days promised. It was the cheapest bid.
+      Day 17: Awarded to Riverbend Contractors for $85,112, 48 days promised. It was the cheapest bid.
       Day 18: Stage: tearing out old pavement.
-      Day 33: Stage: laying the road base.
-      Day 57: Stage: paving.
-      Day 57: Change order for $16,601 from Riverbend Contractors: "unexpected ground conditions". It fits under the ceiling and was paid.
-      Day 82: Stage: striping and cleanup.
-      Day 88: Finished. Quality 22 of 100 (grade F). Finished 16 days late. Cost $16,601 over the bid in change orders.
-      Day 88: At this quality the street should need repair again in about 184 days.
-      Day 297: Main Street needs repair again, 209 days after Riverbend Contractors finished it at quality 22. It is still under warranty, so Riverbend Contractors must fix it at its own cost.
-      Day 297: Warranty repair done by Riverbend Contractors at its own cost.
+      Day 31: Stage: laying the road base.
+      Day 52: Stage: paving.
+      Day 52: Change order for $12,266 from Riverbend Contractors: "unexpected ground conditions". It fits under the ceiling and was paid.
+      Day 76: Stage: striping and cleanup.
+      Day 81: Inspection found defects: cracked base and thin asphalt.
+      Day 81: Finished. Quality 18 of 100 (grade F). Finished 16 days late. Cost $12,266 over the bid in change orders.
+      Day 81: At this quality the street should need repair again in about 163 days.
+      Day 259: Main Street needs repair again, 178 days after Riverbend Contractors finished it at quality 18. It is still under warranty, so Riverbend Contractors must fix it at its own cost.
+      Day 259: Warranty repair done by Riverbend Contractors at its own cost.
   
 
 [PASS] Replaying the seed plus the logged mayor actions gives the same town
-  Run A hash 2562470182, replay hash 2562470182, 3 actions replayed.
+  Run A hash 872363874, replay hash 872363874, 3 actions replayed.
 
 [PASS] Saving on day 180 and loading the save reaches the same day 365 town
-  Save OK, load OK, loaded run hash 2562470182, straight run hash 2562470182.
+  Save OK, load OK, loaded run hash 872363874, straight run hash 872363874.
 
 [PASS] No em dashes in generated player facing text
   0 lines checked problems: []
 
 [PASS] Estate scenario: the estate pays in legal order, joint debt passes to the joint borrower, the mortgage travels with the house, children inherit no debt
-  Laura Taylor died owing a $17,059 loan beyond their cash, a joint card with Kenneth, and a mortgage.
-    Estate record: assets $2,059, paid to creditors $0, unpaid $19,094, to heirs $0, the house and its $155,683 mortgage went to Kenneth
-    Unsecured loan: unpaid when the estate ran out. Joint card now owed by Kenneth Taylor. Mortgage now owed by Kenneth Taylor. Children's cash unchanged. Spouse cash before $3,607, after $800.
+  Faith Gonzalez died owing a $29,178 loan beyond their cash, a joint card with Earl, and a mortgage.
+    Estate record: assets $14,178, paid to creditors $6,078, unpaid $23,100, to heirs $0, the house and its $35,996 mortgage went to Earl, Gonzalez Rentals passed to Earl with its debts
+    Unsecured loan: unpaid when the estate ran out. Joint card now owed by Earl Gonzalez. Mortgage now owed by Earl Gonzalez. Children's cash unchanged. Spouse cash before $9,727, after $9,727.
     
 
 [PASS] Bankruptcy scenario: liquidation discharges the card, the tax debt survives, the bank books the loss, and new credit is refused
-  Timothy Hanson filed. Card: discharged in bankruptcy. Tax debt: current. Bank losses grew by $10,466. Credit now 578 (poor). A new loan request: a bankruptcy less than two years old is on the record.
+  Linda Williams filed. Card: discharged in bankruptcy. Tax debt: current. Bank losses grew by $9,000. Credit now 523 (very poor). A new loan request: a bankruptcy less than two years old is on the record.
 
 Not checked by this script: independent review by a team member who did not write the system (a human gate).
 
@@ -61,63 +62,99 @@ LIVING TOWN RUN SUMMARY
 Town: Prairie Hollow. Seed 20261120. Day 365 (Monday, December 31, Year 1).
 
 PEOPLE
-  Population: 95 at start, 105 now.
-  Births 5, deaths 0, moved in 5, moved out 0, marriages 2.
-  Working age adults 50, employed 50, unemployment 0%, local jobs 7 (was 0).
-  Hires 7, layoffs 7, quits 8. Homeless now: 0. Evictions: 2.
-  Average happiness 83.6, approval of the city 73.1.
+  Population: 98 at start, 99 now.
+  Births 1, deaths 0, moved in 0, moved out 0, marriages 0.
+  Working age adults 49, employed 46, unemployment 6%, local jobs 4 (was 0).
+  Hires 20, layoffs 12, quits 22. Homeless now: 0. Evictions: 0.
+  Average happiness 84.1, approval of the city 72.8.
 
 BUSINESSES
-  Opened 4, closed 1, open now 5. Founding attempts that could not raise money: 0. Times a Sim looked and said no: 220.
-  - Robinson Fresh Market (grocery, sole), opened day 23 by Richard Robinson. Open, 3 staff, cash $5,001, reputation 100.
-      Start reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 95, expects about $2,458 a month after costs, the city published this need with incentives. Funded with $6,474 of savings, a $10,000 city grant, a $15,525 bank loan at 9.9%.
-  - Gonzalez Farm (farm, sole), opened day 38 by Mark Gonzalez. Open, 0 staff, cash $3,662, reputation 55.
-      Start reason: the grocery imports fresh food that could be grown here, farming skill is 49, expects about $3,092 a month after costs. Funded with $8,780 of savings, a $15,219 bank loan at 9.4%.
-  - Johnson Acres (farm, sole), opened day 39 by Kenneth Johnson. Open, 0 staff, cash $4,196, reputation 55.
-      Start reason: the grocery imports fresh food that could be grown here, farming skill is 50, expects about $1,771 a month after costs. Funded with $6,630 of savings, a $17,369 bank loan at 9.4%.
-  - Lee Farm (farm, sole), opened day 39 by June Lee. Closed day 152: June decided to cut losses after 2 losing months.
-      Start reason: the grocery imports fresh food that could be grown here, farming skill is 63, expects about $1,158 a month after costs. Funded with $3,888 of savings, a $20,111 bank loan at 9.4%.
+  Opened 5, closed 2, open now 5. Founding attempts that could not raise money: 0. Times a Sim looked and said no: 203.
+  - Moore Foods (grocery, sole), opened day 15 by Anna Moore. Open, 0 staff, cash $3,616, reputation 100.
+      Start reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 71, expects about $1,539 a month after costs. Funded with $5,565 of savings, a $26,434 bank loan at 9.4%.
+  - Hernandez Family Farm (farm, sole), opened day 32 by Faith Hernandez. Open, 0 staff, cash $3,201, reputation 55.
+      Start reason: the grocery imports fresh food that could be grown here, farming skill is 26, expects about $2,508 a month after costs. Funded with $8,027 of savings, a $15,972 bank loan at 10.0%.
+  - Rodriguez Motel (hotel, sole), opened day 33 by Elsie Rodriguez. Closed day 293: the owner's bankruptcy. The trustee sold what it had.
+      Start reason: people here need rooms for visiting crews and travelers and nobody local offers it, management skill is 64, expects about $3,059 a month after costs. Funded with $6,235 of savings, $63,764 from outside investors for a 91% share.
+  - Ramirez Family Farm (farm, sole), opened day 153 by Kevin Ramirez. Closed day 187: the court shut it down for operating without a license.
+      Start reason: the grocery imports fresh food that could be grown here, farming skill is 37, expects about $1,528 a month after costs. Funded with $8,759 of savings, a $15,240 bank loan at 9.8%.
+  - Williams Family Farm (farm, sole), opened day 190 by George Williams. Open, 0 staff, cash $3,401, reputation 55.
+      Start reason: the grocery imports fresh food that could be grown here, farming skill is 44, expects about $1,465 a month after costs. Funded with $13,162 of savings, a $10,837 bank loan at 10.1%.
 
 DEBT AND CREDIT
-  Debt records: 55 total, 54 active, $1,355,077 owed now.
-  By status: current 54, paid off 1.
-  Loans made 4, denied 0. Paid off 1. Charged off 0. Repossessions 0. Foreclosures 0.
-  Bankruptcies 0 (liquidation 0, repayment plan 0). Estates settled 0.
-  Prairie State Bank: lending tightness 0.20, losses in the last year about $0.
+  Debt records: 56 total, 54 active, $1,180,102 owed now.
+  By status: current 54, discharged in bankruptcy 2.
+  Loans made 4, denied 0. Paid off 0. Charged off 0. Repossessions 1. Foreclosures 0.
+  Bankruptcies 1 (liquidation 1, repayment plan 0). Estates settled 0.
+  Prairie State Bank: lending tightness 0.27, losses in the last year about $12,656.
 
 CITY
-  City cash $9,998 (was $150,000). Income last 12 months $105,134, spending $242,929. Credit standing B.
+  City cash $28,859 (was $150,000). Income last 12 months $104,194, spending $221,514. Credit standing B.
   Petitions 6. Projects finished 1. Protests 0. Thefts 0.
-  - Petition "We need a grocery store in town": 15 signers, status resolved.
-  - Petition "Build a school here so our kids stop riding the bus for an hour": 31 signers, status submitted.
-  - Petition "We need a clinic close to home": 4 signers, status submitted.
+  - Petition "Build a school here so our kids stop riding the bus for an hour": 38 signers, status submitted.
+  - Petition "We need a clinic close to home": 11 signers, status submitted.
   - Petition "Bring jobs to town": 7 signers, status submitted.
-  - Petition "Fix Main Street": 49 signers, status submitted.
-  - Petition "Give the kids a park": 31 signers, status submitted.
-  - Project "Rebuild Main Street": done, quality 22.
+  - Petition "Give the kids a park": 38 signers, status submitted.
+  - Petition "Fix Main Street": 43 signers, status submitted.
+  - Petition "We need a grocery store in town": 15 signers, status resolved.
+  - Project "Rebuild Main Street": done, quality 18.
 
 MONEY CHECK
-  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 19268.
-  Across the town line this run: $677,947 more came into town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
+  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 19911.
+  Across the town line this run: $598,879 more came into town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
 
 SAMPLE LIVES (last entries of their history logs)
-Kenneth Johnson, adult ordinary, 39. alive.
-  Day 0: Owns the house on Lot 5 (Prairie Street, residential) with a mortgage of $94,790 from Prairie State Bank.
-  Day 0: Works outside town as a nursing aide and drives 39 minutes each way. Reason: there are no local jobs yet.
-  Day 11: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 24, expects about $2,783 a month after costs. Will look at the numbers again for a few weeks before deciding.
-  Day 22: The mayor answered the petition "We need a grocery store in town": Published a need for a grocery on Lot 14 (Elm Street, commercial) with a free lot, no business tax for 2 years, a $10,000 start up grant, a city loan guarantee. A Sim still has to decide to take it.
-  Day 23: Started planning to open a grocery. Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 35, expects about $2,573 a month after costs, the city published this need with incentives. Will look at the numbers again for a few weeks before deciding.
-  Day 25: Started planning to open a farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 50, expects about $2,807 a month after costs. Will look at the numbers again for a few weeks before deciding.
-  Day 39: Left the job as nursing aide. Reason: started a business.
-  Day 39: Started Johnson Acres. Reason: the grocery imports fresh food that could be grown here, farming skill is 50, expects about $1,771 a month after costs. Funded with $6,630 of savings, a $17,369 bank loan at 9.4%.
+Elsie Rodriguez, adult pillar, 56. alive.
+  Day 251: Missed the auto loan payment to Prairie State Bank (paid $0 of $330). The debt is now 30 days late.
+  Day 274: Missed the credit card payment to Prairie State Bank (paid $213 of $270). The debt is now 60 days late.
+  Day 281: Missed the auto loan payment to Prairie State Bank (paid $0 of $330). The debt is now 60 days late.
+  Day 293: Filed for bankruptcy under liquidation (like Chapter 7). Trigger: a business that is not making it. Unsecured debt of $5,961 could not be repaid in any realistic time.
+  Day 293: Rodriguez Motel closed. Reason: the owner's bankruptcy. The trustee sold what it had.
+  Day 293: The vehicle was repossessed by Prairie State Bank. The sale covered $5,709 of the debt.
+  Day 293: The bankruptcy court discharged 2 debts. Kept exempt basics. The filing stays on the credit record for about 10 years, new credit will be slow and expensive.
+  Day 299: Applied for work again with no luck. Unemployed for 6 days.
+  Day 306: Started getting $75 a week in city unemployment support.
+  Day 327: Applied for work again with no luck. Unemployed for 34 days.
+  Day 334: Looked at starting a grocery and decided against it. Reason: the start up cost of $32,000 is more than savings, family money, and what the bank would lend.
+  Day 355: Applied for work again with no luck. Unemployed for 62 days.
 
-Mark Gonzalez, adult ordinary, 39. alive.
-  Day 0: Works outside town as a factory worker and drives 36 minutes each way. Reason: there are no local jobs yet.
-  Day 3: Started planning to open a grocery. Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 61, expects about $2,078 a month after costs. Will look at the numbers again for a few weeks before deciding.
-  Day 10: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 34, expects about $3,067 a month after costs. Will look at the numbers again for a few weeks before deciding.
-  Day 23: Started planning to open a grocery. Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 61, expects about $2,846 a month after costs, the city published this need with incentives. Will look at the numbers again for a few weeks before deciding.
-  Day 24: Started planning to open a farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 49, expects about $3,096 a month after costs. Will look at the numbers again for a few weeks before deciding.
-  Day 38: Left the job as factory worker. Reason: started a business.
-  Day 38: Started Gonzalez Farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 49, expects about $3,092 a month after costs. Funded with $8,780 of savings, a $15,219 bank loan at 9.4%.
+John Rodriguez, adult steady worker, 62. alive.
+  Day 216: Hired at Rodriguez Motel as a desk clerk. Reason: kept looking and the owner picked them from the applicants.
+  Day 222: Paycheck from Rodriguez Motel came up short: $467 of $550.
+  Day 222: Left the job as desk clerk. Reason: the paychecks stopped coming in full.
+  Day 223: Hired at Rodriguez Motel as a desk clerk. Reason: kept looking and the owner picked them from the applicants.
+  Day 229: Paycheck from Rodriguez Motel came up short: $454 of $550.
+  Day 229: Left the job as desk clerk. Reason: the paychecks stopped coming in full.
+  Day 230: Applied for work again with no luck. Unemployed for 1 days.
+  Day 236: Started getting $75 a week in city unemployment support.
+  Day 258: Applied for work again with no luck. Unemployed for 29 days.
+  Day 286: Applied for work again with no luck. Unemployed for 57 days.
+  Day 314: Applied for work again with no luck. Unemployed for 85 days.
+  Day 342: Applied for work again with no luck. Unemployed for 113 days.
+
+George Williams, adult ordinary, 43. alive.
+  Day 0: Works outside town as a nursing aide and drives 29 minutes each way. Reason: there are no local jobs yet.
+  Day 0: Linda is expecting their baby.
+  Day 1: Started planning to open a grocery. Reason: 30 of 30 households drive about 68 minutes round trip for groceries, retail skill is 40, expects about $1,570 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 8: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 62, expects about $2,118 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 22: Started planning to open a farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 45, expects about $2,189 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 64: Looked at starting a pharmacy and decided against it. Reason: not enough customers in a town this size.
+  Day 92: Looked at starting a pharmacy and decided against it. Reason: not enough customers in a town this size.
+  Day 152: Had a baby, Thomas.
+  Day 155: Looked at starting a clinic and decided against it. Reason: not enough customers in a town this size.
+  Day 176: Looked at starting a clinic and decided against it. Reason: not enough customers in a town this size.
+  Day 190: Left the job as nursing aide. Reason: started a business.
+  Day 190: Started Williams Family Farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 44, expects about $1,465 a month after costs. Funded with $13,162 of savings, a $10,837 bank loan at 10.1%.
+
+Faith Hernandez, adult ordinary, 47. alive.
+  Day 0: Works outside town as a warehouse worker and drives 30 minutes each way. Reason: there are no local jobs yet.
+  Day 4: Started planning to open a grocery. Reason: 30 of 30 households drive about 101 minutes round trip for groceries, retail skill is 31, expects about $1,785 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 18: Started planning to open a farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 26, expects about $2,496 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 32: Left the job as warehouse worker. Reason: started a business.
+  Day 32: Started Hernandez Family Farm. Reason: the grocery imports fresh food that could be grown here, farming skill is 26, expects about $2,508 a month after costs. Funded with $8,027 of savings, a $15,972 bank loan at 10.0%.
+  Day 182: The mayor answered the petition "We need a grocery store in town": Published a need for a grocery on Lot 14 (Elm Street, commercial) with a free lot, no business tax for 2 years, a $10,000 start up grant, a city loan guarantee. A Sim still has to decide to take it.
+  Day 305: Paid $415 of $937 rent to Rodriguez Rentals. Now 1 month(s) behind.
+  Day 312: Missed the credit card payment to Prairie State Bank (paid $0 of $91). The debt is now 30 days late.
+  Day 342: Caught up on the credit card. It is current again.
 
 RESULT: ALL GATES PASS
