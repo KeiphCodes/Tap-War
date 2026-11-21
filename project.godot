@@ -6,15 +6,20 @@ config_version=5
 config/name="Living Town"
 config/description="A city builder where the citizens build the city. You are the mayor."
 run/main_scene="res://town/main.tscn"
+config/icon="res://icon.png"
 config/features=PackedStringArray("4.4", "GL Compatibility")
 
 [display]
 
 window/size/viewport_width=1600
 window/size/viewport_height=900
-window/stretch/mode="disabled"
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
 
 [rendering]
+
+textures/vram_compression/import_etc2_astc=true
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
