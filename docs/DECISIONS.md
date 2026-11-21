@@ -57,6 +57,11 @@ Keith gave full permission to make the calls needed to finish. These are the one
 47. **Milestones** add goals without forcing outcomes: they only notice what the Sims and the player achieved.
 48. **Bug fixed along the way:** with nobody living in town, approval read as zero and triggered a recall election against no one. Elections now wait for incorporation.
 
+## Open land and the camera (fourth pass)
+
+49. **A founded town starts as open land.** One county road crosses the map edge to edge and nothing else is laid out. Roads snap to a survey grid of 32 by 24 blocks, straight in one direction per stroke, which keeps travel times, lot access and bidding simple while leaving the layout to the player. Each drawn road becomes a project to bid on (about $22,000 a block) and is staked but unusable until a contractor builds it. Lots can be plotted beside any road, built or planned, in any zone; settlers and founders only use lots a built road connects to the county road. Empty city lots can be returned to prairie. Prairie Hollow keeps its ready-made grid.
+50. **The camera** now moves toward goal positions and glides there each frame, reads the mouse buttons actually held instead of remembering presses (a release over a panel used to leave it spinning or panning), treats two fingers as one pinch, twist and pan gesture, stays over the map, and never follows a Sim out onto the highway.
+
 ## Scope calls
 
 23. **The outside bank** (Prairie State Bank) serves the town until the city charters a local one (item 34).

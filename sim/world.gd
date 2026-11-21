@@ -4,7 +4,7 @@ extends RefCounted
 ## these records. Nothing here is a scene node, so the town can run headless and
 ## grow past the starting size without changing any system.
 
-const SAVE_VERSION: int = 3
+const SAVE_VERSION: int = 4
 
 var seed_value: int = 0
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -131,7 +131,10 @@ func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -
 	ledger.open("bank")
 	ledger.pay("outside", "bank", int(config["bank_reserve"]), "bank_capital")
 	ledger.pay("outside", "city", int(config["city_start_cash"]), "city_start_reserve")
-	LTGeography.build(self)
+	if str(mode["start"]) == "founder":
+		LTGeography.build_open(self)
+	else:
+		LTGeography.build(self)
 	LTRegion.setup(self)
 	LTCivic.setup_city(self)
 	LTFinance.setup_bank(self)
@@ -219,7 +222,16 @@ func apply_action(a: Dictionary) -> Dictionary:
 		"issue_bond":
 			result = LTCivic.issue_bond(self, int(act["amount"]), str(act.get("purpose", "city projects")))
 		"annex":
-			result = LTGeography.annex_row(self)
+			if bool(config.get("open_land", false)):
+				result = {"ok": false, "message": "This town has open land: draw roads and plot lots wherever you like."}
+			else:
+				result = LTGeography.annex_row(self)
+		"plan_road":
+			result = LTGeography.plan_road(self, int(act["a"]), int(act["b"]))
+		"plot_lots":
+			result = LTGeography.plot_lots(self, int(act["c0"]), int(act["r0"]), int(act["c1"]), int(act["r1"]), str(act.get("zone", "residential")))
+		"unplot":
+			result = LTGeography.unplot(self, int(act["lot"]))
 		"elections":
 			city["elections"] = bool(act["on"])
 			if bool(act["on"]) and int(city["next_election_day"]) <= day:

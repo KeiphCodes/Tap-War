@@ -8,12 +8,25 @@ func _init() -> void:
 	root.add_child(main)
 	await process_frame
 	for card in main.hud.root.get_children():
-		if card is PanelContainer and card != main.hud.top_bar and card != main.hud.left and card != main.hud.right and card != main.hud.notice:
+		if card is PanelContainer and card != main.hud.top_bar and card != main.hud.left and card != main.hud.right and card != main.hud.notice and card != main.hud.tool_bar:
 			card.queue_free()
 	main.new_town(20261120, {"start": "founder", "elections": true, "real_calendar": true})
 	await process_frame
-	main.act({"kind": "zone_lot", "lot": 3, "zone": "residential"})
+	var n: Callable = func(i, j): return LTGeography.node_id(main.world, i, j)
+	print("road: ", main.act({"kind": "plan_road", "a": n.call(8, 12), "b": n.call(8, 6)})["message"])
+	print("plot: ", main.act({"kind": "plot_lots", "c0": 8, "r0": 6, "c1": 8, "r1": 11, "zone": "residential"})["message"])
 	main.act({"kind": "define_project", "ptype": "mayor_house", "target": 0})
+	for t in ["road", "plot", "unplot", "look"]:
+		main.hud._set_tool(t)
+		main.view._tool_a = Vector2i(3, 3)
+		main.view._tool_b = Vector2i(6, 3)
+		main.view._show_preview()
+	main.hud.inspect("lot", 0)
+	print("unplot: ", main.act({"kind": "unplot", "lot": 1})["message"])
+	main.view.focus_lot(0)
+	for i in 30:
+		main._advance(1)
+	main.view.animate(0.5, 12.0, false)
 	print("match: ", main.match_real_time())
 	main.set_speed(0)
 	main.new_town(20261120)

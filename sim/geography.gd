@@ -11,6 +11,9 @@ const SEGMENT_MINUTES: float = 1.5
 static func build(w: LTWorld) -> void:
 	var cols: int = int(w.config["lot_cols"])
 	var rows: int = int(w.config["lot_rows"])
+	w.config["map_cols"] = cols
+	w.config["map_rows"] = rows
+	w.config["lot_at"] = {}
 	# road nodes on the corners of lots
 	for j in rows + 1:
 		for i in cols + 1:
@@ -31,6 +34,8 @@ static func build(w: LTWorld) -> void:
 		w.streets.append(ave)
 	# starting roads are old county roads in mixed shape
 	for s in w.roads:
+		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
+			continue
 		s["condition"] = w.rng.randf_range(45.0, 85.0)
 		s["quality"] = w.rng.randf_range(0.45, 0.7)
 	# Main Street is the worst, the county never fixed it
@@ -49,7 +54,9 @@ static func build(w: LTWorld) -> void:
 				"owner_kind": "city", "owner_id": -1,
 				"value": land_value(zone), "condition": 80.0,
 				"building": "", "built_day": 0, "name": "", "street": r, "district": "Old Town",
+				"access_node": r * (cols + 1) + c,
 			})
+			w.config["lot_at"][cell_key(c, r)] = id
 
 
 static func _add_segment(w: LTWorld, a: int, b: int, street_id: int) -> int:
@@ -97,11 +104,17 @@ static func land_value(zone: String) -> int:
 static func lot_access_node(w: LTWorld, lot_id: int) -> int:
 	var l: Dictionary = w.lot(lot_id)
 	var cols: int = int(w.config["lot_cols"])
+	if l.has("access_node"):
+		return int(l["access_node"])
 	return int(l["row"]) * (cols + 1) + int(l["col"])
 
 
 static func exit_node(w: LTWorld) -> int:
 	return int(w.config["exit_node"])
+
+
+static func exit_nodes(w: LTWorld) -> Array:
+	return w.config.get("exit_nodes", [exit_node(w)])
 
 
 static func segment_minutes(w: LTWorld, s: Dictionary) -> float:
@@ -131,15 +144,36 @@ static func weather_factor(w: LTWorld) -> float:
 ## Shortest paths on the road graph. Weather slows every road the same, so paths are
 ## cached by road condition (refreshed weekly or after a road job) and scaled by weather.
 static func travel_minutes(w: LTWorld, from_lot: int, to_lot: int) -> float:
-	var src: int = lot_access_node(w, from_lot) if from_lot >= 0 else exit_node(w)
-	var dst: int = lot_access_node(w, to_lot) if to_lot >= 0 else exit_node(w)
+	if from_lot < 0 and to_lot < 0:
+		return 2.0
 	var extra: float = 0.0
 	if from_lot < 0 or to_lot < 0:
 		extra = float(w.config["next_town_minutes"]) * (1.5 if w.weather == "Snow" else 1.0)
+		# the nearest way out of town: any end of the county road
+		var lot_id: int = to_lot if from_lot < 0 else from_lot
+		var a: int = lot_access_node(w, lot_id)
+		var best: float = 1e9
+		var dist0: Dictionary = node_distances(w, a)
+		for ex in exit_nodes(w):
+			if int(ex) == a:
+				best = 0.0
+			best = minf(best, float(dist0.get(int(ex), 1e9)))
+		if best >= 1e8:
+			return 999.0
+		return best * weather_factor(w) + 2.0 + extra
+	var src: int = lot_access_node(w, from_lot)
+	var dst: int = lot_access_node(w, to_lot)
 	if src == dst:
-		return 2.0 + extra
+		return 2.0
 	var dist: Dictionary = node_distances(w, src)
-	return float(dist.get(dst, 999.0)) * weather_factor(w) + 2.0 + extra
+	if not dist.has(dst):
+		return 999.0
+	return float(dist[dst]) * weather_factor(w) + 2.0
+
+
+## Is the lot connected to the outside world by built road?
+static func connected(w: LTWorld, lot_id: int) -> bool:
+	return travel_minutes(w, lot_id, -1) < 500.0
 
 
 static func node_distances(w: LTWorld, src: int) -> Dictionary:
@@ -172,7 +206,8 @@ static func node_distances(w: LTWorld, src: int) -> Dictionary:
 				_heap_push(heap, [nd, other])
 	var out: Dictionary = {}
 	for i in n_nodes:
-		out[i] = dist[i]
+		if float(dist[i]) < 1e17:
+			out[i] = dist[i]
 	cache[src] = out
 	return out
 
@@ -270,8 +305,11 @@ static func annex_row(w: LTWorld) -> Dictionary:
 			"owner_kind": "city", "owner_id": -1,
 			"value": land_value("none"), "condition": 80.0,
 			"building": "", "built_day": 0, "name": "", "street": top_street, "district": dname,
+			"access_node": rows * (cols + 1) + c,
 		})
+		w.config["lot_at"][cell_key(c, rows)] = w.lots.size() - 1
 	w.config["lot_rows"] = rows + 1
+	w.config["map_rows"] = rows + 1
 	w.dist_cache.clear()
 	w.chronicle_add("The city bought %d lots of farmland from the county for %s. The %s has a gravel road, %s, until a contractor paves it. Zone the lots to open them up." % [cols, LTMoney.fmt(cost), dname, sname], "city", true, [])
 	return {"ok": true, "message": "Annexed %s: %d new lots. Zone them, and put %s out to bid to pave it." % [dname, cols, sname]}
@@ -308,6 +346,8 @@ static func wear_roads(w: LTWorld) -> void:
 	elif w.weather == "Rain":
 		wx = 1.2
 	for s in w.roads:
+		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
+			continue
 		var q: float = float(s["quality"])
 		var rate: float = 0.02 + (1.0 - q) * (1.0 - q) * 0.22
 		s["condition"] = maxf(0.0, float(s["condition"]) - rate * wx)
@@ -316,23 +356,33 @@ static func wear_roads(w: LTWorld) -> void:
 static func street_condition(w: LTWorld, street_id: int) -> float:
 	var st: Dictionary = w.streets[street_id]
 	var t: float = 0.0
+	var n: int = 0
 	for sid in st["segments"]:
-		t += float(w.roads[int(sid)]["condition"])
-	return t / maxf(1.0, float(st["segments"].size()))
+		var sg: Dictionary = w.roads[int(sid)]
+		if bool(sg.get("planned", false)) or bool(sg.get("removed", false)):
+			continue
+		t += float(sg["condition"])
+		n += 1
+	return 100.0 if n == 0 else t / float(n)
 
 
 static func street_quality(w: LTWorld, street_id: int) -> float:
 	var st: Dictionary = w.streets[street_id]
 	var t: float = 0.0
+	var n: int = 0
 	for sid in st["segments"]:
-		t += float(w.roads[int(sid)]["quality"])
-	return t / maxf(1.0, float(st["segments"].size()))
+		var sg: Dictionary = w.roads[int(sid)]
+		if bool(sg.get("planned", false)) or bool(sg.get("removed", false)):
+			continue
+		t += float(sg["quality"])
+		n += 1
+	return 1.0 if n == 0 else t / float(n)
 
 
 static func vacant_lots(w: LTWorld, zones: Array) -> Array:
 	var out: Array = []
 	for l in w.lots:
-		if str(l["use"]) == "empty" and zones.has(str(l["zone"])):
+		if str(l["use"]) == "empty" and zones.has(str(l["zone"])) and (not bool(w.config.get("open_land", false)) or connected(w, int(l["id"]))):
 			out.append(l)
 	return out
 
@@ -364,7 +414,7 @@ static func _best_site(w: LTWorld, zones: Array, near_lots: Array) -> int:
 				reserved[int(p.get("lot", -1))] = true
 		var byz: Dictionary = {}
 		for l in w.lots:
-			if str(l["use"]) == "empty" and not reserved.has(int(l["id"])):
+			if str(l["use"]) == "empty" and not reserved.has(int(l["id"])) and (not bool(w.config.get("open_land", false)) or connected(w, int(l["id"]))):
 				if not byz.has(str(l["zone"])):
 					byz[str(l["zone"])] = []
 				byz[str(l["zone"])].append(l)
@@ -387,3 +437,194 @@ static func _best_site(w: LTWorld, zones: Array, near_lots: Array) -> int:
 				best_d = d
 				best = int(l["id"])
 	return best
+
+
+
+# ================================================================ open land (found a town)
+## A founded town starts as open prairie on a survey grid: every grid corner is a
+## possible road node, but only the county road exists. The player draws roads
+## (which go out to bid and are built by contractors) and plots lots beside them.
+
+const OPEN_COLS: int = 32
+const OPEN_ROWS: int = 24
+const ROAD_NAMES: Array = ["Main Street", "Elm Street", "Oak Street", "Prairie Avenue", "Mill Road", "Church Street", "School Street", "Park Avenue", "Maple Street", "Depot Road", "Cedar Street", "Lake Road", "Hill Street", "Bluff Road", "Sunset Drive", "Ash Street", "Willow Lane", "Union Street", "Grant Avenue", "Lincoln Street"]
+
+
+static func cell_key(c: int, r: int) -> int:
+	return r * 10000 + c
+
+
+static func node_id(w: LTWorld, i: int, j: int) -> int:
+	return j * (int(w.config["map_cols"]) + 1) + i
+
+
+static func lot_at(w: LTWorld, c: int, r: int) -> int:
+	return int(w.config.get("lot_at", {}).get(cell_key(c, r), -1))
+
+
+static func build_open(w: LTWorld) -> void:
+	var cols: int = OPEN_COLS
+	var rows: int = OPEN_ROWS
+	w.config["lot_cols"] = cols
+	w.config["lot_rows"] = rows
+	w.config["map_cols"] = cols
+	w.config["map_rows"] = rows
+	w.config["lot_at"] = {}
+	w.config["open_land"] = true
+	w.config["districts"] = [{"name": "Founders' Plat", "rows": [0, rows - 1]}]
+	w.config["row_streets"] = []
+	w.config["avenue_base"] = 0
+	w.config["road_name_i"] = 0
+	for j in rows + 1:
+		for i in cols + 1:
+			w.road_nodes.append({"id": w.road_nodes.size(), "x": i, "y": j, "edges": [], "planned": []})
+	# the county road crosses the land edge to edge
+	var jm: int = rows / 2
+	var hw: Dictionary = {"id": w.streets.size(), "name": "County Road 12", "segments": [], "kind": "highway"}
+	w.streets.append(hw)
+	for i in cols:
+		var sid: int = _add_segment(w, node_id(w, i, jm), node_id(w, i + 1, jm), int(hw["id"]))
+		w.roads[sid]["condition"] = w.rng.randf_range(62.0, 75.0)
+		w.roads[sid]["quality"] = 0.6
+		hw["segments"].append(sid)
+	w.config["exit_node"] = node_id(w, 0, jm)
+	w.config["exit_nodes"] = [node_id(w, 0, jm), node_id(w, cols, jm)]
+
+
+## The segment between two neighboring nodes, built or planned, or -1.
+static func seg_between(w: LTWorld, a: int, b: int) -> int:
+	for key in ["edges", "planned"]:
+		for sid in w.road_nodes[a].get(key, []):
+			var sg: Dictionary = w.roads[int(sid)]
+			if (int(sg["a"]) == a and int(sg["b"]) == b) or (int(sg["a"]) == b and int(sg["b"]) == a):
+				return int(sid)
+	return -1
+
+
+## Lays out a straight road between two grid corners. New pieces are planned, not
+## built: they become a project for contractors to bid on.
+static func plan_road(w: LTWorld, a: int, b: int) -> Dictionary:
+	var na: Dictionary = w.road_nodes[a]
+	var nb: Dictionary = w.road_nodes[b]
+	var ax: int = int(na["x"])
+	var ay: int = int(na["y"])
+	var bx: int = int(nb["x"])
+	var by: int = int(nb["y"])
+	if ax != bx and ay != by:
+		# straight roads only: follow the longer direction
+		if absi(bx - ax) >= absi(by - ay):
+			by = ay
+		else:
+			bx = ax
+	if ax == bx and ay == by:
+		return {"ok": false, "message": "Drag farther to draw a road."}
+	var street: Dictionary = {"id": w.streets.size(), "name": _next_road_name(w), "segments": [], "kind": "street"}
+	var new_segs: Array = []
+	var steps: int = maxi(absi(bx - ax), absi(by - ay))
+	var dx: int = signi(bx - ax)
+	var dy: int = signi(by - ay)
+	for k in steps:
+		var p: int = node_id(w, ax + dx * k, ay + dy * k)
+		var q: int = node_id(w, ax + dx * (k + 1), ay + dy * (k + 1))
+		if seg_between(w, p, q) >= 0:
+			continue
+		var sid: int = w.roads.size()
+		w.roads.append({"id": sid, "a": p, "b": q, "street": int(street["id"]), "condition": 8.0, "quality": 0.0, "last_project": -1, "repaired_day": 0, "planned": true})
+		w.road_nodes[p]["planned"].append(sid)
+		w.road_nodes[q]["planned"].append(sid)
+		street["segments"].append(sid)
+		new_segs.append(sid)
+	if new_segs.is_empty():
+		return {"ok": false, "message": "There is already a road there."}
+	w.streets.append(street)
+	var r: Dictionary = LTProjects.define_road_build(w, int(street["id"]), new_segs)
+	r["street"] = int(street["id"])
+	return r
+
+
+static func _next_road_name(w: LTWorld) -> String:
+	var i: int = int(w.config.get("road_name_i", 0))
+	w.config["road_name_i"] = i + 1
+	var base: String = ROAD_NAMES[i % ROAD_NAMES.size()]
+	if i >= ROAD_NAMES.size():
+		base = "%s %d" % [base, i / ROAD_NAMES.size() + 1]
+	return base
+
+
+## Builds the planned pieces of a road when a contractor finishes the job.
+static func open_segment(w: LTWorld, sid: int, quality: float) -> void:
+	var sg: Dictionary = w.roads[sid]
+	if not bool(sg.get("planned", false)):
+		return
+	sg["planned"] = false
+	for n in [int(sg["a"]), int(sg["b"])]:
+		w.road_nodes[n]["planned"].erase(sid)
+		w.road_nodes[n]["edges"].append(sid)
+	sg["quality"] = quality
+	sg["condition"] = 70.0 + quality * 30.0
+	w.dist_cache.clear()
+
+
+## Removes a planned road that is not under contract yet.
+static func cancel_planned(w: LTWorld, street_id: int) -> void:
+	for sid in w.streets[street_id]["segments"]:
+		var sg: Dictionary = w.roads[int(sid)]
+		if bool(sg.get("planned", false)):
+			for n in [int(sg["a"]), int(sg["b"])]:
+				w.road_nodes[n]["planned"].erase(int(sid))
+			sg["removed"] = true
+
+
+## Marks lots on open land. Each lot must touch a road, built or planned.
+static func plot_lots(w: LTWorld, c0: int, r0: int, c1: int, r1: int, zone: String) -> Dictionary:
+	if not ZONES.has(zone):
+		return {"ok": false, "message": "Unknown zone."}
+	var cols: int = int(w.config["map_cols"])
+	var rows: int = int(w.config["map_rows"])
+	var made: int = 0
+	var no_road: int = 0
+	for r in range(mini(r0, r1), maxi(r0, r1) + 1):
+		for c in range(mini(c0, c1), maxi(c0, c1) + 1):
+			if c < 0 or r < 0 or c >= cols or r >= rows or lot_at(w, c, r) >= 0:
+				continue
+			# a road along any side of the cell gives the lot its driveway
+			var sides: Array = [[node_id(w, c, r), node_id(w, c + 1, r)], [node_id(w, c, r + 1), node_id(w, c + 1, r + 1)], [node_id(w, c, r), node_id(w, c, r + 1)], [node_id(w, c + 1, r), node_id(w, c + 1, r + 1)]]
+			var seg: int = -1
+			for sd in sides:
+				var sid: int = seg_between(w, int(sd[0]), int(sd[1]))
+				if sid >= 0 and (seg < 0 or not bool(w.roads[sid].get("planned", false))):
+					seg = sid
+			if seg < 0:
+				no_road += 1
+				continue
+			var id: int = w.lots.size()
+			w.lots.append({
+				"id": id, "col": c, "row": r, "zone": zone,
+				"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
+				"owner_kind": "city", "owner_id": -1,
+				"value": land_value(zone), "condition": 80.0,
+				"building": "", "built_day": 0, "name": "", "street": int(w.roads[seg]["street"]),
+				"district": str(w.config["districts"][0]["name"]), "access_node": int(w.roads[seg]["a"]),
+			})
+			w.config["lot_at"][cell_key(c, r)] = id
+			made += 1
+	if made == 0:
+		return {"ok": false, "message": "No lots plotted. Lots must touch a road, built or planned." if no_road > 0 else "Nothing to plot there."}
+	var msg: String = "Plotted %d %s lot%s." % [made, zone, "" if made == 1 else "s"]
+	if no_road > 0:
+		msg += " %d spots were skipped because no road touches them." % no_road
+	return {"ok": true, "message": msg}
+
+
+## Takes back an empty lot the city still owns.
+static func unplot(w: LTWorld, lot_id: int) -> Dictionary:
+	var l: Dictionary = w.lot(lot_id)
+	if l.is_empty() or str(l["use"]) != "empty" or str(l["owner_kind"]) != "city" or bool(l.get("removed", false)):
+		return {"ok": false, "message": "Only an empty lot the city still owns can be taken back."}
+	for n in w.city_needs:
+		if int(n["lot"]) == lot_id and str(n["status"]) == "open":
+			return {"ok": false, "message": "A published need is waiting on that lot."}
+	l["removed"] = true
+	l["use"] = "removed"
+	w.config["lot_at"].erase(cell_key(int(l["col"]), int(l["row"])))
+	return {"ok": true, "message": "Lot %d is open prairie again." % lot_id}

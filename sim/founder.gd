@@ -81,7 +81,7 @@ static func settler_pull(w: LTWorld) -> float:
 static func _settlers(w: LTWorld) -> void:
 	var lots: Array = []
 	for l in w.lots:
-		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and ["residential", "mixed"].has(str(l["zone"])):
+		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and ["residential", "mixed"].has(str(l["zone"])) and LTGeography.connected(w, int(l["id"])):
 			lots.append(l)
 	if lots.is_empty():
 		return

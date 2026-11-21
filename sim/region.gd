@@ -177,6 +177,8 @@ static func _storm(w: LTWorld) -> void:
 			if not b2.is_empty():
 				b2["condition"] = maxf(0.0, float(b2["condition"]) - dmg)
 	for s in w.roads:
+		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
+			continue
 		if w.rng.randf() < 0.3:
 			s["condition"] = maxf(0.0, float(s["condition"]) - w.rng.randf_range(2.0, 8.0))
 	w.dist_cache.clear()

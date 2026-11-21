@@ -52,7 +52,30 @@ static func pipeline_value(w: LTWorld) -> int:
 
 
 static func is_road(ptype: String) -> bool:
-	return ptype == "road_repair" or ptype == "road_patch"
+	return ptype == "road_repair" or ptype == "road_patch" or ptype == "road_build"
+
+
+const ROAD_BLOCK_COST: int = 2200000
+const ROAD_BLOCK_DAYS: int = 9
+
+
+## A new road the player drew: contractors bid on building its planned blocks.
+static func define_road_build(w: LTWorld, street_id: int, segs: Array) -> Dictionary:
+	var n: int = segs.size()
+	var p: Dictionary = {
+		"id": w.projects.size(), "ptype": "road_build", "title": "Build %s (%d %s)" % [w.streets[street_id]["name"], n, "block" if n == 1 else "blocks"], "lot": -1, "street": street_id, "ceiling": 0,
+		"petition_id": -1, "status": "bidding", "created_day": w.day, "bid_close_day": w.day + BID_DAYS,
+		"bids": [], "winner": {}, "winner_name": "", "price": 0, "change_orders": 0, "paid": 0,
+		"days_promised": 0, "start_day": -1, "progress": 0.0, "stage": "", "quality": 0.0, "quality_target": 0.0,
+		"events": [], "done_day": -1, "warranty_until": -1, "private": false, "developer": {}, "repair_needed_day": -1,
+		"kickback": {}, "payment_late": false, "segments": segs.duplicate(),
+		"base_cost": ROAD_BLOCK_COST * n, "base_days": 15 + ROAD_BLOCK_DAYS * n,
+	}
+	p["ceiling"] = int(float(p["base_cost"]) * 1.45)
+	w.projects.append(p)
+	_event(w, p, "Drawn by the mayor: %d new %s. Budget ceiling %s. Out to bid for %d days." % [n, "block" if n == 1 else "blocks", LTMoney.fmt(int(p["ceiling"])), BID_DAYS])
+	w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
+	return {"ok": true, "message": "\"%s\" is drawn and out to bid until %s. Award it on the Projects tab." % [p["title"], LTCalendar.short(int(p["bid_close_day"]))], "project_id": int(p["id"])}
 
 
 static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int) -> Dictionary:
@@ -115,6 +138,8 @@ static func cancel(w: LTWorld, pid: int) -> Dictionary:
 	if not ["bidding", "review"].has(str(p["status"])):
 		return {"ok": false, "message": "Only projects not yet awarded can be cancelled."}
 	p["status"] = "cancelled"
+	if str(p["ptype"]) == "road_build":
+		LTGeography.cancel_planned(w, int(p["street"]))
 	if int(p["lot"]) >= 0:
 		w.lot(int(p["lot"]))["use"] = "empty"
 		w.lot(int(p["lot"]))["ref"] = -1
@@ -181,7 +206,7 @@ static func _avg(a: Array) -> float:
 
 static func _outside_bid(w: LTWorld, p: Dictionary, co: Dictionary) -> Dictionary:
 	var ptype: String = str(p["ptype"])
-	var base: float = float(BASE_COST[ptype])
+	var base: float = float(p.get("base_cost", BASE_COST.get(ptype, 0)))
 	var skill: float = float(co["skill"])
 	var code: float = float(w.city["laws"].get("building_code", 1.0))
 	var true_cost: float = base * (1.0 + (1.0 - skill) * 0.25) * (1.0 + float(co["workload"]) * 0.03) * (0.9 + code * 0.1)
@@ -195,7 +220,7 @@ static func _outside_bid(w: LTWorld, p: Dictionary, co: Dictionary) -> Dictionar
 		plans_change_orders = true
 		cuts_materials = w.rng.randf() < 0.7
 	price *= w.rng.randf_range(0.96, 1.05)
-	var days: int = int(float(BASE_DAYS[ptype]) * (1.1 - skill * 0.2) * (1.0 + float(co["workload"]) * 0.05) * w.rng.randf_range(0.95, 1.1)) + 4
+	var days: int = int(float(p.get("base_days", BASE_DAYS.get(ptype, 30))) * (1.1 - skill * 0.2) * (1.0 + float(co["workload"]) * 0.05) * w.rng.randf_range(0.95, 1.1)) + 4
 	var q: float = clampf(skill * (0.75 + float(co["honesty"]) / 400.0) + w.rng.randf_range(-0.05, 0.05), 0.15, 1.0)
 	if cuts_materials:
 		q *= 0.6
@@ -222,7 +247,7 @@ static func _local_bid(w: LTWorld, p: Dictionary, b: Dictionary) -> Dictionary:
 		skill += float(owner["skills"]["construction"]) * 1.5
 	skill = clampf(skill / (float(crew) + 1.5) / 100.0, 0.2, 0.95)
 	b["crew_quality"] = skill
-	var base: float = float(BASE_COST[ptype])
+	var base: float = float(p.get("base_cost", BASE_COST.get(ptype, 0)))
 	var busy: int = 0
 	for q in w.projects:
 		if str(q["status"]) == "building" and str(q["winner"].get("kind", "")) == "local" and int(q["winner"]["id"]) == int(b["id"]):
@@ -235,7 +260,7 @@ static func _local_bid(w: LTWorld, p: Dictionary, b: Dictionary) -> Dictionary:
 		price = true_cost * 0.88
 		plans = true
 	var crew_factor: float = clampf(float(crew) / 4.0, 0.4, 1.5)
-	var days: int = int(float(BASE_DAYS[ptype]) * (1.15 - skill * 0.2) / crew_factor * (1.0 + float(busy) * 0.3)) + 2
+	var days: int = int(float(p.get("base_days", BASE_DAYS.get(ptype, 30))) * (1.15 - skill * 0.2) / crew_factor * (1.0 + float(busy) * 0.3)) + 2
 	var q2: float = clampf(skill * (0.8 + float(t["honesty"]) / 500.0) + w.rng.randf_range(-0.06, 0.06), 0.15, 1.0)
 	var hist: String = "first public job" if int(b["jobs_done"]) == 0 else "%d jobs, %d overruns, %d defects" % [b["jobs_done"], b["overruns"], b["defects"]]
 	return {
@@ -473,7 +498,14 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		w.log_biz(b, "Finished \"%s\" with quality %d." % [p["title"], int(q * 100.0)])
 	var ptype: String = str(p["ptype"])
 	w.dist_cache.clear()
-	if is_road(ptype):
+	if ptype == "road_build":
+		for sid in p["segments"]:
+			LTGeography.open_segment(w, int(sid), q)
+			w.roads[int(sid)]["last_project"] = int(p["id"])
+			w.roads[int(sid)]["repaired_day"] = w.day
+		p["condition_at_finish"] = LTGeography.street_condition(w, int(p["street"]))
+		p["expected_repair_days"] = expected_days_to_repair(w, int(p["street"]))
+	elif is_road(ptype):
 		var st: Dictionary = w.streets[int(p["street"])]
 		for sid in st["segments"]:
 			var s: Dictionary = w.roads[int(sid)]

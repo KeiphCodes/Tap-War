@@ -251,6 +251,8 @@ static func _month_budget(w: LTWorld) -> void:
 		_spend(w, "outside", LTMoney.dollars(300.0), "park upkeep")
 	_spend(w, "outside", LTMoney.dollars(700.0), "road patching")
 	for s in w.roads:
+		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
+			continue
 		s["condition"] = minf(100.0, float(s["condition"]) + 0.15)
 	# record the month from the ledger's own record of city money in and out
 	var tr: Dictionary = w.ledger.tracked["city"]

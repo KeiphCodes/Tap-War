@@ -1,5 +1,5 @@
 LIVING TOWN V1 SLICE ACCEPTANCE RUN
-Generated 2026-11-21T21:53:45 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 3809 ms.
+Generated 2026-11-21T22:08:24 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 4059 ms.
 
 [PASS] 365 daily ticks complete with the ledger balanced every day (no mystery money)
   Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 109, "transfers": 19911 }.

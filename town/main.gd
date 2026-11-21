@@ -113,6 +113,7 @@ func match_real_time() -> String:
 
 func act(a: Dictionary) -> Dictionary:
 	var r: Dictionary = world.apply_action(a)
+	view._rebuild_road_mesh()
 	view.refresh_all()
 	hud.refresh_all()
 	return r

@@ -30,16 +30,29 @@ var target: Vector3 = Vector3.ZERO
 var yaw: float = 0.75
 var pitch: float = -0.85
 var dist: float = 95.0
-var _drag_rot: bool = false
-var _drag_pan: bool = false
 var _tier_timer: float = 0.0
 var _last_hour: float = 9.0
 var _watch_mode: bool = false
 var _season: String = ""
 var _snow: bool = false
 var _touches: Dictionary = {}
-var _pinch_d: float = 0.0
 var hovered_lot: int = -1
+# camera goals: input moves these, the camera glides to them
+var g_target: Vector3 = Vector3.ZERO
+var g_yaw: float = 0.75
+var g_pitch: float = -0.85
+var g_dist: float = 95.0
+var _pinch: Dictionary = {}
+var _press_pos: Vector2 = Vector2.ZERO
+# build tools
+var tool: String = "look"
+var plot_zone: String = "residential"
+var _tool_a: Vector2i = Vector2i.ZERO
+var _tool_b: Vector2i = Vector2i.ZERO
+var _tool_drag_on: bool = false
+var preview_mi: MeshInstance3D
+var grid_mi: MeshInstance3D
+var road_labels: Node3D
 # batching: while on, shapes are merged into one mesh with vertex colors
 var _batching: bool = false
 var _bv: PackedVector3Array
@@ -56,6 +69,7 @@ var _glow_mat: StandardMaterial3D
 var road_mi: MeshInstance3D
 var tree_mi: MeshInstance3D
 var _roads_built_day: int = -1
+var _roads_count: int = -1
 var selected_lot: int = -1
 var highlight: MeshInstance3D
 
@@ -100,10 +114,14 @@ func rebuild() -> void:
 	highlight.material_override = hmat
 	highlight.visible = false
 	extra_root.add_child(highlight)
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
-	target = Vector3(cols * CELL * 0.5, 0.0, rows * CELL * 0.5)
-	dist = maxf(cols, rows) * CELL * 1.05
+	var ms: Vector2 = map_size()
+	target = Vector3(ms.x * 0.5, 0.0, ms.y * 0.5)
+	dist = maxf(ms.x, ms.y) * (0.75 if bool(w.config.get("open_land", false)) else 1.05)
+	g_target = target
+	g_dist = dist
+	g_yaw = yaw
+	g_pitch = pitch
+	_build_tool_meshes()
 	_update_camera()
 	refresh_all()
 
@@ -322,7 +340,7 @@ func _build_camera() -> void:
 
 func _update_camera() -> void:
 	pitch = clampf(pitch, -1.45, -0.25)
-	dist = clampf(dist, 18.0, 420.0)
+	dist = maxf(dist, 14.0)
 	var dir: Vector3 = Vector3(cos(pitch) * sin(yaw), -sin(pitch), cos(pitch) * cos(yaw))
 	cam.position = target + dir * dist
 	cam.look_at(target, Vector3.UP)
@@ -333,29 +351,49 @@ func _build_ground() -> void:
 	var pm: PlaneMesh = PlaneMesh.new()
 	pm.size = Vector2(1400, 1400)
 	ground_mi.mesh = pm
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
-	ground_mi.position = Vector3(cols * CELL * 0.5, -0.05, rows * CELL * 0.5)
+	var ms: Vector2 = map_size()
+	pm.size = Vector2(ms.x + 1400.0, ms.y + 1400.0)
+	ground_mi.position = Vector3(ms.x * 0.5, -0.05, ms.y * 0.5)
 	ground_root.add_child(ground_mi)
-	# the highway to the next town
-	var ex: int = LTGeography.exit_node(w)
-	var en: Dictionary = w.road_nodes[ex]
-	var z: float = float(en["y"]) * CELL
-	_box(ground_root, Vector3(400.0, 0.08, ROAD_W + 1.0), Vector3(-200.0, 0.02, z), Color(0.25, 0.25, 0.27))
-	var sgn: Label3D = _sign(ground_root, "To County Seat (25 min)", Vector3(-30.0, 3.0, z - 4.0), 64)
-	sgn.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# the county road runs on past the edge of town in both directions
+	var names: Array = ["To County Seat (25 min)", "To Mill Creek (25 min)"]
+	var k: int = 0
+	for ex in LTGeography.exit_nodes(w):
+		var en: Dictionary = w.road_nodes[int(ex)]
+		var x: float = float(en["x"]) * CELL
+		var z: float = float(en["y"]) * CELL
+		var west: bool = x < ms.x * 0.5
+		_box(ground_root, Vector3(400.0, 0.08, ROAD_W + 1.0), Vector3(x - 200.0 if west else x + 200.0, 0.02, z), Color(0.25, 0.25, 0.27))
+		var sgn: Label3D = _sign(ground_root, names[k % 2], Vector3(x - 30.0 if west else x + 30.0, 3.0, z - 4.0), 64)
+		sgn.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		k += 1
 
 
 func _build_roads() -> void:
 	_rebuild_road_mesh()
+
+
+func _road_labels() -> void:
+	if road_labels != null:
+		road_labels.queue_free()
+	road_labels = Node3D.new()
+	road_root.add_child(road_labels)
 	for st in w.streets:
-		if str(st["kind"]) == "street":
-			var sid: int = int(st["segments"][0])
-			var s0: Dictionary = w.roads[sid]
-			var a2: Dictionary = w.road_nodes[int(s0["a"])]
-			var l: Label3D = _sign(road_root, str(st["name"]), Vector3(float(a2["x"]) * CELL + CELL * 0.5, 0.25, float(a2["y"]) * CELL), 40, Color(0.95, 0.95, 0.8))
-			l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-			l.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+		if str(st["kind"]) == "avenue" or st["segments"].is_empty():
+			continue
+		var s0: Dictionary = {}
+		for sid in st["segments"]:
+			if not bool(w.roads[int(sid)].get("removed", false)):
+				s0 = w.roads[int(sid)]
+				break
+		if s0.is_empty():
+			continue
+		var a2: Dictionary = w.road_nodes[int(s0["a"])]
+		var b2: Dictionary = w.road_nodes[int(s0["b"])]
+		var mid: Vector3 = Vector3((float(a2["x"]) + float(b2["x"])) * 0.5 * CELL, 0.25, (float(a2["y"]) + float(b2["y"])) * 0.5 * CELL)
+		var l: Label3D = _sign(road_labels, str(st["name"]) + (" (planned)" if bool(s0.get("planned", false)) else ""), mid, 40, Color(0.95, 0.95, 0.8))
+		l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		l.rotation = Vector3(-PI / 2.0, 0.0 if int(a2["y"]) == int(b2["y"]) else PI / 2.0, 0.0)
 
 
 func _rebuild_road_mesh() -> void:
@@ -363,6 +401,8 @@ func _rebuild_road_mesh() -> void:
 		road_mi.queue_free()
 	_batch_begin()
 	for s in w.roads:
+		if bool(s.get("removed", false)):
+			continue
 		var a: Dictionary = w.road_nodes[int(s["a"])]
 		var b: Dictionary = w.road_nodes[int(s["b"])]
 		var pa: Vector3 = Vector3(float(a["x"]) * CELL, 0.03, float(a["y"]) * CELL)
@@ -373,8 +413,13 @@ func _rebuild_road_mesh() -> void:
 		var col: Color = Color(0.24, 0.24, 0.26).lerp(Color(0.5, 0.44, 0.36), clampf(1.0 - cnd, 0.0, 1.0) * 0.9)
 		if _snow:
 			col = col.lerp(Color(0.85, 0.87, 0.9), 0.5)
+		if bool(s.get("planned", false)):
+			# surveyed but not built: a strip of staked dirt
+			col = Color(0.47, 0.33, 0.2)
+			size.y = 0.03
 		_box(road_root, size, (pa + pb) * 0.5, col)
 	road_mi = _batch_end(road_root)
+	_road_labels()
 
 
 func _build_trees() -> void:
@@ -429,10 +474,17 @@ func refresh_all() -> void:
 		_snow = snow
 		_apply_season()
 		_build_trees()
-	if w.day % 7 == 0 or not _roads_built_day == w.day:
+	if w.day % 7 == 0 or not _roads_built_day == w.day or w.roads.size() != _roads_count:
 		_roads_built_day = w.day
+		_roads_count = w.roads.size()
 		_rebuild_road_mesh()
 	for l in w.lots:
+		if bool(l.get("removed", false)):
+			if lot_nodes.has(int(l["id"])):
+				(lot_nodes[int(l["id"])] as Node3D).queue_free()
+				lot_nodes.erase(int(l["id"]))
+				lot_sigs.erase(int(l["id"]))
+			continue
 		var sig: String = _lot_sig(l)
 		if lot_sigs.get(int(l["id"]), "") != sig:
 			lot_sigs[int(l["id"])] = sig
@@ -456,7 +508,7 @@ func _apply_season() -> void:
 			g = Color(0.45, 0.6, 0.28)
 			leaf = Color(0.22, 0.48, 0.18)
 		"Fall":
-			g = Color(0.6, 0.55, 0.32)
+			g = Color(0.52, 0.52, 0.32)
 			leaf = Color(0.8, 0.45, 0.15)
 	if _snow:
 		g = Color(0.8, 0.82, 0.85)
@@ -1107,7 +1159,7 @@ func _refresh_camper() -> void:
 	if camper != null and is_instance_valid(camper):
 		return
 	camper = Node3D.new()
-	camper.position = _exit_pos() + Vector3(-12.0, 0, -7.0)
+	camper.position = _exit_pos() + (Vector3(CELL * 1.5, 0, -8.0) if bool(w.config.get("open_land", false)) else Vector3(-12.0, 0, -7.0))
 	extra_root.add_child(camper)
 	_box(camper, Vector3(2.6, 2.6, 7.0), Vector3(0, 1.6, 0), Color(0.93, 0.92, 0.88))
 	_box(camper, Vector3(2.65, 0.4, 7.05), Vector3(0, 1.6, 0), Color(0.3, 0.45, 0.65))
@@ -1157,75 +1209,252 @@ func _local_trucker() -> String:
 
 func _camera_keys(delta: float) -> void:
 	var move: Vector3 = Vector3.ZERO
-	var fwd: Vector3 = Vector3(-sin(yaw), 0, -cos(yaw))
-	var right: Vector3 = Vector3(cos(yaw), 0, -sin(yaw))
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		move += fwd
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		move -= fwd
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		move += right
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		move -= right
-	if Input.is_key_pressed(KEY_Q):
-		yaw += delta * 1.2
-	if Input.is_key_pressed(KEY_E):
-		yaw -= delta * 1.2
+	var fwd: Vector3 = Vector3(-sin(g_yaw), 0, -cos(g_yaw))
+	var right: Vector3 = Vector3(cos(g_yaw), 0, -sin(g_yaw))
+	if not _typing():
+		if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+			move += fwd
+		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+			move -= fwd
+		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+			move += right
+		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+			move -= right
+		if Input.is_key_pressed(KEY_Q):
+			g_yaw += delta * 1.2
+		if Input.is_key_pressed(KEY_E):
+			g_yaw -= delta * 1.2
 	if move != Vector3.ZERO:
-		target += move.normalized() * delta * dist * 0.8
+		g_target += move.normalized() * delta * g_dist * 0.8
+	_clamp_goals()
+	# glide toward the goal instead of jumping, so nothing ever flings
+	var k: float = clampf(delta * 9.0, 0.0, 1.0)
+	target = target.lerp(g_target, k)
+	yaw = lerp_angle(yaw, g_yaw, k)
+	pitch = lerpf(pitch, g_pitch, k)
+	dist = lerpf(dist, g_dist, k)
 	_update_camera()
+
+
+func _typing() -> bool:
+	var f: Control = get_viewport().gui_get_focus_owner()
+	return f is LineEdit or f is TextEdit or f is SpinBox
+
+
+func map_size() -> Vector2:
+	return Vector2(float(w.config.get("map_cols", w.config["lot_cols"])) * CELL, float(w.config.get("map_rows", w.config["lot_rows"])) * CELL)
+
+
+func _clamp_goals() -> void:
+	var ms: Vector2 = map_size()
+	g_target.x = clampf(g_target.x, -CELL * 3.0, ms.x + CELL * 3.0)
+	g_target.z = clampf(g_target.z, -CELL * 3.0, ms.y + CELL * 3.0)
+	g_target.y = 0.0
+	g_pitch = clampf(g_pitch, -1.45, -0.25)
+	g_dist = clampf(g_dist, 14.0, maxf(420.0, maxf(ms.x, ms.y) * 1.25))
+
+
+func _pan(rel: Vector2) -> void:
+	var right: Vector3 = Vector3(cos(g_yaw), 0, -sin(g_yaw))
+	var fwd: Vector3 = Vector3(-sin(g_yaw), 0, -cos(g_yaw))
+	g_target -= right * rel.x * g_dist * 0.0016
+	g_target += fwd * rel.y * g_dist * 0.0016
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			dist *= 0.9
+			g_dist *= 0.9
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			dist *= 1.1
-		elif mb.button_index == MOUSE_BUTTON_RIGHT:
-			_drag_rot = mb.pressed
-		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
-			_drag_pan = mb.pressed
-		elif mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and not mb.is_echo():
-			_pick(mb.position)
-		_update_camera()
+			g_dist *= 1.1
+		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				_press_pos = mb.position
+				if tool != "look":
+					_tool_start(mb.position)
+			else:
+				if tool != "look":
+					_tool_end(mb.position)
+				elif _press_pos.distance_to(mb.position) < 8.0 and _touches.size() <= 1:
+					_pick(mb.position)
+		_clamp_goals()
 	elif event is InputEventMouseMotion:
 		var mm: InputEventMouseMotion = event
-		if _drag_rot:
-			yaw -= mm.relative.x * 0.006
-			pitch -= mm.relative.y * 0.005
-		elif _drag_pan or (mm.button_mask & MOUSE_BUTTON_MASK_LEFT and Input.is_key_pressed(KEY_SHIFT)):
-			var right: Vector3 = Vector3(cos(yaw), 0, -sin(yaw))
-			var fwd: Vector3 = Vector3(-sin(yaw), 0, -cos(yaw))
-			target -= right * mm.relative.x * dist * 0.0018
-			target += fwd * mm.relative.y * dist * 0.0018
-		_update_camera()
+		# read the buttons held right now, not a remembered flag, so a release over a panel never sticks
+		if mm.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+			g_yaw -= mm.relative.x * 0.006
+			g_pitch -= mm.relative.y * 0.005
+		elif mm.button_mask & MOUSE_BUTTON_MASK_MIDDLE or (mm.button_mask & MOUSE_BUTTON_MASK_LEFT and Input.is_key_pressed(KEY_SHIFT)):
+			_pan(mm.relative)
+		elif mm.button_mask & MOUSE_BUTTON_MASK_LEFT and tool != "look":
+			_tool_drag(mm.position)
+		_clamp_goals()
 	elif event is InputEventScreenTouch:
 		var st: InputEventScreenTouch = event
 		if st.pressed:
 			_touches[st.index] = st.position
 		else:
-			if _touches.size() == 1 and _touches.has(st.index) and (_touches[st.index] as Vector2).distance_to(st.position) < 8.0:
-				_pick(st.position)
 			_touches.erase(st.index)
-			_pinch_d = 0.0
+		_pinch = {}
 	elif event is InputEventScreenDrag:
 		var sd: InputEventScreenDrag = event
 		_touches[sd.index] = sd.position
 		if _touches.size() == 1:
-			var right2: Vector3 = Vector3(cos(yaw), 0, -sin(yaw))
-			var fwd2: Vector3 = Vector3(-sin(yaw), 0, -cos(yaw))
-			target -= right2 * sd.relative.x * dist * 0.0018
-			target += fwd2 * sd.relative.y * dist * 0.0018
-		elif _touches.size() == 2:
+			if tool == "look":
+				_pan(sd.relative)
+		elif _touches.size() >= 2:
+			# two fingers: pinch to zoom, twist to turn, move together to pan
 			var ks: Array = _touches.keys()
-			var d: float = (_touches[ks[0]] as Vector2).distance_to(_touches[ks[1]])
-			if _pinch_d > 0.0:
-				dist *= _pinch_d / maxf(d, 1.0)
-			_pinch_d = d
-			yaw -= sd.relative.x * 0.003
-		_update_camera()
+			var p0: Vector2 = _touches[ks[0]]
+			var p1: Vector2 = _touches[ks[1]]
+			var d: float = maxf(p0.distance_to(p1), 1.0)
+			var ang: float = (p1 - p0).angle()
+			var mid: Vector2 = (p0 + p1) * 0.5
+			if not _pinch.is_empty():
+				g_dist *= clampf(float(_pinch["d"]) / d, 0.8, 1.25)
+				g_yaw += clampf(angle_difference(float(_pinch["a"]), ang), -0.2, 0.2)
+				_pan((mid - (_pinch["m"] as Vector2)) * 0.5)
+			_pinch = {"d": d, "a": ang, "m": mid}
+		_clamp_goals()
+
+
+# ------------------------------------------------------------------ build tools: draw roads, plot lots
+
+func set_tool(t: String) -> void:
+	tool = t
+	_tool_drag_on = false
+	if grid_mi != null:
+		grid_mi.visible = t != "look"
+	if preview_mi != null:
+		preview_mi.visible = false
+
+
+func _ground_point(screen: Vector2) -> Vector3:
+	var from: Vector3 = cam.project_ray_origin(screen)
+	var dir: Vector3 = cam.project_ray_normal(screen)
+	if absf(dir.y) < 0.0001:
+		return Vector3(-1e6, 0, -1e6)
+	var t: float = -from.y / dir.y
+	if t < 0.0:
+		return Vector3(-1e6, 0, -1e6)
+	return from + dir * t
+
+
+func _nearest_node(g: Vector3) -> Vector2i:
+	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
+	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
+	return Vector2i(clampi(int(round(g.x / CELL)), 0, cols), clampi(int(round(g.z / CELL)), 0, rows))
+
+
+func _cell_at(g: Vector3) -> Vector2i:
+	return Vector2i(int(floor(g.x / CELL)), int(floor(g.z / CELL)))
+
+
+func _tool_start(screen: Vector2) -> void:
+	var g: Vector3 = _ground_point(screen)
+	if g.x < -1e5:
+		return
+	_tool_drag_on = true
+	if tool == "road":
+		_tool_a = _nearest_node(g)
+	else:
+		_tool_a = _cell_at(g)
+	_tool_b = _tool_a
+	_show_preview()
+
+
+func _tool_drag(screen: Vector2) -> void:
+	if not _tool_drag_on:
+		return
+	var g: Vector3 = _ground_point(screen)
+	if g.x < -1e5:
+		return
+	if tool == "road":
+		var n: Vector2i = _nearest_node(g)
+		# straight roads only: follow the longer direction
+		if absi(n.x - _tool_a.x) >= absi(n.y - _tool_a.y):
+			n.y = _tool_a.y
+		else:
+			n.x = _tool_a.x
+		_tool_b = n
+	else:
+		_tool_b = _cell_at(g)
+	_show_preview()
+
+
+func _tool_end(screen: Vector2) -> void:
+	if not _tool_drag_on:
+		return
+	_tool_drag(screen)
+	_tool_drag_on = false
+	preview_mi.visible = false
+	var r: Dictionary = {}
+	match tool:
+		"road":
+			r = main.act({"kind": "plan_road", "a": LTGeography.node_id(w, _tool_a.x, _tool_a.y), "b": LTGeography.node_id(w, _tool_b.x, _tool_b.y)})
+		"plot":
+			r = main.act({"kind": "plot_lots", "c0": _tool_a.x, "r0": _tool_a.y, "c1": _tool_b.x, "r1": _tool_b.y, "zone": plot_zone})
+		"unplot":
+			var lid: int = LTGeography.lot_at(w, _tool_a.x, _tool_a.y)
+			r = main.act({"kind": "unplot", "lot": lid}) if lid >= 0 else {"message": "There is no lot there."}
+	if not r.is_empty():
+		main.hud.show_toast(str(r.get("message", "")))
+
+
+func _show_preview() -> void:
+	if preview_mi == null:
+		return
+	preview_mi.visible = true
+	var mat: StandardMaterial3D = preview_mi.material_override
+	if tool == "road":
+		var pa: Vector3 = Vector3(float(_tool_a.x) * CELL, 0.2, float(_tool_a.y) * CELL)
+		var pb: Vector3 = Vector3(float(_tool_b.x) * CELL, 0.2, float(_tool_b.y) * CELL)
+		var horiz: bool = _tool_a.y == _tool_b.y
+		var length: float = pa.distance_to(pb) + ROAD_W
+		(preview_mi.mesh as BoxMesh).size = Vector3(length, 0.2, ROAD_W) if horiz else Vector3(ROAD_W, 0.2, length)
+		preview_mi.position = (pa + pb) * 0.5
+		mat.albedo_color = Color(1.0, 0.85, 0.2, 0.55)
+	else:
+		var c0: int = mini(_tool_a.x, _tool_b.x)
+		var c1: int = maxi(_tool_a.x, _tool_b.x)
+		var r0: int = mini(_tool_a.y, _tool_b.y)
+		var r1: int = maxi(_tool_a.y, _tool_b.y)
+		(preview_mi.mesh as BoxMesh).size = Vector3(float(c1 - c0 + 1) * CELL - ROAD_W, 0.2, float(r1 - r0 + 1) * CELL - ROAD_W)
+		preview_mi.position = Vector3((float(c0 + c1) * 0.5 + 0.5) * CELL, 0.2, (float(r0 + r1) * 0.5 + 0.5) * CELL)
+		mat.albedo_color = (_zone_color(plot_zone) if tool == "plot" else Color(0.9, 0.3, 0.25)) * Color(1, 1, 1, 0.6)
+
+
+func _build_tool_meshes() -> void:
+	preview_mi = MeshInstance3D.new()
+	preview_mi.mesh = BoxMesh.new()
+	var pm: StandardMaterial3D = StandardMaterial3D.new()
+	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	preview_mi.material_override = pm
+	preview_mi.visible = false
+	extra_root.add_child(preview_mi)
+	# the survey grid: where roads can go, shown only while a build tool is in hand
+	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
+	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
+	var im: ImmediateMesh = ImmediateMesh.new()
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	for i in cols + 1:
+		im.surface_add_vertex(Vector3(float(i) * CELL, 0.12, 0.0))
+		im.surface_add_vertex(Vector3(float(i) * CELL, 0.12, float(rows) * CELL))
+	for j in rows + 1:
+		im.surface_add_vertex(Vector3(0.0, 0.12, float(j) * CELL))
+		im.surface_add_vertex(Vector3(float(cols) * CELL, 0.12, float(j) * CELL))
+	im.surface_end()
+	grid_mi = MeshInstance3D.new()
+	grid_mi.mesh = im
+	var gm: StandardMaterial3D = StandardMaterial3D.new()
+	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gm.albedo_color = Color(1.0, 1.0, 1.0, 0.25)
+	grid_mi.material_override = gm
+	grid_mi.visible = tool != "look"
+	extra_root.add_child(grid_mi)
 
 
 func _pick(screen: Vector2) -> void:
@@ -1257,10 +1486,8 @@ func _pick(screen: Vector2) -> void:
 	var g: Vector3 = from + dir * t
 	var col: int = int(floor(g.x / CELL))
 	var row: int = int(floor(g.z / CELL))
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
-	if col >= 0 and col < cols and row >= 0 and row < rows:
-		var lid: int = row * cols + col
+	var lid: int = LTGeography.lot_at(w, col, row)
+	if lid >= 0:
 		select_lot(lid)
 		main.hud.inspect("lot", lid)
 
@@ -1275,10 +1502,11 @@ func select_lot(lid: int) -> void:
 
 
 func focus_lot(lid: int) -> void:
-	target = lot_center(lid)
-	dist = minf(dist, 60.0)
+	if lid < 0:
+		return
+	g_target = lot_center(lid)
+	g_dist = minf(g_dist, 60.0)
 	select_lot(lid)
-	_update_camera()
 
 
 func focus_sim(cid: int, hour: float) -> void:
@@ -1286,12 +1514,14 @@ func focus_sim(cid: int, hour: float) -> void:
 	if c.is_empty():
 		return
 	var plan: Dictionary = sim_plan(c, hour if _watch_mode else 12.5)
-	target = plan["pos"]
-	if not bool(plan["visible"]) or target.x < 0.0:
-		# away at work out of town or asleep: show their home instead
+	var goal: Vector3 = plan["pos"]
+	var ms: Vector2 = map_size()
+	if not bool(plan["visible"]) or goal.x < 0.0 or goal.z < 0.0 or goal.x > ms.x or goal.z > ms.y:
+		# away at work out of town, on the highway, or asleep: show their home instead
 		var hl: int = int(w.hh(int(c["household"]))["lot"])
-		if hl >= 0:
-			target = lot_center(hl)
-	dist = minf(dist, 45.0)
-	_update_camera()
+		if hl < 0:
+			return
+		goal = lot_center(hl)
+	g_target = goal
+	g_dist = minf(g_dist, 45.0)
 	_refresh_tier()

@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-21T21:54:06 by tests/scenarios.gd.
+Generated 2026-11-21T22:08:43 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Faith Gonzalez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 104 days in the county jail. Job before: line cook, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 104 days in the county jail.
@@ -43,8 +43,8 @@ Generated 2026-11-21T21:54:06 by tests/scenarios.gd.
 [PASS] Every business type opens, runs for two months, and keeps the ledger balanced
   Opened: grocery, cafe, general_store, farm, construction, clinic, pharmacy, private_school, repair_shop, factory, warehouse, trucking, hotel, bar, childcare, funeral_home, law_office, real_estate, mill, bakery, bank. Could not open: none. Still open after 60 days: 21.
 
-[PASS] Found a town: one resident and a lottery win become a settled, incorporated town with an election
-  Started with 1 resident and $1,000,000. Mayor's house on lot 20. Incorporated on day 477. Residents after two years: 36. Election: Sam Dakota won the town's first election with 60% of the vote against Matthew Lopez. Milestones: ["home", "first_settler", "incorporated", "balanced", "first_business"]
+[PASS] Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes
+  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 27 lots. Mayor's house on lot 26. Incorporated on day 484. Residents after two years: 47. Election: Sam Dakota won the town's first election with 70% of the vote against William Gonzalez. Milestones: ["home", "first_settler", "first_business", "incorporated", "balanced"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
   Day one reads 11-21. The game day for today is 1. Forty days later it reads month 12 of 2026.

@@ -47,6 +47,7 @@ func setup(p_main: Node) -> void:
 	_build_left()
 	_build_right()
 	_build_feed()
+	_build_tools()
 	# a notice card that stops time but never blocks the rest of the screen
 	notice = PanelContainer.new()
 	notice.anchor_left = 0.5
@@ -296,6 +297,50 @@ func _build_right() -> void:
 	right.visible = false
 
 
+var tool_btns: Dictionary = {}
+var tool_bar: PanelContainer
+var zone_opt: OptionButton
+
+
+## Build tools: look around, draw roads, plot lots, take lots back.
+func _build_tools() -> void:
+	tool_bar = PanelContainer.new()
+	tool_bar.anchor_left = 1.0
+	tool_bar.anchor_right = 1.0
+	tool_bar.anchor_top = 1.0
+	tool_bar.anchor_bottom = 1.0
+	tool_bar.offset_left = -560
+	tool_bar.offset_right = -8
+	tool_bar.offset_top = -52
+	tool_bar.offset_bottom = -8
+	root.add_child(tool_bar)
+	var hb: HBoxContainer = HBoxContainer.new()
+	tool_bar.add_child(hb)
+	for t in [["look", "Look", "Click lots and people to inspect them. Drag with right mouse to turn."], ["road", "Draw road", "Drag along the survey grid to draw a straight road. It goes out to bid and a contractor builds it."], ["plot", "Plot lots", "Drag over open land beside a road to mark lots in the chosen zone."], ["unplot", "Remove lot", "Click an empty lot the city still owns to return it to prairie."]]:
+		var b: Button = _btn(t[1], func(): _set_tool(t[0]), t[2])
+		b.toggle_mode = true
+		tool_btns[t[0]] = b
+		hb.add_child(b)
+	zone_opt = OptionButton.new()
+	for z in LTGeography.ZONES:
+		if z != "none":
+			zone_opt.add_item(z)
+	zone_opt.item_selected.connect(func(i): main.view.plot_zone = zone_opt.get_item_text(i))
+	zone_opt.focus_mode = Control.FOCUS_NONE
+	hb.add_child(zone_opt)
+	_set_tool("look")
+
+
+func _set_tool(t: String) -> void:
+	main.view.set_tool(t)
+	main.view.plot_zone = zone_opt.get_item_text(zone_opt.selected)
+	for k in tool_btns:
+		(tool_btns[k] as Button).button_pressed = k == t
+	zone_opt.visible = t == "plot"
+	if t != "look":
+		show_toast({"road": "Drag to draw a straight road.", "plot": "Drag over open land beside a road.", "unplot": "Click an empty city lot to take it back."}[t])
+
+
 func _build_feed() -> void:
 	feed_box = VBoxContainer.new()
 	feed_box.anchor_left = 0.0
@@ -450,7 +495,7 @@ func show_setup(first: bool = false) -> void:
 
 func _welcome() -> void:
 	if str(w().mode.get("start", "classic")) == "founder":
-		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nZone some land residential and settlers will come, buy lots, and build their own homes. Put the mayor's house out to bid on the Projects tab. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nClick a lot to zone it. Press [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
+		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nUse [b]Draw road[/b] (bottom right) to lay out streets off the county road; contractors bid to build them. Then [b]Plot lots[/b] beside your roads and pick a zone. Settlers will come, buy residential lots, and build their own homes. Put the mayor's house out to bid on the Projects tab. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
 		notice.visible = true
 		return
 	notice_text.text = "[b]Welcome, Mayor of %s.[/b]\nAbout %d people live here. Most drive to the next town to work and shop. There is no grocery, no school, no clinic.\nYou cannot build any of that yourself. Zone land, set laws, answer petitions, and put public projects out to bid. The people decide the rest, and every big decision they make is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Watch[/b] to see a single day up close. The Help tab has the controls.%s" % [w().city["name"], w().alive_count(), "\nThis town holds elections. Keep the people's trust to stay mayor." if bool(w().mode.get("elections", false)) else ""]
@@ -566,6 +611,7 @@ func _tab_mayor() -> void:
 	box.add_child(_h("Land, bonds and elections"))
 	var cols_n: int = int(ww.config["lot_cols"])
 	var land: HBoxContainer = HBoxContainer.new()
+	land.visible = not bool(ww.config.get("open_land", false))
 	land.add_child(_btn("Plot new land (%d lots, %s)" % [cols_n, _money(cols_n * LTMoney.dollars(9000.0))], func():
 		var r: Dictionary = main.act({"kind": "annex"})
 		if bool(r["ok"]):
@@ -1176,7 +1222,7 @@ func _tab_help() -> void:
 	box.add_child(_rtl("""You are the mayor of [b]%s[/b]. You do not build the town. The people do.
 
 [b]What you can do[/b]
-Zone empty lots (click a lot). Pass laws and set taxes on the Mayor tab. Publish a city need with incentives. Answer petitions on the Requests tab. Put public projects out to bid and award them on the Projects tab. Borrow money for the city. Watch anyone.
+Zone empty lots (click a lot). In a founded town, draw roads and plot lots anywhere with the tools at the bottom right. Pass laws and set taxes on the Mayor tab. Publish a city need with incentives. Answer petitions on the Requests tab. Put public projects out to bid and award them on the Projects tab. Borrow money for the city. Watch anyone.
 
 [b]What you cannot do[/b]
 Place a business, hire or fire anyone, set a shop price, or force anyone to stay. Sims decide all of that, and every big decision is written in their history with the reason.

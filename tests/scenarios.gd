@@ -333,9 +333,15 @@ func _founder_mode() -> void:
 	w.new_town(SEED, {}, {"start": "founder", "elections": true, "town_name": "New Hope", "player_name": "Sam Dakota"})
 	var start_pop: int = w.residents()
 	var start_cash: int = w.ledger.bal("city")
-	for i in 16:
-		w.apply_action({"kind": "zone_lot", "lot": i, "zone": "residential" if i < 14 else "commercial"})
-	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": 20})
+	var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
+	var only_highway: bool = w.lots.is_empty() and w.streets.size() == 1
+	var r1: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 4)})
+	var r2: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 8), "b": n.call(22, 8)})
+	w.apply_action({"kind": "plot_lots", "c0": 11, "r0": 7, "c1": 21, "r1": 8, "zone": "residential"})
+	w.apply_action({"kind": "plot_lots", "c0": 11, "r0": 11, "c1": 14, "r1": 11, "zone": "commercial"})
+	w.apply_action({"kind": "plot_lots", "c0": 9, "r0": 5, "c1": 9, "r1": 5, "zone": "civic"})
+	var mh_lot: int = LTGeography.lot_at(w, 9, 5)
+	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": mh_lot})
 	var inc_day: int = -1
 	for d in 730:
 		for p in w.projects:
@@ -352,8 +358,8 @@ func _founder_mode() -> void:
 	for e in w.chronicle:
 		if str(e["kind"]) == "election" and (str(e["text"]).contains("won") or str(e["text"]).contains("lost")):
 			election = str(e["text"])
-	var ok: bool = start_pop == 1 and start_cash == LTMoney.dollars(1000000.0) and int(w.player["home_lot"]) == 20 and inc_day > 0 and w.residents() >= 20 and election != ""
-	_check("Found a town: one resident and a lottery win become a settled, incorporated town with an election", ok, "Started with %d resident and %s. Mayor's house on lot %d. Incorporated on day %d. Residents after two years: %d. Election: %s Milestones: %s" % [start_pop, LTMoney.fmt(start_cash), int(w.player["home_lot"]), inc_day, w.residents(), election, w.city.get("milestones", {}).keys()], w)
+	var ok: bool = only_highway and bool(r1["ok"]) and bool(r2["ok"]) and start_pop == 1 and start_cash == LTMoney.dollars(1000000.0) and int(w.player["home_lot"]) == mh_lot and inc_day > 0 and w.residents() >= 20 and election != ""
+	_check("Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes", ok, "Started with %d resident, %s, no lots, and %d road. Drew %s and %s. Plotted %d lots. Mayor's house on lot %d. Incorporated on day %d. Residents after two years: %d. Election: %s Milestones: %s" % [start_pop, LTMoney.fmt(start_cash), 1, w.streets[1]["name"], w.streets[2]["name"], w.lots.size(), int(w.player["home_lot"]), inc_day, w.residents(), election, w.city.get("milestones", {}).keys()], w)
 
 
 func _real_calendar() -> void:
