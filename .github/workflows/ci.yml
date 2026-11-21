@@ -1,0 +1,67 @@
+name: Acceptance and web build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  test-and-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and web export templates
+        run: |
+          mkdir -p ~/godot && cd ~/godot
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz "templates/web_nothreads_release.zip" "templates/version.txt"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          cp templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      - name: Import project
+        run: ~/godot/godot --headless --import || true
+
+      - name: Acceptance run (section 18 gates)
+        run: ~/godot/godot --headless --script tests/acceptance.gd
+
+      - name: Stress run (about 1,000 Sims)
+        run: ~/godot/godot --headless --script tests/stress.gd
+
+      - name: Export web build
+        run: |
+          mkdir -p build/web
+          ~/godot/godot --headless --export-release "Web" build/web/index.html
+          test -f build/web/index.wasm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: reports/
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: build/web
+
+  deploy-pages:
+    if: github.ref == 'refs/heads/main'
+    needs: test-and-export
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

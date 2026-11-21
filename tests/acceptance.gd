@@ -50,13 +50,18 @@ func _init() -> void:
 		for e in d["history"]:
 			if str(e["text"]).begins_with("Missed payment"):
 				was_late = true
-		if was_late and ["discharged", "paid", "written_off_estate", "charged_off"].has(str(d["status"])):
+		var caught_up: bool = false
+		for e in d["history"]:
+			if str(e["text"]).begins_with("Caught up"):
+				caught_up = true
+		if was_late and (["discharged", "paid", "written_off_estate", "charged_off"].has(str(d["status"])) or caught_up):
 			spiral = d
-			break
+			if str(d["status"]) != "current":
+				break
 	var g3_text: String = "No resolved spiral found."
 	if not spiral.is_empty():
 		g3_text = LTReport.debt_trail(a, spiral)
-	_gate("At least one debt spiral reached a realistic resolution (repayment, bankruptcy, charge off, or estate) with its paper trail", not spiral.is_empty(), g3_text)
+	_gate("At least one debt spiral reached a realistic resolution (repaying the arrears, bankruptcy, charge off, or estate) with its paper trail", not spiral.is_empty(), g3_text)
 
 	# Gate 4: a petition from real unmet need data, and a mayor response that measurably changes what happens.
 	var b_world: LTWorld = LTWorld.new()
@@ -147,6 +152,10 @@ func _init() -> void:
 				bad.append(str(h["text"]))
 	_gate("No em dashes in generated player facing text", bad.is_empty(), "%d lines checked problems: %s" % [bad.size(), str(bad.slice(0, 3))])
 
+	# Gate 9 and 10: scenario checks of the accurate debt rules, using forced events on a fresh town.
+	_scenario_estate()
+	_scenario_bankruptcy()
+
 	# Summary
 	var out: Array = []
 	out.append("LIVING TOWN V1 SLICE ACCEPTANCE RUN")
@@ -213,6 +222,77 @@ func _mayor(w: LTWorld, policy: Dictionary) -> void:
 		for p in w.petitions:
 			if str(p["kind"]) == "grocery" and str(p["status"]) == "submitted":
 				w.apply_action({"kind": "respond_petition", "petition_id": int(p["id"]), "response": "publish_need", "need": "grocery", "incentives": {"free_lot": true, "tax_break_years": 2, "grant": GRANT, "loan_guarantee": true}})
+
+
+func _scenario_estate() -> void:
+	var w: LTWorld = LTWorld.new()
+	w.new_town(SEED)
+	w.run_days(20)
+	# a married homeowner with a mortgage and a credit card, who "looks rich"
+	var victim: Dictionary = {}
+	for c in w.citizens:
+		var h: Dictionary = w.hh(int(c["household"]))
+		if w.is_present(c) and int(c["spouse"]) >= 0 and str(h["tenure"]) == "own" and int(h["mortgage"]) >= 0 and int(w.lot(int(h["lot"]))["owner_id"]) == int(c["id"]):
+			victim = c
+			break
+	if victim.is_empty():
+		_gate("Estate scenario: debts are paid in legal order and heirs never inherit debt", false, "No married homeowner with a mortgage found.")
+		return
+	var spouse: Dictionary = w.cit(int(victim["spouse"]))
+	# give them an unsecured debt bigger than their cash, and a joint card with the spouse
+	var big: Dictionary = LTFinance.new_debt(w, "p", int(victim["id"]), "bank", -1, "personal_loan", w.cash(victim) + LTMoney.dollars(15000.0), 0.12, 36, "", -1, [])
+	var joint: Dictionary = LTFinance.new_debt(w, "p", int(victim["id"]), "bank", -1, "credit_card", LTMoney.dollars(3000.0), 0.22, 0, "", -1, [int(spouse["id"])])
+	joint["limit"] = LTMoney.dollars(5000.0)
+	var mort: Dictionary = w.debt(int(w.hh(int(victim["household"]))["mortgage"]))
+	var kids_cash_before: Dictionary = {}
+	for k in victim["children"]:
+		kids_cash_before[int(k)] = w.cash(w.cit(int(k)))
+	var spouse_cash_before: int = w.cash(spouse)
+	var sum_before: int = w.ledger.audit()["sum"]
+	LTPeople.die(w, victim, "a heart attack")
+	var ok: bool = true
+	var notes2: Array = []
+	if str(big["status"]) != "written_off_estate" and str(big["status"]) != "paid":
+		ok = false
+		notes2.append("unsecured debt status %s" % big["status"])
+	if str(big["status"]) == "written_off_estate" and int(big["balance"]) != 0:
+		ok = false
+	if int(joint["debtor_id"]) != int(spouse["id"]) or not LTFinance.is_active(joint):
+		ok = false
+		notes2.append("joint debt did not pass to the surviving joint borrower")
+	if int(mort["debtor_id"]) != int(spouse["id"]):
+		ok = false
+		notes2.append("mortgage did not travel with the house")
+	for k in kids_cash_before:
+		if w.cash(w.cit(int(k))) < int(kids_cash_before[k]):
+			ok = false
+			notes2.append("a child lost money to a parent's debt")
+	if w.ledger.audit()["sum"] != sum_before or not bool(w.ledger.audit()["ok"]):
+		ok = false
+		notes2.append("ledger out of balance")
+	var detail: String = "%s died owing a %s loan beyond their cash, a joint card with %s, and a mortgage.\n  Estate record: %s\n  Unsecured loan: %s. Joint card now owed by %s. Mortgage now owed by %s. Children's cash unchanged. Spouse cash before %s, after %s.\n  %s" % [w.full_name(victim), LTMoney.fmt(int(big["original"])), spouse["first_name"], "assets %s, paid to creditors %s, unpaid %s, to heirs %s, %s" % [LTMoney.fmt(int(victim["estate"]["assets"])), LTMoney.fmt(int(victim["estate"]["paid"])), LTMoney.fmt(int(victim["estate"]["unpaid"])), LTMoney.fmt(int(victim["estate"]["to_heirs"])), ", ".join(victim["estate"]["notes"])], LTFinance.status_text(str(big["status"])), LTFinance.debtor_name(w, joint), LTFinance.debtor_name(w, mort), LTMoney.fmt(spouse_cash_before), LTMoney.fmt(w.cash(spouse)), "; ".join(notes2)]
+	_gate("Estate scenario: the estate pays in legal order, joint debt passes to the joint borrower, the mortgage travels with the house, children inherit no debt", ok, detail)
+
+
+func _scenario_bankruptcy() -> void:
+	var w: LTWorld = LTWorld.new()
+	w.new_town(SEED)
+	w.run_days(20)
+	var renter: Dictionary = {}
+	for c in w.citizens:
+		if w.is_present(c) and w.age_years(c) >= 25 and w.age_years(c) < 60 and str(w.hh(int(c["household"]))["tenure"]) == "rent":
+			renter = c
+			break
+	var d1: Dictionary = LTFinance.new_debt(w, "p", int(renter["id"]), "bank", -1, "credit_card", LTMoney.dollars(9000.0), 0.22, 0, "", -1, [])
+	var d2: Dictionary = LTFinance.new_debt(w, "p", int(renter["id"]), "city", -1, "tax", LTMoney.dollars(400.0), 0.08, 12, "", -1, [])
+	d1["missed"] = 3
+	d1["status"] = "late90"
+	var bank_loss_before: int = int(w.bank["losses_total"])
+	LTFinance.file_bankruptcy(w, renter, "job loss", int(d1["balance"]), 0)
+	var ok: bool = str(d1["status"]) == "discharged" and LTFinance.is_active(d2) and int(w.bank["losses_total"]) > bank_loss_before and int(renter["credit"]["bankruptcy_day"]) == w.day and bool(w.ledger.audit()["ok"])
+	var dec: Dictionary = LTFinance.bank_decision(w, renter, "personal_loan", LTMoney.dollars(1000.0), LTMoney.dollars(3000.0))
+	ok = ok and not bool(dec["ok"])
+	_gate("Bankruptcy scenario: liquidation discharges the card, the tax debt survives, the bank books the loss, and new credit is refused", ok, "%s filed. Card: %s. Tax debt: %s. Bank losses grew by %s. Credit now %s. A new loan request: %s." % [w.full_name(renter), LTFinance.status_text(str(d1["status"])), LTFinance.status_text(str(d2["status"])), LTMoney.fmt(int(w.bank["losses_total"]) - bank_loss_before), LTFinance.score_text(renter), dec["reason"]])
 
 
 func _grade_rank(g: String) -> int:

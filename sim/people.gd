@@ -230,6 +230,7 @@ static func make_adult(w: LTWorld, hid: int, last_name: String, sex: String, age
 static func make_child(w: LTWorld, hid: int, last_name: String, age: int, pa: Dictionary, pb: Dictionary) -> Dictionary:
 	var sex: String = "F" if w.rng.randf() < 0.5 else "M"
 	var c: Dictionary = _blank_citizen(w, hid, last_name, sex, age)
+	_unique_first_name(w, c)
 	inherit_traits(w, c, pa, pb)
 	c["education"] = clampf(float(age) * 3.6 + float(c["traits"]["intelligence"] - 50) * 0.2, 0.0, 70.0)
 	_roll_skills(w, c, age)
@@ -249,6 +250,19 @@ static func make_child(w: LTWorld, hid: int, last_name: String, age: int, pa: Di
 		_relate(pb, c, "child", 80.0, 90.0)
 		_relate(c, pb, "parent", 75.0, 85.0)
 	return c
+
+
+## Families rarely reuse a first name inside one household.
+static func _unique_first_name(w: LTWorld, c: Dictionary) -> void:
+	var taken: Array = []
+	for mid in w.hh(int(c["household"]))["members"]:
+		if int(mid) != int(c["id"]):
+			taken.append(str(w.cit(int(mid))["first_name"]))
+	var pool: Array = FEMALE_FIRST if str(c["sex"]) == "F" else MALE_FIRST
+	var tries: int = 0
+	while taken.has(str(c["first_name"])) and tries < 20:
+		c["first_name"] = pool[w.rng.randi_range(0, pool.size() - 1)]
+		tries += 1
 
 
 static func inherit_traits(w: LTWorld, c: Dictionary, pa: Dictionary, pb: Dictionary) -> void:
@@ -297,7 +311,7 @@ static func _seed_finances(w: LTWorld, c: Dictionary) -> void:
 		w.log_sim(c, "Retired. Lives on a pension and savings.", true)
 	w.ledger.pay("outside", w.acct_p(c), LTMoney.dollars(savings), "starting_savings")
 	if age < 65:
-		var employ_p: float = 0.62 + float(t["discipline"] - 50) / 200.0 + float(c["education"] - 50) / 250.0
+		var employ_p: float = 0.8 + float(t["discipline"] - 50) / 250.0 + float(c["education"] - 50) / 300.0
 		if w.rng.randf() < employ_p:
 			var j: Dictionary = pick_outside_job(w, c)
 			set_job(w, c, "outside", -1, str(j["title"]), _outside_wage(w, c, j), str(j["skill"]))
@@ -919,13 +933,13 @@ static func _dies_today(w: LTWorld, c: Dictionary) -> bool:
 	var health: float = float(c["needs"]["health"])
 	var annual: float = 0.0006
 	if age >= 90:
-		annual = 0.22
+		annual = 0.25
 	elif age >= 80:
-		annual = 0.075
+		annual = 0.09
 	elif age >= 70:
-		annual = 0.03
+		annual = 0.036
 	elif age >= 60:
-		annual = 0.012
+		annual = 0.013
 	elif age >= 40:
 		annual = 0.003
 	elif age < 1:
@@ -1021,9 +1035,10 @@ static func _maybe_birth(w: LTWorld, m: Dictionary) -> Dictionary:
 	score *= [1.3, 1.1, 0.7, 0.35, 0.15, 0.05][mini(kids, 5)]
 	score *= 0.6 + float(m["traits"]["kindness"] + sp["traits"]["kindness"]) / 250.0
 	score *= 0.8 + LTCivic.family_friendliness(w) * 0.4
-	if w.rng.randf() >= 0.00095 * score:
+	if w.rng.randf() >= 0.0005 * score:
 		return {}
 	var baby: Dictionary = _blank_citizen(w, int(h["id"]), str(sp["last_name"]), "F" if w.rng.randf() < 0.5 else "M", 0)
+	_unique_first_name(w, baby)
 	baby["age_days"] = 0
 	inherit_traits(w, baby, m, sp)
 	_roll_skills(w, baby, 0)

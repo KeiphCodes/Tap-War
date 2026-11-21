@@ -578,7 +578,13 @@ static func _affected_for(w: LTWorld, kind: String) -> Dictionary:
 
 
 static func _generate_petitions(w: LTWorld) -> void:
+	# people need a few weeks of living with a problem before someone organizes
+	if w.day < 14:
+		return
+	var started_this_week: bool = false
 	for kind in PETITION_KINDS:
+		if started_this_week:
+			return
 		var open: bool = false
 		for p in w.petitions:
 			if str(p["kind"]) == kind and ["gathering", "submitted", "approved", "approved_moved", "approved_smaller", "published"].has(str(p["status"])):
@@ -609,6 +615,7 @@ static func _generate_petitions(w: LTWorld) -> void:
 		if best < 55.0:
 			continue
 		_start_petition(w, kind, starter, a)
+		started_this_week = true
 
 
 static func _start_petition(w: LTWorld, kind: String, starter: Dictionary, a: Dictionary) -> void:
@@ -693,9 +700,10 @@ static func _grow_signatures(w: LTWorld) -> void:
 			var trust_starter: float = 50.0
 			if c["rel"].has(int(p["starter"])):
 				trust_starter = float(c["rel"][int(p["starter"])]["trust"])
-			var prob: float = 0.03 + float(c["traits"]["sociability"]) / 2000.0 + trust_starter / 3000.0 + clampf(float(p["strength"]) / 400.0, 0.0, 0.05)
+			# word spreads slowly: a neighbor hears about it, thinks it over, signs
+			var prob: float = 0.006 + float(c["traits"]["sociability"]) / 8000.0 + trust_starter / 9000.0 + clampf(float(p["strength"]) / 2000.0, 0.0, 0.02)
 			if not starter.is_empty():
-				prob += float(starter["traits"]["sociability"]) / 4000.0
+				prob += float(starter["traits"]["sociability"]) / 10000.0
 			if w.rng.randf() < prob:
 				p["signers"].append(int(aid))
 				c["signed"].append(int(p["id"]))

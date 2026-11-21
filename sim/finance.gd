@@ -951,11 +951,22 @@ static func settle_estate(w: LTWorld, c: Dictionary) -> void:
 					_dhist(w, md, "Paid %s from the house sale in the estate." % LTMoney.fmt(mp))
 	# 2. funeral and administration
 	var funeral: int = w.ledger.pay(estate, "outside", FUNERAL_COST + ESTATE_ADMIN, "funeral_admin")
-	if funeral < FUNERAL_COST + ESTATE_ADMIN and not heirs.is_empty():
+	if funeral < FUNERAL_COST + ESTATE_ADMIN:
 		var rest: int = FUNERAL_COST + ESTATE_ADMIN - funeral
-		var by: Dictionary = heirs[0]
-		var p: int = w.ledger.pay(w.acct_p(by), "outside", rest, "funeral_admin")
-		w.log_sim(by, "Paid %s toward the funeral because the estate could not cover it." % LTMoney.fmt(p), true)
+		var covered: bool = false
+		for by in heirs:
+			if w.age_years(by) < 18:
+				continue
+			# family paying for the funeral is a choice, scored like any other
+			var duty: float = float(by["traits"]["kindness"]) * 0.5 + float(by["needs"]["family"]) * 0.3 + 20.0
+			var spare: int = w.cash(by) - LTMoney.dollars(800.0)
+			if duty > 45.0 and spare > 0:
+				var p: int = w.ledger.pay(w.acct_p(by), "outside", mini(rest, spare), "funeral_admin")
+				w.log_sim(by, "Chose to pay %s toward %s's funeral because the estate could not cover it. Reason: duty and love, not law." % [LTMoney.fmt(p), c["first_name"]], true)
+				covered = true
+				break
+		if not covered:
+			report.append("the funeral home took a %s loss" % LTMoney.fmt(rest))
 	# 3. business shares carry their debts with them
 	for bid in c["owns"].duplicate():
 		var b: Dictionary = w.biz(int(bid))
