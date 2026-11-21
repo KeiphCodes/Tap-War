@@ -6,6 +6,18 @@ You are the mayor of Prairie Hollow, a town of about 100 people. You zone land, 
 
 This repository builds everything in `docs/Living_Town_design_document.md` (locked 2026-11-20), not only the V1 slice: 21 Sim run business types and a city chartered local bank, supply chains from farm to mill to bakery to grocery, crime with police, courts and jail, pregnancy, injuries, depression and addiction with treatment, divorce and child support, the full law list, city bonds, a county bus, annexing new land into new districts, the county economy around town with its booms, recessions and failing employers, storms and fires, a weekly town newspaper, optional elections, and procedural sound. Built in Godot 4.4.1. What is done, what is simplified, and what waits for V2 is listed in `docs/STATUS.md`. Every judgment call made while building it is in `docs/DECISIONS.md`.
 
+## Game modes
+
+Start a new town from the **New town** button (it also opens when the game starts):
+
+- **Found a town:** you won the lottery ($250,000 hard, $1,000,000, or $5,000,000 easy) and bought empty prairie on a county road. Population: 1, and that's you, living in a camper until the mayor's house is built. Zone land and settlers come on their own, buy lots, and build their own homes. At 25 residents the town incorporates and city taxes and services begin.
+- **Prairie Hollow:** start as mayor of a town of about 100 people with no grocery, school or clinic.
+- Either way, choose **permanent mayor** or **elected mayor** (win the first vote after incorporation, then every four years, and watch out for recalls).
+- Optionally run on the **real calendar**, starting today. Time stops whenever the game is closed. **Live** runs one game second per real second, and **Today** fast forwards (only forward) until the town's date and clock match yours, then keeps running live.
+- **Milestones** on the Mayor desk track the town's big moments, from the mayor's house to 1,000 residents.
+
+For now the player is a permanent resident with no needs of their own: the only goal is running the town well.
+
 ## Play it
 
 - **Online:** https://keiphcodes.github.io/Tap-War/ (published from `main` by CI).

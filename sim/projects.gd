@@ -7,15 +7,18 @@ extends RefCounted
 const BASE_COST: Dictionary = {
 	"road_repair": 9000000, "road_patch": 3500000, "school": 52000000, "school_small": 26000000,
 	"clinic": 34000000, "clinic_small": 15000000, "park": 6000000, "apartments": 42000000,
+	"house": 22000000, "mayor_house": 30000000,
 }
 const BASE_DAYS: Dictionary = {
 	"road_repair": 45, "road_patch": 20, "school": 180, "school_small": 120,
 	"clinic": 140, "clinic_small": 90, "park": 40, "apartments": 150,
+	"house": 90, "mayor_house": 120,
 }
 const TITLES: Dictionary = {
 	"road_repair": "Rebuild %s", "road_patch": "Patch %s", "school": "Build the town school",
 	"school_small": "Build a two room schoolhouse", "clinic": "Build the town clinic",
 	"clinic_small": "Open a small health office", "park": "Build a park", "apartments": "Build a 4 unit apartment house",
+	"house": "A settler's house", "mayor_house": "Build the mayor's house",
 }
 const BID_DAYS: int = 14
 const OUTSIDE: Array = [
@@ -81,8 +84,15 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		var allowed: Array = ["civic", "mixed"]
 		if ptype == "park":
 			allowed = ["park", "civic", "mixed"]
-		elif ptype == "apartments":
+		elif ptype == "apartments" or ptype == "house":
 			allowed = ["residential", "mixed"]
+		elif ptype == "mayor_house":
+			allowed = LTGeography.ZONES.duplicate()
+			if int(w.player.get("home_lot", -1)) >= 0:
+				return {"ok": false, "message": "The mayor's house is already built."}
+			for q in w.projects:
+				if str(q["ptype"]) == "mayor_house" and not ["cancelled", "done"].has(str(q["status"])):
+					return {"ok": false, "message": "The mayor's house is already out to bid or being built."}
 		if not allowed.has(str(l["zone"])):
 			return {"ok": false, "message": "Lot %d is zoned %s. This project needs %s. Rezone it first." % [target, l["zone"], " or ".join(allowed)]}
 		p["lot"] = target
@@ -478,6 +488,25 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		p["condition_at_finish"] = LTGeography.street_condition(w, int(p["street"]))
 		p["expected_repair_days"] = expected_days_to_repair(w, int(p["street"]))
 		_event(w, p, "At this quality the street should need repair again in about %d days." % int(p["expected_repair_days"]))
+	elif ptype == "house":
+		var l2: Dictionary = w.lot(int(p["lot"]))
+		l2["use"] = "house"
+		l2["building"] = "house"
+		l2["units"] = [-1]
+		l2["condition"] = 60.0 + q * 40.0
+		l2["built_day"] = w.day
+		l2["value"] = int(p["price"]) + int(p["change_orders"]) + int(l2["value"])
+		LTFounder.settler_moves_in(w, p, l2)
+	elif ptype == "mayor_house":
+		var l3: Dictionary = w.lot(int(p["lot"]))
+		l3["use"] = "mayor_house"
+		l3["building"] = "mayor_house"
+		l3["name"] = "The Mayor's House"
+		l3["owner_kind"] = "city"
+		l3["condition"] = 60.0 + q * 40.0
+		l3["built_day"] = w.day
+		w.player["home_lot"] = int(p["lot"])
+		w.chronicle_add("%s moved out of the camper and into the mayor's house on %s." % [w.player["name"], LTGeography.lot_street(w, int(p["lot"]))["name"]], "city", true, [])
 	elif ptype == "apartments":
 		var l: Dictionary = w.lot(int(p["lot"]))
 		l["use"] = "apartment"

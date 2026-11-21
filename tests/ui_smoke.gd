@@ -7,6 +7,15 @@ func _init() -> void:
 	var main: Node = load("res://town/main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame
+	for card in main.hud.root.get_children():
+		if card is PanelContainer and card != main.hud.top_bar and card != main.hud.left and card != main.hud.right and card != main.hud.notice:
+			card.queue_free()
+	main.new_town(20261120, {"start": "founder", "elections": true, "real_calendar": true})
+	await process_frame
+	main.act({"kind": "zone_lot", "lot": 3, "zone": "residential"})
+	main.act({"kind": "define_project", "ptype": "mayor_house", "target": 0})
+	print("match: ", main.match_real_time())
+	main.set_speed(0)
 	main.new_town(20261120)
 	await process_frame
 	main.world.city["laws"]["bank_charter"] = 1.0

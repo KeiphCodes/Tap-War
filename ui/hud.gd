@@ -67,7 +67,7 @@ func setup(p_main: Node) -> void:
 	nh.add_child(_btn("OK", func(): notice.visible = false))
 	nv.add_child(nh)
 	notice.visible = false
-	_welcome()
+	show_setup(true)
 
 
 func w() -> LTWorld:
@@ -230,14 +230,15 @@ func _build_top() -> void:
 	hb.add_child(lbl_stats)
 	for i in main.SPEEDS.size():
 		var sp: Dictionary = main.SPEEDS[i]
-		var tip: String = ["Stop time to plan.", "One day in about two minutes. Watch Sims near the camera live their day.", "One day every few seconds.", "One week per step. Stops on events you care about.", "One month per step. Stops on events you care about."][i]
+		var tip: String = ["Stop time to plan. Time also stops whenever the game is closed.", "Real time: one game second per real second. Use Today to match your own date and clock.", "One day in about two minutes. Watch Sims near the camera live their day.", "One day every few seconds.", "One week per step. Stops on events you care about.", "One month per step. Stops on events you care about."][i]
 		var b: Button = _btn(str(sp["name"]), func(): main.set_speed(i), tip)
 		b.toggle_mode = true
 		speed_btns.append(b)
 		hb.add_child(b)
+	hb.add_child(_btn("Today", func(): show_toast(main.match_real_time()), "Fast forward (only forward) until the town's date and clock match yours, then run live."))
 	hb.add_child(_btn("Save", func(): show_toast(main.save_game())))
 	hb.add_child(_btn("Load", func(): show_toast(main.load_game())))
-	hb.add_child(_btn("New town", func(): main.new_town(randi() % 1000000)))
+	hb.add_child(_btn("New town", func(): show_setup()))
 	var mute: Button = _btn("Sound on", func(): pass)
 	mute.toggle_mode = true
 	mute.toggled.connect(func(v):
@@ -376,8 +377,83 @@ func show_interrupt(events: Array) -> void:
 	refresh_top()
 
 
+## The new town card: how this town is played.
+func show_setup(first: bool = false) -> void:
+	main.set_speed(0)
+	var card: PanelContainer = PanelContainer.new()
+	card.anchor_left = 0.5
+	card.anchor_right = 0.5
+	card.anchor_top = 0.5
+	card.anchor_bottom = 0.5
+	card.offset_left = -300
+	card.offset_right = 300
+	card.offset_top = -220
+	card.offset_bottom = 150
+	root.add_child(card)
+	var vb: VBoxContainer = VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	card.add_child(vb)
+	vb.add_child(_h("Start a new town"))
+	var start: OptionButton = OptionButton.new()
+	start.add_item("Found a town: you, your lottery money, and empty prairie")
+	start.add_item("Prairie Hollow: about 100 people already live here")
+	vb.add_child(start)
+	var rule: OptionButton = OptionButton.new()
+	rule.add_item("Permanent mayor: the town is yours to run")
+	rule.add_item("Elected mayor: win the vote and keep the people's trust")
+	vb.add_child(rule)
+	var lotto: OptionButton = OptionButton.new()
+	lotto.add_item("Lottery win of $250,000 (hard)")
+	lotto.add_item("Lottery win of $1,000,000")
+	lotto.add_item("Lottery win of $5,000,000 (easy)")
+	lotto.selected = 1
+	vb.add_child(lotto)
+	start.item_selected.connect(func(i): lotto.visible = i == 0)
+	var cal: CheckBox = CheckBox.new()
+	cal.text = "Use the real calendar, starting today"
+	cal.button_pressed = true
+	vb.add_child(cal)
+	var hb1: HBoxContainer = HBoxContainer.new()
+	hb1.add_child(_lbl("Your name"))
+	var pname: LineEdit = LineEdit.new()
+	pname.text = "Sam Dakota"
+	pname.custom_minimum_size = Vector2(220, 0)
+	hb1.add_child(pname)
+	vb.add_child(hb1)
+	var hb2: HBoxContainer = HBoxContainer.new()
+	hb2.add_child(_lbl("Town name"))
+	var tname: LineEdit = LineEdit.new()
+	tname.text = "New Hope"
+	tname.custom_minimum_size = Vector2(220, 0)
+	hb2.add_child(tname)
+	vb.add_child(hb2)
+	vb.add_child(_lbl("Time stops whenever the game is closed. Press Today any time to fast forward to your own date and clock, then run live.", 13, Color(0.7, 0.75, 0.8)))
+	var hb3: HBoxContainer = HBoxContainer.new()
+	hb3.alignment = BoxContainer.ALIGNMENT_END
+	hb3.add_child(_btn("Keep this town" if first else "Cancel", func():
+		card.queue_free()
+		if first:
+			_welcome()))
+	hb3.add_child(_btn("Start", func():
+		var mode: Dictionary = {
+			"start": "founder" if start.selected == 0 else "classic",
+			"elections": rule.selected == 1,
+			"lottery": [LTMoney.dollars(250000.0), LTMoney.dollars(1000000.0), LTMoney.dollars(5000000.0)][lotto.selected],
+			"real_calendar": cal.button_pressed,
+			"player_name": pname.text.strip_edges() if pname.text.strip_edges() != "" else "Sam Dakota",
+			"town_name": tname.text.strip_edges() if tname.text.strip_edges() != "" else "New Hope",
+		}
+		card.queue_free()
+		main.new_town(randi() % 1000000, mode)))
+	vb.add_child(hb3)
+
+
 func _welcome() -> void:
-	notice_text.text = "[b]Welcome, Mayor of %s.[/b]\nAbout %d people live here. Most drive to the next town to work and shop. There is no grocery, no school, no clinic.\nYou cannot build any of that yourself. Zone land, set laws, answer petitions, and put public projects out to bid. The people decide the rest, and every big decision they make is written in their history with the reason.\nPress [b]Normal[/b] to start time, or [b]Watch[/b] to see a single day up close. The Help tab has the controls." % [w().city["name"], w().alive_count()]
+	if str(w().mode.get("start", "classic")) == "founder":
+		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nZone some land residential and settlers will come, buy lots, and build their own homes. Put the mayor's house out to bid on the Projects tab. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nClick a lot to zone it. Press [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
+		notice.visible = true
+		return
+	notice_text.text = "[b]Welcome, Mayor of %s.[/b]\nAbout %d people live here. Most drive to the next town to work and shop. There is no grocery, no school, no clinic.\nYou cannot build any of that yourself. Zone land, set laws, answer petitions, and put public projects out to bid. The people decide the rest, and every big decision they make is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Watch[/b] to see a single day up close. The Help tab has the controls.%s" % [w().city["name"], w().alive_count(), "\nThis town holds elections. Keep the people's trust to stay mayor." if bool(w().mode.get("elections", false)) else ""]
 	notice.visible = true
 
 
@@ -400,18 +476,24 @@ func refresh_all() -> void:
 
 func refresh_clock() -> void:
 	var h: int = int(main.hour)
-	var m: int = int((main.hour - float(h)) * 60.0)
-	lbl_date.text = "%s  %02d:%02d" % [LTCalendar.text(w().day), h, m]
+	var mf: float = (main.hour - float(h)) * 60.0
+	var m: int = int(mf)
+	if main.speed == 1:
+		lbl_date.text = "%s  %02d:%02d:%02d" % [LTCalendar.text(w().day), h, m, int((mf - float(m)) * 60.0)]
+	else:
+		lbl_date.text = "%s  %02d:%02d" % [LTCalendar.text(w().day), h, m]
 
 
 func refresh_top() -> void:
 	var ww: LTWorld = w()
 	lbl_town.text = str(ww.city["name"])
-	if main.speed == 1:
+	if main.is_hourly():
 		refresh_clock()
 	else:
 		lbl_date.text = LTCalendar.text(ww.day)
-	lbl_stats.text = "%s, %s | %d people | %s | approval %d%% | %d shops" % [LTCalendar.season(ww.day), ww.weather, ww.alive_count(), _money(ww.ledger.bal("city")), int(LTCivic.approval(ww)), ww.open_businesses().size() - ww.open_businesses("landlord").size()]
+	var pop: int = ww.residents()
+	var appr: String = "approval %d%%" % int(LTCivic.approval(ww)) if ww.alive_count() > 0 else "no one to ask yet"
+	lbl_stats.text = "%s, %s | %d %s | %s | %s | %d shops" % [LTCalendar.season(ww.day), ww.weather, pop, "resident" if pop == 1 else "people", _money(ww.ledger.bal("city")), appr, ww.open_businesses().size() - ww.open_businesses("landlord").size()]
 	lbl_stats.tooltip_text = "Season and weather, people in town, city cash, approval of the city, Sim run businesses open"
 	for i in speed_btns.size():
 		(speed_btns[i] as Button).button_pressed = i == main.speed
@@ -502,17 +584,21 @@ func _tab_mayor() -> void:
 	bond.add_child(bamt)
 	bond.add_child(_btn("Sell 20 year bonds", func(): show_toast(str(main.act({"kind": "issue_bond", "amount": int(bamt.value) * 100, "purpose": "city projects"})["message"]))))
 	box.add_child(bond)
-	var el: CheckBox = CheckBox.new()
-	el.text = "Hold elections every %d years" % int(ww.city["term_years"])
-	el.tooltip_text = "Optional mode. Off means you stay mayor for as long as you like."
-	el.button_pressed = bool(ww.city.get("elections", false))
-	el.toggled.connect(func(v): show_toast(str(main.act({"kind": "elections", "on": v})["message"])))
-	box.add_child(el)
+	box.add_child(_rtl("Mode: %s, %s. You live in %s.%s" % ["founded from nothing" if str(ww.mode.get("start", "")) == "founder" else "Prairie Hollow", "elected mayor" if bool(ww.city.get("elections", false)) else "permanent mayor", "the mayor's house" if int(ww.player.get("home_lot", -1)) >= 0 else "a camper until the mayor's house is built", "" if bool(ww.city.get("incorporated", true)) else " Not incorporated yet: %d of %d residents. The county taxes and serves the settlement until then." % [ww.residents(), LTFounder.INCORPORATE_AT]]))
 	if bool(ww.city.get("elections", false)):
 		var ch: Dictionary = ww.cit(int(ww.city.get("challenger", -1)))
 		box.add_child(_rtl("Next election %s.%s" % [LTCalendar.short(int(ww.city["next_election_day"])), " Running against you: %s, promising %s." % [sim_link(int(ch["id"])), ww.city["platform"]] if not ch.is_empty() and ww.is_present(ch) else ""]))
 	if not bool(ww.city.get("mayor_in_office", true)):
 		box.add_child(_rtl("[color=#ef6b5b][b]You lost the election.[/b] The town goes on. You can keep watching, or start a new town.[/color]"))
+	box.add_child(_sep())
+	box.add_child(_h("Milestones"))
+	var got: Dictionary = ww.city.get("milestones", {})
+	var ml: Array = []
+	for m in LTFounder.MILESTONES:
+		if str(ww.mode.get("start", "")) != "founder" and ["first_settler", "incorporated"].has(m[0]):
+			continue
+		ml.append("%s %s%s" % ["[color=#7fd37f]done[/color]" if got.has(m[0]) else "[color=#6a737d]open[/color]", m[1], " (%s)" % LTCalendar.short(int(got[m[0]])) if got.has(m[0]) else ""])
+	box.add_child(_rtl("\n".join(ml)))
 	box.add_child(_sep())
 	box.add_child(_h("Laws"))
 	box.add_child(_lbl("A law changes the numbers Sims and businesses decide with. It never sets an outcome. Each change shows an estimate first, and the City tab tracks what really happened.", 13, Color(0.7, 0.75, 0.8)))
@@ -734,6 +820,8 @@ func _tab_projects() -> void:
 	box.add_child(_lbl("The city never builds. Define a project and a budget ceiling, put it out to bid, then pick a contractor. Cheapest is a choice, not the default.", 13, Color(0.7, 0.75, 0.8)))
 	var types: OptionButton = OptionButton.new()
 	var tlist: Array = ["road_repair", "road_patch", "school", "school_small", "clinic", "clinic_small", "park"]
+	if int(ww.player.get("home_lot", -1)) < 0:
+		tlist.insert(0, "mayor_house")
 	for t in tlist:
 		types.add_item("%s (about %s)" % [str(LTProjects.TITLES[t]).replace(" %s", "").replace("%s", "a street"), _money(int(LTProjects.BASE_COST[t]))])
 	box.add_child(types)
@@ -746,12 +834,15 @@ func _tab_projects() -> void:
 				tgt.add_item("%s (condition %d)" % [st["name"], int(LTGeography.street_condition(ww, int(st["id"])))])
 				tgt.set_item_metadata(tgt.item_count - 1, int(st["id"]))
 		else:
+			var zl: Array = ["civic", "mixed", "park"] if pt == "park" else ["civic", "mixed"]
+			if pt == "mayor_house":
+				zl = LTGeography.ZONES
 			for l in ww.lots:
-				if str(l["use"]) == "empty" and ["civic", "mixed", "park"].has(str(l["zone"])):
+				if str(l["use"]) == "empty" and zl.has(str(l["zone"])):
 					tgt.add_item("Lot %d (%s, %s)" % [l["id"], LTGeography.lot_street(ww, int(l["id"]))["name"], l["zone"]])
 					tgt.set_item_metadata(tgt.item_count - 1, int(l["id"]))
 			if tgt.item_count == 0:
-				tgt.add_item("No empty civic lot. Rezone one first.")
+				tgt.add_item("No empty lot zoned for this. Rezone one first.")
 				tgt.set_item_metadata(0, -1)
 	fill_targets.call()
 	types.item_selected.connect(func(_i): fill_targets.call())
@@ -1378,6 +1469,8 @@ func _lot_text(id: int) -> String:
 			t += "Business: %s.\n" % biz_link(int(l["ref"]))
 		"civic":
 			t += "City %s.\n" % l["building"]
+		"mayor_house":
+			t += "The mayor's house. %s lives here.\n" % w().player.get("name", "The mayor")
 		"site", "reserved":
 			t += "Project: [url=proj:%d]%s[/url].\n" % [int(l["ref"]), ww.projects[int(l["ref"])]["title"]]
 		"empty":

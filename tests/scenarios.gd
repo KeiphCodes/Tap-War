@@ -23,6 +23,8 @@ func _init() -> void:
 	_storms_and_fires()
 	_save_load_full()
 	_every_type()
+	_founder_mode()
+	_real_calendar()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -249,7 +251,7 @@ func _election() -> void:
 	w.run_days(75)
 	var held: bool = false
 	for e in w.chronicle:
-		if str(e["kind"]) == "election" and (str(e["text"]).contains("won reelection") or str(e["text"]).contains("lost the election")):
+		if str(e["kind"]) == "election" and (str(e["text"]).contains(" won ") or str(e["text"]).contains("lost the election")):
 			held = true
 	_check("Elections mode: a challenger runs on real grievances, Sims vote, the result stands", held, "Challenger: %s. Platform: %s. Mayor still in office: %s." % [w.full_name(w.cit(int(w.city.get("challenger", -1)))), w.city.get("platform", ""), w.city["mayor_in_office"]], w)
 
@@ -324,6 +326,46 @@ func _every_type() -> void:
 		if str(b["status"]) == "open" and str(b["type"]) != "landlord":
 			open_n += 1
 	_check("Every business type opens, runs for two months, and keeps the ledger balanced", missing.is_empty(), "Opened: %s. Could not open: %s. Still open after 60 days: %d." % [", ".join(made), ", ".join(missing) if not missing.is_empty() else "none", open_n], w)
+
+
+func _founder_mode() -> void:
+	var w: LTWorld = LTWorld.new()
+	w.new_town(SEED, {}, {"start": "founder", "elections": true, "town_name": "New Hope", "player_name": "Sam Dakota"})
+	var start_pop: int = w.residents()
+	var start_cash: int = w.ledger.bal("city")
+	for i in 16:
+		w.apply_action({"kind": "zone_lot", "lot": i, "zone": "residential" if i < 14 else "commercial"})
+	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": 20})
+	var inc_day: int = -1
+	for d in 730:
+		for p in w.projects:
+			if str(p["status"]) == "review" and not bool(p["private"]):
+				var pick: int = 0
+				for i in p["bids"].size():
+					if int(p["bids"][i]["price"]) < int(p["bids"][pick]["price"]):
+						pick = i
+				w.apply_action({"kind": "award_bid", "project_id": int(p["id"]), "bid_index": pick})
+		w.tick_day()
+		if inc_day < 0 and bool(w.city["incorporated"]):
+			inc_day = w.day
+	var election: String = ""
+	for e in w.chronicle:
+		if str(e["kind"]) == "election" and (str(e["text"]).contains("won") or str(e["text"]).contains("lost")):
+			election = str(e["text"])
+	var ok: bool = start_pop == 1 and start_cash == LTMoney.dollars(1000000.0) and int(w.player["home_lot"]) == 20 and inc_day > 0 and w.residents() >= 20 and election != ""
+	_check("Found a town: one resident and a lottery win become a settled, incorporated town with an election", ok, "Started with %d resident and %s. Mayor's house on lot %d. Incorporated on day %d. Residents after two years: %d. Election: %s Milestones: %s" % [start_pop, LTMoney.fmt(start_cash), int(w.player["home_lot"]), inc_day, w.residents(), election, w.city.get("milestones", {}).keys()], w)
+
+
+func _real_calendar() -> void:
+	var w: LTWorld = LTWorld.new()
+	w.new_town(SEED, {}, {"real_calendar": true})
+	var today: Dictionary = Time.get_date_dict_from_system()
+	var first_ok: bool = LTCalendar.year(1) == int(today["year"]) and LTCalendar.month_index(1) == int(today["month"]) - 1 and LTCalendar.day_of_month(1) == mini(int(today["day"]), 28 if int(today["month"]) == 2 else 31)
+	var target: int = LTCalendar.game_day_for_today()
+	w.run_days(40)
+	var later: Dictionary = {"y": LTCalendar.year(w.day), "m": LTCalendar.month_index(w.day)}
+	LTCalendar.apply({})
+	_check("Real calendar: day one is today's date, and the date to match is found exactly", first_ok and target == 1, "Day one reads %s. The game day for today is %d. Forty days later it reads month %d of %d." % ["%d-%d" % [int(today["month"]), int(today["day"])], target, int(later["m"]) + 1, int(later["y"])], w)
 
 
 func _save_load_full() -> void:

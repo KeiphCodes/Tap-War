@@ -47,6 +47,16 @@ Keith gave full permission to make the calls needed to finish. These are the one
 40. **Sound is synthesized in code** at a low sample rate (wind, rain, birds, chimes), so there are no audio files and it runs in the browser. A mute button is in the top bar.
 41. **Performance.** Per day caches for market estimates, job seekers, debt stress, safety and open sites keep about 930 Sims near 150 ms per day. What remains is plain per Sim work, the hot loop section 14 expects to move to a faster language later.
 
+## Founding a town and real time (third pass, Keith's direction)
+
+42. **Two starts, two kinds of mayor.** "Found a town" (alone, with lottery money) and "Prairie Hollow" (about 100 people). Each can be permanent mayor or elected mayor, chosen at the start instead of toggled mid game.
+43. **The player is a permanent resident with no needs,** living in a camper until the mayor's house (a $300,000 project through bids) is built, then in the house. Their only goal is running the town. They are not a simulated Sim, so they never take a job, a loan or a vote.
+44. **Before incorporation the lottery money is the town fund.** The county taxes and serves an unincorporated settlement, so the fund only pays the town's own bills (land, roads, the mayor's house, incentives) and earns from lot sales. At 25 residents the town incorporates: city taxes, services, a clerk, and in elected mode a first election 90 days later.
+45. **Settlers build their own homes.** A family buys a zoned residential lot from the town fund at land value, hires a builder through private bids, and the bank's construction loan becomes their mortgage when they move in. Their pull is the county economy, cheap land, shops, school, clinic, safety, jobs, and paved roads, minus taxes.
+46. **Time stops when the game is closed.** No offline progress. Live speed is one game second per real second. "Today" fast forwards a few days per frame to the real date (never backward) and sets the clock to the real time of day. The real calendar has no leap days: February 29 reads as February 28.
+47. **Milestones** add goals without forcing outcomes: they only notice what the Sims and the player achieved.
+48. **Bug fixed along the way:** with nobody living in town, approval read as zero and triggered a recall election against no one. Elections now wait for incorporation.
+
 ## Scope calls
 
 23. **The outside bank** (Prairie State Bank) serves the town until the city charters a local one (item 34).

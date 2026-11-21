@@ -4,7 +4,7 @@ extends RefCounted
 ## these records. Nothing here is a scene node, so the town can run headless and
 ## grow past the starting size without changing any system.
 
-const SAVE_VERSION: int = 2
+const SAVE_VERSION: int = 3
 
 var seed_value: int = 0
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -29,6 +29,8 @@ var laws_log: Array = []      # every law change with its estimate and tracked r
 var cases: Array = []         # court cases, index == id
 var region: Dictionary = {}   # Tier 3: the county around town
 var spend_book: Dictionary = {}  # where the town spends on each service, local or outside
+var mode: Dictionary = {}     # how this town is played: start, elections, lottery, calendar
+var player: Dictionary = {}   # the founder and mayor: a permanent resident with no needs, for now
 var city: Dictionary = {}
 var bank: Dictionary = {}
 var chronicle: Array = []
@@ -55,11 +57,31 @@ static func default_config() -> Dictionary:
 		"apartment_units": 4,
 		"next_town_minutes": 25,
 		"city_start_cash": LTMoney.dollars(150000.0),
+		"calendar": {},
 		"bank_reserve": LTMoney.dollars(5000000.0),
 	}
 
 
-func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
+## Game modes. "classic" starts in Prairie Hollow with about 100 people; "founder"
+## starts on empty prairie with only the player and their lottery money.
+static func default_mode() -> Dictionary:
+	return {"start": "classic", "elections": false, "lottery": LTMoney.dollars(1000000.0), "real_calendar": false, "player_name": "Sam Dakota"}
+
+
+func residents() -> int:
+	return alive_count() + (1 if not player.is_empty() else 0)
+
+
+func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -> void:
+	mode = default_mode()
+	for k in p_mode:
+		mode[k] = p_mode[k]
+	if bool(mode["real_calendar"]) and not p_config.has("calendar"):
+		p_config = p_config.duplicate()
+		p_config["calendar"] = LTCalendar.from_today()
+	if str(mode["start"]) == "founder":
+		p_config = p_config.duplicate()
+		p_config["city_start_cash"] = 0
 	seed_value = p_seed
 	rng.seed = p_seed
 	rng.state = 0
@@ -68,6 +90,7 @@ func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
 	config = default_config()
 	for k in p_config:
 		config[k] = p_config[k]
+	LTCalendar.apply(config["calendar"])
 	ledger = LTLedger.new()
 	citizens.clear()
 	households.clear()
@@ -113,11 +136,20 @@ func new_town(p_seed: int, p_config: Dictionary = {}) -> void:
 	LTCivic.setup_city(self)
 	LTFinance.setup_bank(self)
 	LTProjects.setup_companies(self)
-	LTPeople.generate_town(self)
+	player = {"name": str(mode["player_name"]), "home_lot": -1, "since": 0, "title": "founder"}
+	city["elections"] = bool(mode["elections"])
+	if str(mode["start"]) == "founder":
+		LTFounder.setup(self)
+	else:
+		LTPeople.generate_town(self)
+		city["incorporated"] = true
 	LTEconomy.analyze_market(self)
 	ledger.tracked["city"] = {"in": {}, "out": {}}
 	city["outside_at_start"] = ledger.bal("outside")
-	chronicle_add("The town of %s begins. %d people in %d households. Most adults with jobs drive to work outside town. There is no grocery, no school, and no clinic." % [city["name"], alive_count(), households.size()], "town", true, [])
+	if str(mode["start"]) == "founder":
+		chronicle_add("%s won %s in the lottery and had an idea: start a town. They bought a stretch of prairie on the county road and parked a camper on it. Population: 1." % [player["name"], LTMoney.fmt(int(mode["lottery"]))], "town", true, [])
+	else:
+		chronicle_add("The town of %s begins. %d people in %d households, and you, the mayor. Most adults with jobs drive to work outside town. There is no grocery, no school, and no clinic." % [city["name"], alive_count(), households.size()], "town", true, [])
 
 
 # ---------------------------------------------------------------- the daily tick
@@ -147,6 +179,7 @@ func tick_day() -> void:
 	if LTCalendar.weekday(day) == "Sunday":
 		LTCivic.newspaper(self)
 	LTCivic.elections_daily(self)
+	LTFounder.daily(self)
 	LTEconomy.analyze_market(self)
 	if LTCalendar.day_of_month(day) == LTCalendar.MONTH_DAYS[LTCalendar.month_index(day)]:
 		stats_history.append(snapshot())
@@ -467,6 +500,7 @@ func to_save() -> Dictionary:
 		"city": {"city": city, "petitions": petitions, "city_needs": city_needs, "projects": projects, "companies": companies, "laws_log": laws_log},
 		"justice": {"cases": cases},
 		"region": {"region": region, "spend_book": spend_book},
+		"player": {"mode": mode, "player": player},
 	}
 
 
@@ -493,7 +527,7 @@ func load_from_file(path: String) -> Error:
 	if f.get_buffer(10).get_string_from_ascii() != "LIVINGTOWN":
 		return ERR_FILE_UNRECOGNIZED
 	var version: int = f.get_32()
-	if version != SAVE_VERSION:
+	if version < 2 or version > SAVE_VERSION:
 		return ERR_FILE_UNRECOGNIZED
 	var n: int = f.get_32()
 	var data: Dictionary = {}
@@ -533,6 +567,17 @@ func load_from_file(path: String) -> Error:
 	cases = data["justice"]["cases"]
 	region = data["region"]["region"]
 	spend_book = data["region"]["spend_book"]
+	if data.has("player"):
+		mode = data["player"]["mode"]
+		player = data["player"]["player"]
+	else:
+		mode = default_mode()
+		player = {"name": "the mayor", "home_lot": -1, "since": 0, "title": "mayor"}
+	if not config.has("calendar"):
+		config["calendar"] = {}
+	LTCalendar.apply(config["calendar"])
+	if not city.has("incorporated"):
+		city["incorporated"] = true
 	dist_cache.clear()
 	debt_index_dirty = true
 	_path_cache.clear()

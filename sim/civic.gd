@@ -181,6 +181,23 @@ static func _book(w: LTWorld, side: String, cat: String, cents: int) -> void:
 
 static func _month_budget(w: LTWorld) -> void:
 	var laws: Dictionary = w.city["laws"]
+	if not bool(w.city.get("incorporated", true)):
+		# an unincorporated settlement: the county taxes and serves it, the town fund only pays its own bills
+		var tr0: Dictionary = w.ledger.tracked["city"]
+		var m0: Dictionary = {"income": tr0["in"].duplicate(), "spend": tr0["out"].duplicate(), "day": w.day}
+		tr0["in"] = {}
+		tr0["out"] = {}
+		var i0: int = 0
+		var s0: int = 0
+		for k in m0["income"]:
+			i0 += int(m0["income"][k])
+		for k in m0["spend"]:
+			s0 += int(m0["spend"][k])
+		m0["total_income"] = i0
+		m0["total_spend"] = s0
+		m0["cash_end"] = w.ledger.bal("city")
+		w.city["budget_months"].append(m0)
+		return
 	# property tax from every building: owners pay, outside owned property pays from outside
 	for l in w.lots:
 		if str(l["use"]) == "empty":
@@ -1299,7 +1316,7 @@ static func _editorial(w: LTWorld, s: Dictionary) -> String:
 # ================================================================ elections (optional mode)
 
 static func elections_daily(w: LTWorld) -> void:
-	if not bool(w.city.get("elections", false)) or not bool(w.city.get("mayor_in_office", true)):
+	if not bool(w.city.get("elections", false)) or not bool(w.city.get("mayor_in_office", true)) or not bool(w.city.get("incorporated", true)):
 		return
 	var eday: int = int(w.city["next_election_day"])
 	if w.day == eday - 60:
@@ -1359,8 +1376,10 @@ static func _hold_election(w: LTWorld) -> void:
 	var total: int = maxi(1, yes + no)
 	w.city["next_election_day"] = w.day + 365 * int(w.city["term_years"])
 	var who: String = w.full_name(ch) if not ch.is_empty() else "the challenger"
+	var first: bool = not bool(w.city.get("held_election", false))
+	w.city["held_election"] = true
 	if yes >= no:
-		w.chronicle_add("The mayor won reelection with %d%% of the vote against %s." % [yes * 100 / total, who], "election", true, [])
+		w.chronicle_add("%s won %s with %d%% of the vote against %s." % [w.player.get("name", "The mayor"), "the town's first election" if first else "reelection", yes * 100 / total, who], "election", true, [])
 	else:
 		w.city["mayor_in_office"] = false
-		w.chronicle_add("The mayor lost the election to %s, %d%% to %d%%. The town will go on without you." % [who, no * 100 / total, yes * 100 / total], "election", true, [])
+		w.chronicle_add("%s lost the election to %s, %d%% to %d%%. The town will go on without you, and you still live here." % [w.player.get("name", "The mayor"), who, no * 100 / total, yes * 100 / total], "election", true, [])

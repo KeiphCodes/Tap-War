@@ -5,6 +5,7 @@ extends Node3D
 
 const SPEEDS: Array = [
 	{"name": "Pause", "days": 0, "seconds": 0.0},
+	{"name": "Live", "days": 1, "seconds": 86400.0},
 	{"name": "Watch", "days": 1, "seconds": 120.0},
 	{"name": "Normal", "days": 1, "seconds": 3.0},
 	{"name": "Fast", "days": 7, "seconds": 1.6},
@@ -21,7 +22,9 @@ var hud: CanvasLayer
 var sound: Node
 var interrupt_kinds: Dictionary = {"bankruptcy": true, "death": true, "business": true, "petition": true, "city": true, "project": true, "estate": true, "protest": true, "crime": true, "region": true, "election": true, "health": true}
 var _pending_interrupt: Array = []
-var last_fast_speed: int = 2
+var last_fast_speed: int = 3
+var catch_up_to: int = -1        # a game day to fast forward to, for matching the real date
+var _catch_up_from: int = 0
 
 
 func _ready() -> void:
@@ -40,9 +43,10 @@ func _ready() -> void:
 	hud.refresh_all()
 
 
-func new_town(seed_value: int) -> void:
+func new_town(seed_value: int, mode: Dictionary = {}) -> void:
 	world = LTWorld.new()
-	world.new_town(seed_value)
+	world.new_town(seed_value, {}, mode)
+	catch_up_to = -1
 	speed = 0
 	hour = 9.0
 	view.rebuild()
@@ -63,6 +67,7 @@ func load_game() -> String:
 		return "Could not load the save: %s" % error_string(err)
 	world = w
 	speed = 0
+	catch_up_to = -1
 	view.rebuild()
 	hud.on_new_world()
 	return "Loaded the town on %s." % LTCalendar.short(world.day)
@@ -71,7 +76,39 @@ func load_game() -> String:
 func set_speed(i: int) -> void:
 	speed = clampi(i, 0, SPEEDS.size() - 1)
 	_accum = 0.0
+	if speed == 0:
+		catch_up_to = -1
 	hud.refresh_top()
+
+
+func is_hourly() -> bool:
+	return speed == 1 or speed == 2
+
+
+## Live speed runs one game second per real second. Matching the real date fast
+## forwards the town (only forward) until its calendar reads today, then sets the
+## clock to the real time of day and keeps going live.
+func match_real_time() -> String:
+	var t: Dictionary = Time.get_time_dict_from_system()
+	var real_hour: float = float(t["hour"]) + float(t["minute"]) / 60.0 + float(t["second"]) / 3600.0
+	if not LTCalendar.real:
+		hour = real_hour
+		set_speed(1)
+		return "Your town keeps its own calendar, so only the clock was matched. Now running live."
+	var target: int = LTCalendar.game_day_for_today()
+	var cur: int = maxi(world.day, 1)
+	if target < cur:
+		hour = real_hour
+		set_speed(1)
+		return "Your town is %d %s ahead of today. It keeps its date and runs live from here." % [cur - target, "day" if cur - target == 1 else "days"]
+	if target == cur:
+		hour = real_hour
+		set_speed(1)
+		return "Already on today's date. The clock is set and the town is running live."
+	catch_up_to = target
+	_catch_up_from = world.day
+	speed = 0
+	return "Fast forwarding %d %s to today. Press Pause to stop." % [target - world.day, "day" if target - world.day == 1 else "days"]
 
 
 func act(a: Dictionary) -> Dictionary:
@@ -84,13 +121,26 @@ func act(a: Dictionary) -> Dictionary:
 func _process(delta: float) -> void:
 	sound.weather = world.weather
 	sound.daytime = hour > 6.0 and hour < 20.0
+	if catch_up_to > world.day:
+		# a few days per frame keeps the screen responsive while catching up
+		var n: int = mini(4, catch_up_to - world.day)
+		_advance(n, true)
+		hud.show_toast("Catching up to today: %d of %d days." % [world.day - _catch_up_from, catch_up_to - _catch_up_from])
+		view.animate(delta, hour, false)
+		if world.day >= catch_up_to:
+			catch_up_to = -1
+			var t: Dictionary = Time.get_time_dict_from_system()
+			hour = float(t["hour"]) + float(t["minute"]) / 60.0 + float(t["second"]) / 3600.0
+			set_speed(1)
+			hud.show_toast("Your town now matches today's date and time, and is running live.")
+		return
 	var sp: Dictionary = SPEEDS[speed]
 	if int(sp["days"]) == 0:
 		view.animate(delta, hour, false)
 		return
 	_accum += delta
-	if speed == 1:
-		# watch: hours pass visibly, one day in about two minutes
+	if is_hourly():
+		# live and watch: hours pass visibly; live is one game second per real second
 		hour += delta / float(sp["seconds"]) * 24.0
 		if hour >= 24.0:
 			hour -= 24.0
@@ -107,7 +157,7 @@ func _process(delta: float) -> void:
 		_advance(int(sp["days"]) * steps)
 
 
-func _advance(days: int) -> void:
+func _advance(days: int, quiet: bool = false) -> void:
 	var important: Array = []
 	for i in days:
 		world.tick_day()
@@ -115,13 +165,15 @@ func _advance(days: int) -> void:
 			if bool(e["important"]) and interrupt_kinds.get(str(e["kind"]), false):
 				important.append(e)
 		hud.feed(world.events_today)
-		_sounds(world.events_today)
+		if not quiet:
+			_sounds(world.events_today)
 		# turbo and fast stop on events the player marked as important
-		if speed >= 3 and not important.is_empty() and _should_interrupt(important):
+		if speed >= 4 and not important.is_empty() and _should_interrupt(important):
 			break
 	view.refresh_all()
-	hud.refresh_all()
-	if speed >= 3 and not important.is_empty() and _should_interrupt(important):
+	if not quiet or world.day % 10 == 0:
+		hud.refresh_all()
+	if speed >= 4 and not important.is_empty() and _should_interrupt(important):
 		last_fast_speed = speed
 		speed = 0
 		hud.show_interrupt(important)

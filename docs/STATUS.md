@@ -4,6 +4,10 @@ Everything the design document describes is built, including what section 16 lef
 
 Checks: `tests/acceptance.gd` (the section 18 gates) and `tests/scenarios.gd` (every system beyond the slice) both pass. Reports are in `reports/`.
 
+## Beyond the design (Keith, after the lock)
+
+Game modes (found a town alone with lottery money, or Prairie Hollow; permanent or elected mayor), the player as a permanent resident in the mayor's house, a Live speed at one game second per real second, an optional real calendar with a "Today" button that fast forwards to the real date and clock, town incorporation at 25 residents, settlers who build their own homes, and milestones.
+
 ## Section by section
 
 | Section | What is built |

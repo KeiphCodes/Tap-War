@@ -83,6 +83,7 @@ func rebuild() -> void:
 	lot_root = Node3D.new()
 	people_root = Node3D.new()
 	extra_root = Node3D.new()
+	camper = null
 	for r in [ground_root, road_root, lot_root, people_root, extra_root]:
 		add_child(r)
 	_build_ground()
@@ -438,6 +439,7 @@ func refresh_all() -> void:
 			_build_lot(l)
 	_refresh_tier()
 	_refresh_trucks()
+	_refresh_camper()
 
 
 func _apply_season() -> void:
@@ -535,6 +537,8 @@ func _build_lot(l: Dictionary) -> void:
 			_business(root, l)
 		"civic":
 			_civic(root, l)
+		"mayor_house":
+			_mayor_house(root, l)
 		"site", "reserved":
 			_site(root, l)
 		"empty":
@@ -739,6 +743,22 @@ func _farm(root: Node3D, b: Dictionary, open: bool) -> void:
 		_box(root, Vector3(1.4, 1.0, 2.2), Vector3(-inner * 0.1, 0.9, tz), Color(0.75, 0.15, 0.1))
 		_cyl(root, 0.55, 0.4, Vector3(-inner * 0.1 - 0.8, 0.55, tz - 0.6), Color(0.15, 0.15, 0.15))
 		_cyl(root, 0.55, 0.4, Vector3(-inner * 0.1 + 0.8, 0.55, tz - 0.6), Color(0.15, 0.15, 0.15))
+
+
+func _mayor_house(root: Node3D, l: Dictionary) -> void:
+	var c: Color = _wear(Color(0.95, 0.93, 0.86), float(l["condition"]) / 100.0)
+	_box(root, Vector3(10.0, 4.2, 7.0), Vector3(0, 2.1, -1.0), c)
+	_roof(root, Vector3(10.6, 2.6, 7.6), Vector3(0, 5.5, -1.0), Color(0.25, 0.28, 0.35))
+	_box(root, Vector3(10.4, 0.25, 2.2), Vector3(0, 3.2, 3.4), Color(0.85, 0.83, 0.78))
+	for x in [-4.6, -1.6, 1.6, 4.6]:
+		_cyl(root, 0.18, 3.2, Vector3(x, 1.6, 4.3), Color(0.95, 0.95, 0.95))
+	for x in [-3.0, 3.0]:
+		_box(root, Vector3(1.6, 1.3, 0.1), Vector3(x, 2.2, 2.55), Color(1.0, 0.88, 0.55), true)
+	_box(root, Vector3(1.3, 2.3, 0.1), Vector3(0, 1.15, 2.55), Color(0.35, 0.2, 0.12))
+	_cyl(root, 0.07, 8.0, Vector3(5.5, 4.0, 5.5), Color(0.85, 0.85, 0.85))
+	_box(root, Vector3(1.6, 1.0, 0.05), Vector3(6.35, 7.4, 5.5), Color(0.2, 0.3, 0.65))
+	var s2: Label3D = _sign(root, "%s\nMayor %s" % [l["name"], w.player.get("name", "")], Vector3(0, 8.0, 0), 34, Color(1.0, 0.92, 0.6))
+	s2.pixel_size = 0.05
 
 
 func _civic(root: Node3D, l: Dictionary) -> void:
@@ -1071,6 +1091,30 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		if plan2.has("dir"):
 			tn.rotation.y = atan2((plan2["dir"] as Vector3).x, (plan2["dir"] as Vector3).z)
 	_camera_keys(delta)
+
+
+var camper: Node3D
+
+
+## Until the mayor's house is built, the founder lives in a camper by the county road.
+func _refresh_camper() -> void:
+	var need: bool = int(w.player.get("home_lot", -1)) < 0
+	if not need:
+		if camper != null:
+			camper.queue_free()
+			camper = null
+		return
+	if camper != null and is_instance_valid(camper):
+		return
+	camper = Node3D.new()
+	camper.position = _exit_pos() + Vector3(-12.0, 0, -7.0)
+	extra_root.add_child(camper)
+	_box(camper, Vector3(2.6, 2.6, 7.0), Vector3(0, 1.6, 0), Color(0.93, 0.92, 0.88))
+	_box(camper, Vector3(2.65, 0.4, 7.05), Vector3(0, 1.6, 0), Color(0.3, 0.45, 0.65))
+	_box(camper, Vector3(1.2, 0.8, 0.05), Vector3(1.31, 2.0, 1.5), Color(1.0, 0.88, 0.55), true)
+	_box(camper, Vector3(2.4, 1.6, 3.0), Vector3(0, 1.0, 5.4), Color(0.55, 0.15, 0.12))
+	var l: Label3D = _sign(camper, "%s's camper" % w.player.get("name", "The founder"), Vector3(0, 4.2, 0), 28, Color(1.0, 0.92, 0.6))
+	l.pixel_size = 0.04
 
 
 func _refresh_trucks() -> void:
