@@ -20,6 +20,7 @@ var tabs: TabContainer
 var tab_boxes: Dictionary = {}
 var right: PanelContainer
 var inspect_text: RichTextLabel
+var inspect_form: VBoxContainer
 var inspect_actions: HBoxContainer
 var inspect_kind: String = ""
 var inspect_id: int = -1
@@ -291,9 +292,14 @@ func _build_right() -> void:
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vb.add_child(sc)
+	var body: VBoxContainer = VBoxContainer.new()
+	body.custom_minimum_size = Vector2(RIGHT_W - 30, 0)
+	sc.add_child(body)
 	inspect_text = _rtl("")
 	inspect_text.custom_minimum_size = Vector2(RIGHT_W - 30, 0)
-	sc.add_child(inspect_text)
+	body.add_child(inspect_text)
+	inspect_form = VBoxContainer.new()
+	body.add_child(inspect_form)
 	right.visible = false
 
 
@@ -919,12 +925,17 @@ func _project_card(p: Dictionary) -> VBoxContainer:
 	var vb: VBoxContainer = VBoxContainer.new()
 	var t: String = "[b][url=proj:%d]%s[/url][/b]  [color=#9fb0c0]%s%s[/color]" % [p["id"], p["title"], p["status"], ", private" if bool(p["private"]) else ""]
 	t += "\nCeiling %s. %s" % [_money(int(p["ceiling"])), "Bids close " + LTCalendar.short(int(p["bid_close_day"])) if str(p["status"]) == "bidding" else ""]
+	if p.has("spec") and not bool(p["private"]):
+		t += "\n[color=#9fb0c0]Terms: %s.[/color]" % LTProjects.spec_text(p)
 	match str(p["status"]):
 		"building":
 			t += "\nBuilt by %s for %s. Stage: %s, %d%% done. Promised %d days, started %s." % [p["winner_name"], _money(int(p["price"]) + int(p["change_orders"])), p["stage"], int(float(p["progress"]) * 100.0), p["days_promised"], LTCalendar.short(int(p["start_day"]))]
 		"done":
 			t += "\nBuilt by %s. Quality %d of 100. Finished %s. %s" % [p["winner_name"], int(float(p["quality"]) * 100.0), LTCalendar.short(int(p["done_day"])), ("Expected to need repair in about %d days." % int(p.get("expected_repair_days", 0))) if LTProjects.is_road(str(p["ptype"])) else ""]
 	vb.add_child(_rtl(t))
+	if LTProjects.spec_editable(p):
+		var pide: int = int(p["id"])
+		vb.add_child(_btn("Edit contract", func(): inspect("proj", pide), "Change what is built, the deadline and the budget before it is signed."))
 	if str(p["status"]) == "review" and not bool(p["private"]):
 		var grid: GridContainer = GridContainer.new()
 		grid.columns = 1
@@ -1243,11 +1254,18 @@ Every dollar moves between accounts. Nothing is created by a sale or deleted by 
 # ================================================================ Inspect panel
 
 func inspect(kind: String, id: int, show: bool = true) -> void:
+	# a refresh while the mayor is typing in the form keeps the form as it is
+	var typing: bool = false
+	var fo: Control = get_viewport().gui_get_focus_owner()
+	if not show and fo != null and inspect_form.is_ancestor_of(fo) and inspect_kind == kind and inspect_id == id:
+		typing = true
 	inspect_kind = kind
 	inspect_id = id
 	if show:
 		right.visible = true
 	_clear(inspect_actions)
+	if not typing:
+		_clear(inspect_form)
 	var t: String = ""
 	match kind:
 		"sim":
@@ -1263,8 +1281,9 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 		"lot":
 			t = _lot_text(id)
 			main.view.select_lot(id)
+			main.view.select_road(-1)
 			var l: Dictionary = w().lot(id)
-			if ["empty", "closed"].has(str(l["use"])):
+			if ["empty", "closed"].has(str(l["use"])) and str(l["owner_kind"]) != "city":
 				var z: OptionButton = OptionButton.new()
 				z.add_item("Rezone...")
 				for zone in LTGeography.ZONES:
@@ -1276,15 +1295,36 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 						show_toast(str(r["message"]))
 						inspect("lot", id))
 				inspect_actions.add_child(z)
+			if not typing:
+				_lot_form(id)
+		"road":
+			t = _road_text(id)
+			main.view.select_lot(-1)
+			main.view.select_road(id)
+			var rp: int = _road_project(id)
+			if rp >= 0:
+				inspect_actions.add_child(_btn("Contract", func(): inspect("proj", rp)))
+			if not typing:
+				_road_form(id)
 		"proj":
 			t = _proj_text(id)
+			var pp: Dictionary = w().projects[id] if id >= 0 and id < w().projects.size() else {}
+			if not pp.is_empty() and str(pp["ptype"]) == "road_build":
+				inspect_actions.add_child(_btn("Find", func():
+					main.view.focus_street(int(pp["street"]))
+					main.view.select_road(int(pp["street"]))))
+			elif not pp.is_empty() and int(pp["lot"]) >= 0:
+				inspect_actions.add_child(_btn("Find", func(): main.focus_lot(int(pp["lot"]))))
+			if not typing and not pp.is_empty():
+				_contract_form(pp)
 		"pet":
 			t = _pet_text(id)
 		"debt":
 			t = _debt_text(id)
 	inspect_actions.add_child(_btn("Close", func():
 		right.visible = false
-		main.view.select_lot(-1)))
+		main.view.select_lot(-1)
+		main.view.select_road(-1)))
 	inspect_text.text = t
 
 
@@ -1532,6 +1572,10 @@ func _proj_text(id: int) -> String:
 		return "No project."
 	var p: Dictionary = ww.projects[id]
 	var t: String = "[font_size=19][b]%s[/b][/font_size]\nStatus %s. Ceiling %s.\n" % [p["title"], p["status"], _money(int(p["ceiling"]))]
+	if p.has("spec") and not bool(p["private"]):
+		t += "Terms: %s.\n" % LTProjects.spec_text(p)
+	if int(p.get("penalty_paid", 0)) > 0:
+		t += "Late penalties collected: %s.\n" % _money(int(p["penalty_paid"]))
 	if int(p["petition_id"]) >= 0:
 		t += "Came from the petition [url=pet:%d]%s[/url].\n" % [p["petition_id"], ww.petitions[int(p["petition_id"])]["title"]]
 	if str(p["winner_name"]) != "":
@@ -1575,3 +1619,270 @@ func _debt_text(id: int) -> String:
 	for e in d["history"]:
 		t += "[color=#9fb0c0]%s[/color] %s\n" % [LTCalendar.short(maxi(1, int(e["day"]))), e["text"]]
 	return t
+
+
+# ================================================================ roads, contracts and lot details
+
+func _road_project(street_id: int) -> int:
+	var best: int = -1
+	for p in w().projects:
+		if int(p["street"]) == street_id and LTProjects.is_road(str(p["ptype"])) and str(p["status"]) != "cancelled":
+			best = int(p["id"])
+	return best
+
+
+func _road_text(id: int) -> String:
+	var ww: LTWorld = w()
+	if id < 0 or id >= ww.streets.size():
+		return "No road."
+	var st: Dictionary = ww.streets[id]
+	var planned: int = 0
+	var built: int = 0
+	for sid in st["segments"]:
+		var sg: Dictionary = ww.roads[int(sid)]
+		if bool(sg.get("removed", false)):
+			continue
+		if bool(sg.get("planned", false)):
+			planned += 1
+		else:
+			built += 1
+	var t: String = "[font_size=19][b]%s[/b][/font_size]\n" % st["name"]
+	if str(st["kind"]) == "highway":
+		return t + "The county road. It runs edge to edge and the county keeps it up. Every trip out of town uses it.\n"
+	if built > 0:
+		t += "%d %s built. Condition %d of 100, quality %d of 100.\n" % [built, "block" if built == 1 else "blocks", int(LTGeography.street_condition(ww, id)), int(LTGeography.street_quality(ww, id) * 100.0)]
+		var feat: Array = []
+		if st.has("width"):
+			feat.append(str(LTProjects.WIDTHS[str(st["width"])]["label"]))
+		if st.has("surface"):
+			feat.append(str(LTProjects.SURFACES[str(st["surface"])]["label"]).to_lower())
+		if bool(st.get("sidewalks", false)):
+			feat.append("sidewalks")
+		if bool(st.get("lights", false)):
+			feat.append("streetlights")
+		if not feat.is_empty():
+			t += "Built as: %s.\n" % ", ".join(feat)
+	if planned > 0:
+		t += "%d %s staked out and waiting to be built.\n" % [planned, "block" if planned == 1 else "blocks"]
+	var pid: int = _road_project(id)
+	if pid >= 0:
+		var p: Dictionary = ww.projects[pid]
+		t += "Project: [url=proj:%d]%s[/url], %s.\n" % [pid, p["title"], _status_words(p)]
+	return t
+
+
+func _status_words(p: Dictionary) -> String:
+	match str(p["status"]):
+		"bidding":
+			return "out to bid until %s" % LTCalendar.short(int(p["bid_close_day"]))
+		"review":
+			return "bids are in and waiting for you"
+		"building":
+			return "being built by %s, %d%% done" % [p["winner_name"], int(float(p["progress"]) * 100.0)]
+		"done":
+			return "finished %s" % LTCalendar.short(int(p["done_day"]))
+	return str(p["status"])
+
+
+func _road_form(street_id: int) -> void:
+	var ww: LTWorld = w()
+	if street_id < 0 or street_id >= ww.streets.size() or str(ww.streets[street_id]["kind"]) == "highway":
+		return
+	var pid: int = _road_project(street_id)
+	if pid >= 0 and str(ww.projects[pid]["ptype"]) == "road_build":
+		_contract_form(ww.projects[pid])
+
+
+func _form_row(label: String, ctl: Control) -> void:
+	var hb: HBoxContainer = HBoxContainer.new()
+	var l: Label = _lbl(label, 14)
+	l.custom_minimum_size = Vector2(130, 0)
+	hb.add_child(l)
+	ctl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(ctl)
+	inspect_form.add_child(hb)
+
+
+func _opt(items: Array, selected: int, cb: Callable) -> OptionButton:
+	var o: OptionButton = OptionButton.new()
+	for it in items:
+		o.add_item(str(it))
+	o.select(selected)
+	o.item_selected.connect(cb)
+	return o
+
+
+func _edit_project(pid: int, changes: Dictionary) -> void:
+	var r: Dictionary = main.act({"kind": "edit_project", "project_id": pid, "changes": changes})
+	show_toast(str(r["message"]))
+	inspect(inspect_kind, inspect_id)
+
+
+const DEADLINES: Array = [0, 30, 60, 90, 120, 180, 270, 365]
+
+
+## The contract the mayor writes before a project is signed: what to build, how
+## well, how fast, and the most the city will pay.
+func _contract_form(p: Dictionary) -> void:
+	var pid: int = int(p["id"])
+	var editable: bool = LTProjects.spec_editable(p)
+	inspect_form.add_child(_sep())
+	inspect_form.add_child(_h("Contract"))
+	if not p.has("spec"):
+		inspect_form.add_child(_rtl("[color=#9fb0c0]This project was written before contracts had details.[/color]"))
+		return
+	if bool(p["private"]):
+		inspect_form.add_child(_rtl("[color=#9fb0c0]A private job. %s wrote the contract, not the city.[/color]" % str(p["developer"].get("name", "The owner")).capitalize()))
+		return
+	var sp: Dictionary = p["spec"]
+	if str(p["ptype"]) == "road_build":
+		var nm: LineEdit = LineEdit.new()
+		nm.text = str(w().streets[int(p["street"])]["name"])
+		nm.max_length = 40
+		nm.text_submitted.connect(func(tx): _edit_project(pid, {"name": tx}))
+		nm.focus_exited.connect(func():
+			if nm.text != str(w().streets[int(p["street"])]["name"]):
+				_edit_project(pid, {"name": nm.text}))
+		_form_row("Road name", nm)
+	if not editable:
+		inspect_form.add_child(_rtl("Terms: %s. Budget ceiling %s.\n[color=#9fb0c0]The contract is signed, so its terms are fixed. Only the name can change.[/color]" % [LTProjects.spec_text(p), _money(int(p["ceiling"]))]))
+		return
+	if str(p["ptype"]) == "road_build":
+		var sk: Array = LTProjects.SURFACES.keys()
+		var sl: Array = []
+		for k in sk:
+			sl.append("%s (%s)" % [LTProjects.SURFACES[k]["label"], LTProjects.SURFACES[k]["note"]])
+		_form_row("Surface", _opt(sl, sk.find(str(sp["surface"])), func(i): _edit_project(pid, {"surface": sk[i]})))
+		var wk: Array = LTProjects.WIDTHS.keys()
+		var wl: Array = []
+		for k in wk:
+			wl.append(LTProjects.WIDTHS[k]["label"])
+		_form_row("Width", _opt(wl, wk.find(str(sp["width"])), func(i): _edit_project(pid, {"width": wk[i]})))
+		var sw: CheckBox = CheckBox.new()
+		sw.text = "Sidewalks (+%d%%, families like them)" % int(LTProjects.SIDEWALK_COST * 100.0)
+		sw.button_pressed = bool(sp["sidewalks"])
+		sw.toggled.connect(func(on): _edit_project(pid, {"sidewalks": on}))
+		inspect_form.add_child(sw)
+		var lt: CheckBox = CheckBox.new()
+		lt.text = "Streetlights (+%d%%, safer at night)" % int(LTProjects.LIGHTS_COST * 100.0)
+		lt.button_pressed = bool(sp["lights"])
+		lt.toggled.connect(func(on): _edit_project(pid, {"lights": on}))
+		inspect_form.add_child(lt)
+	else:
+		var gk: Array = LTProjects.GRADES.keys()
+		var gl: Array = []
+		for k in gk:
+			gl.append(LTProjects.GRADES[k]["label"])
+		_form_row("Materials", _opt(gl, gk.find(str(sp.get("grade", "standard"))), func(i): _edit_project(pid, {"grade": gk[i]})))
+	var dl: Array = []
+	for d in DEADLINES:
+		dl.append("No deadline" if int(d) == 0 else "Within %d days" % int(d))
+	var di: int = DEADLINES.find(int(sp["deadline"]))
+	_form_row("Deadline", _opt(dl, maxi(0, di), func(i): _edit_project(pid, {"deadline": DEADLINES[i]})))
+	if int(sp["deadline"]) > 0:
+		var pen: CheckBox = CheckBox.new()
+		pen.text = "Late penalty (%.1f%% of the price a day, up to 20%%)" % (LTProjects.LATE_PENALTY * 100.0)
+		pen.button_pressed = bool(sp["penalty"])
+		pen.toggled.connect(func(on): _edit_project(pid, {"penalty": on}))
+		inspect_form.add_child(pen)
+	var ce: SpinBox = SpinBox.new()
+	ce.min_value = 1
+	ce.max_value = 100000
+	ce.step = 1
+	ce.prefix = "$"
+	ce.suffix = "k"
+	ce.value = roundf(float(int(p["ceiling"])) / 100000.0)
+	ce.get_line_edit().text_submitted.connect(func(_tx): ce.apply())
+	ce.value_changed.connect(func(v): _edit_project(pid, {"ceiling": int(v) * 100000}))
+	_form_row("Budget ceiling", ce)
+	var auto: Button = _btn("Use the suggested ceiling", func(): _edit_project(pid, {"ceiling": 0}))
+	auto.disabled = not bool(p.get("ceiling_set", false))
+	inspect_form.add_child(auto)
+	var est: String = "Fair price for these terms: about %s and %d days of work." % [_money(int(p["base_cost"])), int(p["base_days"])]
+	if int(sp["deadline"]) > 0 and int(sp["deadline"]) < int(p["base_days"]):
+		est += " The deadline is tighter than that, so expect rush pricing."
+	if str(p["status"]) == "review":
+		est += "\n[color=#e8c35a]Bids are in. Changing a term sends it back out to bid.[/color]"
+	else:
+		est += "\nBids close %s." % LTCalendar.short(int(p["bid_close_day"]))
+	inspect_form.add_child(_rtl(est))
+	var hb: HBoxContainer = HBoxContainer.new()
+	if str(p["status"]) == "review":
+		hb.add_child(_btn("See the bids", func():
+			_show_tab("Projects")))
+	hb.add_child(_btn("Cancel project", func():
+		show_toast(str(main.act({"kind": "cancel_project", "project_id": pid})["message"]))
+		inspect(inspect_kind, inspect_id)))
+	inspect_form.add_child(hb)
+
+
+const PRICE_PCTS: Array = [50, 75, 100, 125, 150, 200]
+
+
+## Details of city lots the mayor still owns: zone, asking price, hold, name.
+## Lots plotted in one stroke can be changed together.
+func _lot_form(id: int) -> void:
+	var ww: LTWorld = w()
+	var l: Dictionary = ww.lot(id)
+	if l.is_empty() or str(l["owner_kind"]) != "city" or not ["empty", "closed"].has(str(l["use"])):
+		return
+	var group: Array = LTGeography.plot_group_lots(ww, int(l.get("plot_group", 0)))
+	inspect_form.add_child(_sep())
+	inspect_form.add_child(_h("Lot details"))
+	var all: CheckBox = CheckBox.new()
+	all.text = "Apply to all %d lots plotted together" % group.size()
+	all.button_pressed = _lot_all
+	all.visible = group.size() > 1
+	all.toggled.connect(func(on): _lot_all = on)
+	inspect_form.add_child(all)
+	var ids: Callable = func() -> Array: return group if (_lot_all and group.size() > 1) else [id]
+	var zs: Array = []
+	for z in LTGeography.ZONES:
+		zs.append(z)
+	_form_row("Zone", _opt(zs, zs.find(str(l["zone"])), func(i): _edit_lots(ids.call(), {"zone": zs[i]})))
+	var pl: Array = []
+	for pc in PRICE_PCTS:
+		pl.append("%d%% of value (%s)" % [int(pc), _money(int(float(l["value"]) * float(pc) / 100.0))])
+	var pi: int = PRICE_PCTS.find(int(l.get("price_pct", 100)))
+	_form_row("Asking price", _opt(pl, maxi(0, pi), func(i): _edit_lots(ids.call(), {"price_pct": PRICE_PCTS[i]})))
+	var hold: CheckBox = CheckBox.new()
+	hold.text = "Hold for the city (not for sale or lease)"
+	hold.button_pressed = bool(l.get("hold", false))
+	hold.toggled.connect(func(on): _edit_lots(ids.call(), {"hold": on}))
+	inspect_form.add_child(hold)
+	var nm: LineEdit = LineEdit.new()
+	nm.text = str(l["name"])
+	nm.placeholder_text = "a name for the map, optional"
+	nm.max_length = 40
+	nm.text_submitted.connect(func(tx): _edit_lots([id], {"name": tx}))
+	nm.focus_exited.connect(func():
+		if nm.text != str(w().lot(id)["name"]):
+			_edit_lots([id], {"name": nm.text}))
+	_form_row("Name", nm)
+	var note: String = "Cheaper lots sell first. Above full value, many families keep looking."
+	if str(l["zone"]) == "commercial":
+		note += " A business here would lease it for %s a month." % _money(LTCivic.lot_rent(ww, id))
+	inspect_form.add_child(_rtl("[color=#9fb0c0]%s[/color]" % note))
+	inspect_form.add_child(_btn("Return to prairie", func():
+		var r: Dictionary = main.act({"kind": "unplot", "lot": id})
+		show_toast(str(r["message"]))
+		if bool(r.get("ok", false)):
+			right.visible = false
+			main.view.select_lot(-1)
+		else:
+			inspect("lot", id)))
+
+
+var _lot_all: bool = true
+
+
+func _edit_lots(ids: Array, changes: Dictionary) -> void:
+	var r: Dictionary = main.act({"kind": "edit_lots", "lots": ids, "changes": changes})
+	show_toast(str(r["message"]))
+	inspect(inspect_kind, inspect_id)
+
+
+func _show_tab(name: String) -> void:
+	left.visible = true
+	tabs.current_tab = maxi(0, TABS.find(name))
+	refresh_tab()

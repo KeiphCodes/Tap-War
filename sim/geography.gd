@@ -120,6 +120,9 @@ static func exit_nodes(w: LTWorld) -> Array:
 static func segment_minutes(w: LTWorld, s: Dictionary) -> float:
 	var cond: float = float(s["condition"])
 	var m: float = SEGMENT_MINUTES * (1.0 + (100.0 - cond) / 100.0 * 0.9)
+	var wd: String = str(w.streets[int(s["street"])].get("width", "street"))
+	if wd != "street":
+		m *= float(LTProjects.WIDTHS[wd]["speed"])
 	match w.weather:
 		"Snow":
 			m *= 1.6
@@ -350,6 +353,9 @@ static func wear_roads(w: LTWorld) -> void:
 			continue
 		var q: float = float(s["quality"])
 		var rate: float = 0.02 + (1.0 - q) * (1.0 - q) * 0.22
+		var sf: String = str(w.streets[int(s["street"])].get("surface", "asphalt"))
+		if sf != "asphalt":
+			rate *= float(LTProjects.SURFACES[sf]["wear"])
 		s["condition"] = maxf(0.0, float(s["condition"]) - rate * wx)
 
 
@@ -364,6 +370,34 @@ static func street_condition(w: LTWorld, street_id: int) -> float:
 		t += float(sg["condition"])
 		n += 1
 	return 100.0 if n == 0 else t / float(n)
+
+
+## The share of the town's built streets that have sidewalks or streetlights
+## (key "sidewalks" or "lights"). Lit streets feel safer; sidewalks draw families.
+static func amenity_share(w: LTWorld, key: String) -> float:
+	var ck: String = "amen_" + key
+	if int(w.market.get(ck + "_day", -1)) == w.day:
+		return float(w.market[ck])
+	var have: int = 0
+	var n: int = 0
+	for st in w.streets:
+		if str(st["kind"]) == "highway" or _all_planned(w, st):
+			continue
+		n += 1
+		if bool(st.get(key, false)):
+			have += 1
+	var v: float = 0.0 if n == 0 else float(have) / float(n)
+	w.market[ck + "_day"] = w.day
+	w.market[ck] = v
+	return v
+
+
+static func _all_planned(w: LTWorld, st: Dictionary) -> bool:
+	for sid in st["segments"]:
+		var sg: Dictionary = w.roads[int(sid)]
+		if not bool(sg.get("planned", false)) and not bool(sg.get("removed", false)):
+			return false
+	return true
 
 
 static func street_quality(w: LTWorld, street_id: int) -> float:
@@ -382,7 +416,7 @@ static func street_quality(w: LTWorld, street_id: int) -> float:
 static func vacant_lots(w: LTWorld, zones: Array) -> Array:
 	var out: Array = []
 	for l in w.lots:
-		if str(l["use"]) == "empty" and zones.has(str(l["zone"])) and (not bool(w.config.get("open_land", false)) or connected(w, int(l["id"]))):
+		if str(l["use"]) == "empty" and not bool(l.get("hold", false)) and zones.has(str(l["zone"])) and (not bool(w.config.get("open_land", false)) or connected(w, int(l["id"]))):
 			out.append(l)
 	return out
 
@@ -414,7 +448,7 @@ static func _best_site(w: LTWorld, zones: Array, near_lots: Array) -> int:
 				reserved[int(p.get("lot", -1))] = true
 		var byz: Dictionary = {}
 		for l in w.lots:
-			if str(l["use"]) == "empty" and not reserved.has(int(l["id"])) and (not bool(w.config.get("open_land", false)) or connected(w, int(l["id"]))):
+			if str(l["use"]) == "empty" and not bool(l.get("hold", false)) and not reserved.has(int(l["id"])) and (not bool(w.config.get("open_land", false)) or connected(w, int(l["id"]))):
 				if not byz.has(str(l["zone"])):
 					byz[str(l["zone"])] = []
 				byz[str(l["zone"])].append(l)
@@ -583,6 +617,7 @@ static func plot_lots(w: LTWorld, c0: int, r0: int, c1: int, r1: int, zone: Stri
 	var rows: int = int(w.config["map_rows"])
 	var made: int = 0
 	var no_road: int = 0
+	var group: int = int(w.config.get("plot_group_i", 0)) + 1
 	for r in range(mini(r0, r1), maxi(r0, r1) + 1):
 		for c in range(mini(c0, c1), maxi(c0, c1) + 1):
 			if c < 0 or r < 0 or c >= cols or r >= rows or lot_at(w, c, r) >= 0:
@@ -605,14 +640,65 @@ static func plot_lots(w: LTWorld, c0: int, r0: int, c1: int, r1: int, zone: Stri
 				"value": land_value(zone), "condition": 80.0,
 				"building": "", "built_day": 0, "name": "", "street": int(w.roads[seg]["street"]),
 				"district": str(w.config["districts"][0]["name"]), "access_node": int(w.roads[seg]["a"]),
+				"plot_group": group, "price_pct": 100, "hold": false,
 			})
 			w.config["lot_at"][cell_key(c, r)] = id
 			made += 1
 	if made == 0:
 		return {"ok": false, "message": "No lots plotted. Lots must touch a road, built or planned." if no_road > 0 else "Nothing to plot there."}
-	var msg: String = "Plotted %d %s lot%s." % [made, zone, "" if made == 1 else "s"]
+	w.config["plot_group_i"] = group
+	var msg: String = "Plotted %d %s lot%s. Tap one to set its price and details." % [made, zone, "" if made == 1 else "s"]
 	if no_road > 0:
 		msg += " %d spots were skipped because no road touches them." % no_road
+	return {"ok": true, "message": msg, "plot_group": group}
+
+
+## The lots plotted in the same stroke, so they can be edited together.
+static func plot_group_lots(w: LTWorld, group: int) -> Array:
+	var out: Array = []
+	if group <= 0:
+		return out
+	for l in w.lots:
+		if int(l.get("plot_group", 0)) == group and not bool(l.get("removed", false)):
+			out.append(int(l["id"]))
+	return out
+
+
+## What a buyer pays for a city lot: land value times the mayor's asking price.
+static func asking_price(w: LTWorld, lot_id: int) -> int:
+	var l: Dictionary = w.lot(lot_id)
+	return int(float(l["value"]) * float(l.get("price_pct", 100)) / 100.0)
+
+
+## The mayor sets the details of city lots that are still empty: zone, asking
+## price, whether the city holds them back, and a name.
+static func edit_lots(w: LTWorld, ids: Array, changes: Dictionary) -> Dictionary:
+	var done: int = 0
+	var skipped: int = 0
+	for id in ids:
+		var l: Dictionary = w.lot(int(id))
+		if l.is_empty() or bool(l.get("removed", false)):
+			continue
+		var mine: bool = str(l["owner_kind"]) == "city" and ["empty", "closed"].has(str(l["use"]))
+		if not mine:
+			skipped += 1
+			continue
+		if changes.has("zone") and str(changes["zone"]) != str(l["zone"]):
+			LTCivic.zone_lot(w, int(id), str(changes["zone"]))
+		if changes.has("price_pct"):
+			l["price_pct"] = clampi(int(changes["price_pct"]), 25, 300)
+		if changes.has("hold"):
+			l["hold"] = bool(changes["hold"])
+		if changes.has("name"):
+			l["name"] = str(changes["name"]).strip_edges().left(40)
+		done += 1
+	w.market["vac_day"] = -1
+	w.market["site_day"] = -1
+	if done == 0:
+		return {"ok": false, "message": "Only empty lots the city still owns can be changed."}
+	var msg: String = "Updated %d lot%s." % [done, "" if done == 1 else "s"]
+	if skipped > 0:
+		msg += " %d already sold or built on were left alone." % skipped
 	return {"ok": true, "message": msg}
 
 

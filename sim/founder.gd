@@ -66,6 +66,7 @@ static func settler_pull(w: LTWorld) -> float:
 	pull += 5.0 if LTCivic.has_service(w, "clinic") else 0.0
 	pull += float(LTEconomy.open_positions(w)) * 3.0
 	pull += LTCivic.safety_level(w) * 0.1
+	pull += LTGeography.amenity_share(w, "sidewalks") * 8.0
 	# cheap land and a fresh start draw people early on
 	pull += clampf(30.0 - float(w.residents()) * 0.1, 5.0, 30.0)
 	var paved: float = 0.0
@@ -81,15 +82,22 @@ static func settler_pull(w: LTWorld) -> float:
 static func _settlers(w: LTWorld) -> void:
 	var lots: Array = []
 	for l in w.lots:
-		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and ["residential", "mixed"].has(str(l["zone"])) and LTGeography.connected(w, int(l["id"])):
+		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and not bool(l.get("hold", false)) and ["residential", "mixed"].has(str(l["zone"])) and LTGeography.connected(w, int(l["id"])):
 			lots.append(l)
+	# families look at the cheapest lots first
+	lots.sort_custom(func(a, b): return int(a.get("price_pct", 100)) < int(b.get("price_pct", 100)) or (int(a.get("price_pct", 100)) == int(b.get("price_pct", 100)) and int(a["id"]) < int(b["id"])))
 	if lots.is_empty():
 		return
 	var p: float = clampf(settler_pull(w) / 100.0, 0.05, 0.9)
 	var bought: int = 0
 	while bought < 3 and not lots.is_empty() and w.rng.randf() < p:
 		var l: Dictionary = lots.pop_front()
-		var price: int = int(l["value"])
+		var price: int = LTGeography.asking_price(w, int(l["id"]))
+		var pct: int = int(l.get("price_pct", 100))
+		if pct > 100 and w.rng.randf() < clampf(float(pct - 100) / 200.0, 0.0, 0.9):
+			# too dear: this family keeps looking
+			p *= 0.8
+			continue
 		w.ledger.pay("outside", "city", price, "lot sales")
 		l["owner_kind"] = "outside"
 		var r: Dictionary = LTProjects.define_project(w, "house", int(l["id"]), int(float(LTProjects.BASE_COST["house"]) * 1.4), -1)

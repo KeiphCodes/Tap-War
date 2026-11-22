@@ -207,6 +207,10 @@ func apply_action(a: Dictionary) -> Dictionary:
 			result = LTCivic.set_law(self, str(act["law"]), act["value"])
 		"zone_lot":
 			result = LTCivic.zone_lot(self, int(act["lot"]), str(act["zone"]))
+		"edit_lots":
+			result = LTGeography.edit_lots(self, act["lots"], act["changes"].duplicate())
+		"edit_project":
+			result = LTProjects.edit(self, int(act["project_id"]), act["changes"].duplicate())
 		"publish_need":
 			result = LTCivic.publish_need(self, str(act["need"]), int(act.get("lot", -1)), act.get("incentives", {}), int(act.get("petition_id", -1)))
 		"respond_petition":

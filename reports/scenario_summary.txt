@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-21T22:08:43 by tests/scenarios.gd.
+Generated 2026-11-22T00:35:52 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Faith Gonzalez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 104 days in the county jail. Job before: line cook, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 104 days in the county jail.
@@ -47,6 +47,9 @@ Generated 2026-11-21T22:08:43 by tests/scenarios.gd.
   Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 27 lots. Mayor's house on lot 26. Incorporated on day 484. Residents after two years: 47. Election: Sam Dakota won the town's first election with 70% of the vote against William Gonzalez. Milestones: ["home", "first_settler", "first_business", "incorporated", "balanced"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
-  Day one reads 11-21. The game day for today is 1. Forty days later it reads month 12 of 2026.
+  Day one reads 11-22. The game day for today is 1. Forty days later it reads month 12 of 2026.
+
+[PASS] Contracts and lot details: the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome
+  Fair price for 6 blocks: standard $132,000, concrete avenue with sidewalks and lights $307,559, gravel lane $52,800. Built: concrete avenue quality 35, 1.5 minutes a block; gravel lane quality 22, 2.4 minutes a block. Deadline 30 days: bids promised [30, 30, 30] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $191,400. The bids were for the old terms, so it is back out to bid until Jan 29, Y1. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
 
 RESULT: ALL SCENARIOS PASS

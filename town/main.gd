@@ -122,6 +122,9 @@ func act(a: Dictionary) -> Dictionary:
 func _process(delta: float) -> void:
 	sound.weather = world.weather
 	sound.daytime = hour > 6.0 and hour < 20.0
+	sound.season = LTCalendar.season(world.day)
+	sound.ambience = view.street_level()
+	sound.city = view.audio
 	if catch_up_to > world.day:
 		# a few days per frame keeps the screen responsive while catching up
 		var n: int = mini(4, catch_up_to - world.day)

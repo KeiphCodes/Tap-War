@@ -6,6 +6,10 @@ extends Node3D
 const CELL: float = 18.0
 const ROAD_W: float = 4.2
 const MAX_SIMS: int = 45
+## Zoomed in closer than this, the town is at street level: Sims appear and the
+## weather and town sounds fade in. Farther out it is a quiet planning map.
+const PEOPLE_DIST: float = 85.0
+const SOUND_FADE: float = 20.0
 const SKIN: Array = [Color(0.96, 0.8, 0.69), Color(0.87, 0.67, 0.5), Color(0.76, 0.55, 0.38), Color(0.6, 0.42, 0.28), Color(0.45, 0.31, 0.2), Color(0.33, 0.22, 0.15)]
 const HAIR: Array = [Color(0.1, 0.08, 0.06), Color(0.3, 0.2, 0.1), Color(0.55, 0.35, 0.15), Color(0.85, 0.7, 0.4), Color(0.6, 0.6, 0.6), Color(0.9, 0.9, 0.88), Color(0.5, 0.15, 0.08)]
 
@@ -71,6 +75,10 @@ var tree_mi: MeshInstance3D
 var _roads_built_day: int = -1
 var _roads_count: int = -1
 var selected_lot: int = -1
+var selected_road: int = -1
+var road_hl_mi: MeshInstance3D
+## What the town sounds like right now near the camera, for the sound node.
+var audio: Dictionary = {"traffic": 0.0, "building": 0.0, "crowd": 0.0}
 var highlight: MeshInstance3D
 
 
@@ -408,12 +416,33 @@ func _rebuild_road_mesh() -> void:
 		var pa: Vector3 = Vector3(float(a["x"]) * CELL, 0.03, float(a["y"]) * CELL)
 		var pb: Vector3 = Vector3(float(b["x"]) * CELL, 0.03, float(b["y"]) * CELL)
 		var horiz: bool = absf(pa.z - pb.z) < 0.01
-		var size: Vector3 = Vector3(CELL + ROAD_W, 0.06, ROAD_W) if horiz else Vector3(ROAD_W, 0.06, CELL + ROAD_W)
+		var st: Dictionary = w.streets[int(s["street"])]
+		var rw: float = ROAD_W if str(st["kind"]) == "highway" else _road_width(int(s["street"]))
+		var size: Vector3 = Vector3(CELL + rw, 0.06, rw) if horiz else Vector3(rw, 0.06, CELL + rw)
 		var cnd: float = float(s["condition"]) / 100.0
+		var planned: bool = bool(s.get("planned", false))
+		if not planned and str(st.get("surface", "")) == "gravel":
+			cnd = minf(cnd, 0.35)
+		elif not planned and str(st.get("surface", "")) == "concrete":
+			cnd = maxf(cnd, 0.6)
+		if not planned and bool(st.get("sidewalks", false)):
+			var off: float = rw * 0.5 + 0.7
+			for sgn in [-1.0, 1.0]:
+				var o: Vector3 = Vector3(0, 0.05, off * sgn) if horiz else Vector3(off * sgn, 0.05, 0)
+				_box(road_root, Vector3(CELL, 0.1, 1.0) if horiz else Vector3(1.0, 0.1, CELL), (pa + pb) * 0.5 + o, Color(0.72, 0.71, 0.68))
+		if not planned and bool(st.get("lights", false)):
+			var o2: Vector3 = Vector3(0, 0, rw * 0.5 + 1.4) if horiz else Vector3(rw * 0.5 + 1.4, 0, 0)
+			var lp: Vector3 = (pa + pb) * 0.5 + o2
+			_box(road_root, Vector3(0.15, 3.2, 0.15), lp + Vector3(0, 1.6, 0), Color(0.25, 0.26, 0.28))
+			_box(road_root, Vector3(0.5, 0.25, 0.5), lp + Vector3(0, 3.3, 0), Color(1.0, 0.9, 0.6), _is_night())
 		var col: Color = Color(0.24, 0.24, 0.26).lerp(Color(0.5, 0.44, 0.36), clampf(1.0 - cnd, 0.0, 1.0) * 0.9)
 		if _snow:
 			col = col.lerp(Color(0.85, 0.87, 0.9), 0.5)
-		if bool(s.get("planned", false)):
+		if not planned and str(st.get("surface", "")) == "concrete":
+			col = Color(0.62, 0.61, 0.58).lerp(Color(0.5, 0.44, 0.36), clampf(1.0 - cnd, 0.0, 1.0) * 0.6)
+		elif not planned and str(st.get("surface", "")) == "gravel":
+			col = Color(0.55, 0.5, 0.42)
+		if planned:
 			# surveyed but not built: a strip of staked dirt
 			col = Color(0.47, 0.33, 0.2)
 			size.y = 0.03
@@ -1108,11 +1137,16 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		sky = sky.lerp(Color(0.95, 0.6, 0.4), 0.45)
 	env.background_color = env.background_color.lerp(sky, clampf(delta * 2.0, 0.0, 1.0))
 	env.ambient_light_energy = 0.25 if night else 0.55
+	people_root.visible = dist < PEOPLE_DIST
 	_tier_timer += delta
 	if _tier_timer > 1.5:
 		_tier_timer = 0.0
-		_refresh_tier()
-	for cid in sim_nodes:
+		if people_root.visible:
+			_refresh_tier()
+		_listen()
+	var cars: int = 0
+	var walkers: int = 0
+	for cid in (sim_nodes if people_root.visible else {}):
 		var n: Node3D = sim_nodes[cid]
 		var c: Dictionary = w.cit(int(cid))
 		if not w.is_present(c):
@@ -1122,6 +1156,11 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		n.visible = bool(plan["visible"])
 		var car: Node3D = n.get_node("Car")
 		car.visible = bool(plan["car"])
+		if n.visible:
+			if bool(plan["car"]) and bool(plan["moving"]):
+				cars += 1
+			elif not bool(plan["car"]):
+				walkers += 1
 		n.get_node("Body").visible = not bool(plan["car"])
 		n.get_node("Head").visible = not bool(plan["car"])
 		n.get_node("Hair").visible = not bool(plan["car"])
@@ -1139,10 +1178,37 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		var tt: float = (hour - float(t["start"])) / 1.5 if watch else 0.5
 		var plan2: Dictionary = _between(_exit_pos() + Vector3(-60, 0, 0), lot_center(int(t["lot"])) + Vector3(5.0, 0, 5.0), tt, true, -1, int(t["lot"]))
 		tn.visible = watch and tt > 0.0 and tt < 1.0
+		if tn.visible and tn.position.distance_to(target) < dist * 1.2:
+			cars += 2
 		tn.position = plan2["pos"]
 		if plan2.has("dir"):
 			tn.rotation.y = atan2((plan2["dir"] as Vector3).x, (plan2["dir"] as Vector3).z)
+	if people_root.visible:
+		audio["traffic"] = lerpf(float(audio["traffic"]), clampf(float(cars) / 6.0, 0.0, 1.0), clampf(delta, 0.0, 1.0))
+		audio["crowd"] = lerpf(float(audio["crowd"]), clampf(float(walkers) / 15.0, 0.0, 1.0), clampf(delta, 0.0, 1.0))
 	_camera_keys(delta)
+
+
+## How much of the town's own sound reaches the camera: none above street level,
+## fading in over the last stretch of zoom.
+func street_level() -> float:
+	return clampf((PEOPLE_DIST - dist) / SOUND_FADE, 0.0, 1.0)
+
+
+## Building sites near the camera make construction noise.
+func _listen() -> void:
+	var sites: int = 0
+	for l in w.lots:
+		if str(l["use"]) == "site" and lot_center(int(l["id"])).distance_to(target) < dist * 1.3 + 20.0:
+			sites += 1
+	for p in w.projects:
+		if str(p["status"]) == "building" and LTProjects.is_road(str(p["ptype"])):
+			for sid in p.get("segments", w.streets[int(p["street"])]["segments"]):
+				var sg: Dictionary = w.roads[int(sid)]
+				if (_node_pos(int(sg["a"])) + _node_pos(int(sg["b"]))).distance_to(target * 2.0) < (dist * 1.3 + 20.0) * 2.0:
+					sites += 1
+					break
+	audio["building"] = clampf(float(sites) / 2.0, 0.0, 1.0)
 
 
 var camper: Node3D
@@ -1389,6 +1455,12 @@ func _tool_end(screen: Vector2) -> void:
 	_tool_drag(screen)
 	_tool_drag_on = false
 	preview_mi.visible = false
+	if tool != "unplot" and _press_pos.distance_to(screen) < 8.0:
+		# a tap with a build tool opens the road or lot under it to edit its details
+		var g: Vector3 = _ground_point(screen)
+		if tool == "road" and _road_at(g) >= 0 or tool == "plot" and LTGeography.lot_at(w, _cell_at(g).x, _cell_at(g).y) >= 0:
+			_pick(screen)
+			return
 	var r: Dictionary = {}
 	match tool:
 		"road":
@@ -1399,7 +1471,11 @@ func _tool_end(screen: Vector2) -> void:
 			var lid: int = LTGeography.lot_at(w, _tool_a.x, _tool_a.y)
 			r = main.act({"kind": "unplot", "lot": lid}) if lid >= 0 else {"message": "There is no lot there."}
 	if not r.is_empty():
-		main.hud.show_toast(str(r.get("message", "")))
+		var msg: String = str(r.get("message", ""))
+		if tool == "road" and bool(r.get("ok", false)):
+			msg += " Tap the road to set its contract: surface, width, sidewalks, lights, deadline and budget."
+			select_road(int(r.get("street", -1)))
+		main.hud.show_toast(msg)
 
 
 func _show_preview() -> void:
@@ -1463,7 +1539,7 @@ func _pick(screen: Vector2) -> void:
 	var hit_sim: int = -1
 	for cid in sim_nodes:
 		var n: Node3D = sim_nodes[cid]
-		if not n.visible:
+		if not n.visible or not people_root.visible:
 			continue
 		var p: Vector3 = n.global_position + Vector3(0, 1.0, 0)
 		if cam.is_position_behind(p):
@@ -1486,10 +1562,95 @@ func _pick(screen: Vector2) -> void:
 	var g: Vector3 = from + dir * t
 	var col: int = int(floor(g.x / CELL))
 	var row: int = int(floor(g.z / CELL))
+	var road: int = _road_at(g)
+	if road >= 0:
+		select_lot(-1)
+		select_road(road)
+		main.hud.inspect("road", road)
+		return
 	var lid: int = LTGeography.lot_at(w, col, row)
 	if lid >= 0:
+		select_road(-1)
 		select_lot(lid)
 		main.hud.inspect("lot", lid)
+
+
+## The street under a ground point, built or planned, or -1.
+func _road_at(g: Vector3) -> int:
+	var fx: float = g.x / CELL
+	var fz: float = g.z / CELL
+	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
+	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
+	var dz: float = absf(fz - roundf(fz)) * CELL
+	var dx: float = absf(fx - roundf(fx)) * CELL
+	var reach: float = ROAD_W * 0.9
+	var tries: Array = []
+	if dz < reach:
+		tries.append([dz, Vector2i(int(floor(fx)), int(roundf(fz))), Vector2i(int(floor(fx)) + 1, int(roundf(fz)))])
+	if dx < reach:
+		tries.append([dx, Vector2i(int(roundf(fx)), int(floor(fz))), Vector2i(int(roundf(fx)), int(floor(fz)) + 1)])
+	tries.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	for t in tries:
+		var a: Vector2i = t[1]
+		var b: Vector2i = t[2]
+		if a.x < 0 or a.y < 0 or b.x > cols or b.y > rows:
+			continue
+		var sid: int = LTGeography.seg_between(w, LTGeography.node_id(w, a.x, a.y), LTGeography.node_id(w, b.x, b.y))
+		if sid >= 0 and not bool(w.roads[sid].get("removed", false)):
+			return int(w.roads[sid]["street"])
+	return -1
+
+
+## Outlines the blocks of one street so the mayor can see what they picked.
+func select_road(street_id: int) -> void:
+	selected_road = street_id
+	if road_hl_mi != null:
+		road_hl_mi.queue_free()
+		road_hl_mi = null
+	if street_id < 0 or street_id >= w.streets.size():
+		return
+	_batch_begin()
+	for sid in w.streets[street_id]["segments"]:
+		var s: Dictionary = w.roads[int(sid)]
+		if bool(s.get("removed", false)):
+			continue
+		var pa: Vector3 = _node_pos(int(s["a"]))
+		var pb: Vector3 = _node_pos(int(s["b"]))
+		var horiz: bool = absf(pa.z - pb.z) < 0.01
+		var wd: float = _road_width(street_id) + 1.2
+		_box(road_root, Vector3(CELL + wd, 0.05, wd) if horiz else Vector3(wd, 0.05, CELL + wd), (pa + pb) * 0.5 + Vector3(0, 0.09, 0), Color(1.0, 0.85, 0.2), true)
+	road_hl_mi = _batch_end(road_root)
+	road_hl_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func focus_street(street_id: int) -> void:
+	if street_id < 0 or street_id >= w.streets.size():
+		return
+	var c: Vector3 = Vector3.ZERO
+	var n: int = 0
+	for sid in w.streets[street_id]["segments"]:
+		var s: Dictionary = w.roads[int(sid)]
+		if bool(s.get("removed", false)):
+			continue
+		c += _node_pos(int(s["a"])) + _node_pos(int(s["b"]))
+		n += 2
+	if n > 0:
+		g_target = c / float(n)
+		g_dist = minf(g_dist, 110.0)
+		_clamp_goals()
+
+
+## Width on the map for a street's contract (or what was built).
+func _road_width(street_id: int) -> float:
+	var st: Dictionary = w.streets[street_id]
+	var wd: String = str(st.get("width", ""))
+	if wd == "":
+		for p in w.projects:
+			if str(p["ptype"]) == "road_build" and int(p["street"]) == street_id and p.has("spec"):
+				wd = str(p["spec"]["width"])
+	if wd == "" or not LTProjects.WIDTHS.has(wd):
+		return ROAD_W
+	return ROAD_W * float(LTProjects.WIDTHS[wd]["draw"])
 
 
 func select_lot(lid: int) -> void:
@@ -1525,3 +1686,7 @@ func focus_sim(cid: int, hour: float) -> void:
 	g_target = goal
 	g_dist = minf(g_dist, 45.0)
 	_refresh_tier()
+
+
+func _is_night() -> bool:
+	return _last_hour < 6.0 or _last_hour > 19.5

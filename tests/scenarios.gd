@@ -25,6 +25,7 @@ func _init() -> void:
 	_every_type()
 	_founder_mode()
 	_real_calendar()
+	_contracts_and_lot_details()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -360,6 +361,75 @@ func _founder_mode() -> void:
 			election = str(e["text"])
 	var ok: bool = only_highway and bool(r1["ok"]) and bool(r2["ok"]) and start_pop == 1 and start_cash == LTMoney.dollars(1000000.0) and int(w.player["home_lot"]) == mh_lot and inc_day > 0 and w.residents() >= 20 and election != ""
 	_check("Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes", ok, "Started with %d resident, %s, no lots, and %d road. Drew %s and %s. Plotted %d lots. Mayor's house on lot %d. Incorporated on day %d. Residents after two years: %d. Election: %s Milestones: %s" % [start_pop, LTMoney.fmt(start_cash), 1, w.streets[1]["name"], w.streets[2]["name"], w.lots.size(), int(w.player["home_lot"]), inc_day, w.residents(), election, w.city.get("milestones", {}).keys()], w)
+
+
+## The mayor writes the contract for a planned road and the details of new lots,
+## and each choice changes what happens: price, time, quality, what is built,
+## which lots families buy and what they pay.
+func _contracts_and_lot_details() -> void:
+	var run: Callable = func(changes: Dictionary, days: int, award: bool = true) -> LTWorld:
+		var w: LTWorld = LTWorld.new()
+		w.new_town(SEED, {}, {"start": "founder"})
+		var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
+		w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 6)})
+		if not changes.is_empty():
+			w.apply_action({"kind": "edit_project", "project_id": 0, "changes": changes})
+		for d in days:
+			var p: Dictionary = w.projects[0]
+			if str(p["status"]) == "review" and award:
+				var pick: int = 0
+				for i in p["bids"].size():
+					if int(p["bids"][i]["price"]) < int(p["bids"][pick]["price"]):
+						pick = i
+				w.apply_action({"kind": "award_bid", "project_id": 0, "bid_index": pick})
+			w.tick_day()
+		return w
+	var base: LTWorld = run.call({}, 0)
+	var fancy_w: LTWorld = run.call({"surface": "concrete", "width": "avenue", "sidewalks": true, "lights": true, "name": "Founders Way"}, 0)
+	var cheap_w: LTWorld = run.call({"surface": "gravel", "width": "lane"}, 0)
+	var b0: int = int(base.projects[0]["base_cost"])
+	var b1: int = int(fancy_w.projects[0]["base_cost"])
+	var b2: int = int(cheap_w.projects[0]["base_cost"])
+	var priced: bool = b1 > b0 and b2 < b0 and int(fancy_w.projects[0]["ceiling"]) > int(base.projects[0]["ceiling"]) and str(fancy_w.streets[1]["name"]) == "Founders Way"
+	# build both and compare what was built
+	var built_fancy: LTWorld = run.call({"surface": "concrete", "width": "avenue", "sidewalks": true, "lights": true}, 160)
+	var built_cheap: LTWorld = run.call({"surface": "gravel", "width": "lane"}, 160)
+	var pf: Dictionary = built_fancy.projects[0]
+	var pc: Dictionary = built_cheap.projects[0]
+	var both_done: bool = str(pf["status"]) == "done" and str(pc["status"]) == "done"
+	var st: Dictionary = built_fancy.streets[1]
+	var features: bool = bool(st.get("sidewalks", false)) and bool(st.get("lights", false)) and str(st.get("width", "")) == "avenue"
+	var seg_f: float = LTGeography.segment_minutes(built_fancy, built_fancy.roads[int(st["segments"][0])])
+	var seg_c: float = LTGeography.segment_minutes(built_cheap, built_cheap.roads[int(built_cheap.streets[1]["segments"][0])])
+	var better: bool = float(pf["quality"]) > float(pc["quality"]) and seg_f < seg_c
+	# a deadline: bids squeeze their schedules and charge for it
+	var dl_w: LTWorld = run.call({"deadline": 30, "penalty": true}, LTProjects.BID_DAYS + 1, false)
+	var dl_ok: bool = true
+	for b in dl_w.projects[0]["bids"]:
+		dl_ok = dl_ok and int(b["days"]) <= 30
+	dl_ok = dl_ok and not dl_w.projects[0]["bids"].is_empty()
+	var dl_days: String = str(dl_w.projects[0]["bids"].map(func(b): return int(b["days"])))
+	# changing terms after bids are in sends it back out to bid
+	var re: Dictionary = dl_w.apply_action({"kind": "edit_project", "project_id": 0, "changes": {"deadline": 0}})
+	var reopened: bool = str(dl_w.projects[0]["status"]) == "bidding" and dl_w.projects[0]["bids"].is_empty()
+	# signed contracts are locked
+	var locked: Dictionary = built_fancy.apply_action({"kind": "edit_project", "project_id": 0, "changes": {"surface": "gravel"}})
+	# lot details: price, hold and zone, applied to a plotted group
+	var lw: LTWorld = LTWorld.new()
+	lw.new_town(SEED, {}, {"start": "founder"})
+	var r: Dictionary = lw.apply_action({"kind": "plot_lots", "c0": 3, "r0": 11, "c1": 8, "r1": 11, "zone": "residential"})
+	var group: Array = LTGeography.plot_group_lots(lw, int(r["plot_group"]))
+	lw.apply_action({"kind": "edit_lots", "lots": group, "changes": {"price_pct": 150}})
+	lw.apply_action({"kind": "edit_lots", "lots": [group[0]], "changes": {"hold": true, "name": "Town Green"}})
+	lw.apply_action({"kind": "edit_lots", "lots": [group[1]], "changes": {"price_pct": 50}})
+	var asking: int = LTGeography.asking_price(lw, int(group[1]))
+	for d in 200:
+		lw.tick_day()
+	var held_ok: bool = str(lw.lot(int(group[0]))["owner_kind"]) == "city" and str(lw.lot(int(group[0]))["name"]) == "Town Green"
+	var cheap_sold: bool = str(lw.lot(int(group[1]))["owner_kind"]) != "city"
+	var lots_ok: bool = group.size() == 6 and held_ok and cheap_sold and asking > 0
+	var ok: bool = priced and both_done and features and better and dl_ok and bool(re["ok"]) and reopened and not bool(locked["ok"]) and lots_ok
+	_check("Contracts and lot details: the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome", ok, "Fair price for 6 blocks: standard %s, concrete avenue with sidewalks and lights %s, gravel lane %s. Built: concrete avenue quality %d, %.1f minutes a block; gravel lane quality %d, %.1f minutes a block. Deadline 30 days: bids promised %s days. Changing terms after bids: %s Signed contract: %s Lots: held lot kept by the city: %s, half price lot sold: %s." % [LTMoney.fmt(b0), LTMoney.fmt(b1), LTMoney.fmt(b2), int(float(pf["quality"]) * 100.0), seg_f, int(float(pc["quality"]) * 100.0), seg_c, dl_days, re["message"], locked["message"], held_ok, cheap_sold], base)
 
 
 func _real_calendar() -> void:

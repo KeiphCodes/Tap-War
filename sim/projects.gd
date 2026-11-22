@@ -70,8 +70,9 @@ static func define_road_build(w: LTWorld, street_id: int, segs: Array) -> Dictio
 		"events": [], "done_day": -1, "warranty_until": -1, "private": false, "developer": {}, "repair_needed_day": -1,
 		"kickback": {}, "payment_late": false, "segments": segs.duplicate(),
 		"base_cost": ROAD_BLOCK_COST * n, "base_days": 15 + ROAD_BLOCK_DAYS * n,
+		"raw_cost": ROAD_BLOCK_COST * n, "raw_days": 15 + ROAD_BLOCK_DAYS * n, "spec": default_spec("road_build"),
 	}
-	p["ceiling"] = int(float(p["base_cost"]) * 1.45)
+	_apply_spec(p)
 	w.projects.append(p)
 	_event(w, p, "Drawn by the mayor: %d new %s. Budget ceiling %s. Out to bid for %d days." % [n, "block" if n == 1 else "blocks", LTMoney.fmt(int(p["ceiling"])), BID_DAYS])
 	w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
@@ -122,11 +123,166 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		p["title"] = TITLES[ptype]
 		l["use"] = "reserved"
 		l["ref"] = int(p["id"])
-	p["ceiling"] = ceiling if ceiling > 0 else int(float(BASE_COST[ptype]) * 1.45)
+	p["raw_cost"] = int(BASE_COST[ptype])
+	p["raw_days"] = int(BASE_DAYS.get(ptype, 30))
+	p["spec"] = default_spec(ptype)
+	_apply_spec(p)
+	if ceiling > 0:
+		p["ceiling"] = ceiling
+		p["ceiling_set"] = true
 	w.projects.append(p)
 	_event(w, p, "Defined with a budget ceiling of %s. Out to bid for %d days." % [LTMoney.fmt(int(p["ceiling"])), BID_DAYS])
 	w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
 	return {"ok": true, "message": "\"%s\" is out to bid until %s." % [p["title"], LTCalendar.short(int(p["bid_close_day"]))], "project_id": int(p["id"])}
+
+
+# ---------------------------------------------------------------- the contract
+
+## What the mayor writes into a contract before it goes out to bid. Each choice
+## changes what contractors price, how long they take, and what gets built.
+const SURFACES: Dictionary = {
+	"gravel": {"label": "Gravel", "cost": 0.5, "quality": -0.25, "wear": 2.2, "note": "cheap, dusty, wears out fast"},
+	"asphalt": {"label": "Asphalt", "cost": 1.0, "quality": 0.0, "wear": 1.0, "note": "the usual town street"},
+	"concrete": {"label": "Concrete", "cost": 1.5, "quality": 0.1, "wear": 0.55, "note": "costly, lasts decades"},
+}
+const WIDTHS: Dictionary = {
+	"lane": {"label": "Narrow lane", "cost": 0.8, "speed": 1.12, "draw": 0.75},
+	"street": {"label": "Two lane street", "cost": 1.0, "speed": 1.0, "draw": 1.0},
+	"avenue": {"label": "Wide avenue", "cost": 1.4, "speed": 0.82, "draw": 1.45},
+}
+const GRADES: Dictionary = {
+	"budget": {"label": "Budget materials", "cost": 0.8, "quality": -0.12},
+	"standard": {"label": "Standard", "cost": 1.0, "quality": 0.0},
+	"premium": {"label": "Premium materials", "cost": 1.3, "quality": 0.12},
+}
+const SIDEWALK_COST: float = 0.14
+const LIGHTS_COST: float = 0.09
+const RUSH_COST: float = 0.6     # extra price per share of the schedule a deadline cuts
+const LATE_PENALTY: float = 0.005  # of the price per day late, when the contract has one
+
+
+static func default_spec(ptype: String) -> Dictionary:
+	if ptype == "road_build":
+		return {"surface": "asphalt", "width": "street", "sidewalks": false, "lights": false, "deadline": 0, "penalty": false}
+	return {"grade": "standard", "deadline": 0, "penalty": false}
+
+
+static func spec_editable(p: Dictionary) -> bool:
+	return p.has("spec") and not bool(p["private"]) and ["bidding", "review"].has(str(p["status"]))
+
+
+static func _apply_spec(p: Dictionary) -> void:
+	var sp: Dictionary = p["spec"]
+	var mult: float = 1.0
+	var dmult: float = 1.0
+	if str(p["ptype"]) == "road_build":
+		mult = float(SURFACES[str(sp["surface"])]["cost"]) * float(WIDTHS[str(sp["width"])]["cost"])
+		if bool(sp["sidewalks"]):
+			mult += SIDEWALK_COST
+		if bool(sp["lights"]):
+			mult += LIGHTS_COST
+		dmult = 0.7 + mult * 0.3
+	else:
+		mult = float(GRADES[str(sp.get("grade", "standard"))]["cost"])
+		dmult = 0.85 + mult * 0.15
+	p["base_cost"] = int(float(p["raw_cost"]) * mult)
+	p["base_days"] = maxi(5, int(float(p["raw_days"]) * dmult))
+	if not bool(p.get("ceiling_set", false)):
+		p["ceiling"] = int(float(p["base_cost"]) * 1.45)
+
+
+static func spec_quality(p: Dictionary) -> float:
+	if not p.has("spec"):
+		return 0.0
+	var sp: Dictionary = p["spec"]
+	if str(p["ptype"]) == "road_build":
+		return float(SURFACES[str(sp["surface"])]["quality"])
+	return float(GRADES[str(sp.get("grade", "standard"))]["quality"])
+
+
+## One line a person can read: what this contract asks for.
+static func spec_text(p: Dictionary) -> String:
+	if not p.has("spec"):
+		return ""
+	var sp: Dictionary = p["spec"]
+	var parts: Array = []
+	if str(p["ptype"]) == "road_build":
+		parts.append(str(WIDTHS[str(sp["width"])]["label"]))
+		parts.append(str(SURFACES[str(sp["surface"])]["label"]).to_lower())
+		if bool(sp["sidewalks"]):
+			parts.append("sidewalks")
+		if bool(sp["lights"]):
+			parts.append("streetlights")
+	else:
+		parts.append(str(GRADES[str(sp.get("grade", "standard"))]["label"]))
+	if int(sp["deadline"]) > 0:
+		parts.append("finish within %d days%s" % [int(sp["deadline"]), " or pay a late penalty" if bool(sp["penalty"]) else ""])
+	return ", ".join(parts)
+
+
+## The mayor rewrites a contract that is not signed yet. If bids are already in,
+## the change sends it back out to bid, because every price was for the old terms.
+static func edit(w: LTWorld, pid: int, changes: Dictionary) -> Dictionary:
+	if pid < 0 or pid >= w.projects.size():
+		return {"ok": false, "message": "No such project."}
+	var p: Dictionary = w.projects[pid]
+	if changes.has("name") and str(p["ptype"]) == "road_build":
+		var nm: String = str(changes["name"]).strip_edges().left(40)
+		if nm != "" and nm != str(w.streets[int(p["street"])]["name"]):
+			w.streets[int(p["street"])]["name"] = nm
+			var n: int = p.get("segments", []).size()
+			p["title"] = "Build %s (%d %s)" % [nm, n, "block" if n == 1 else "blocks"]
+			_event(w, p, "The mayor named the road %s." % nm)
+		changes.erase("name")
+	if changes.is_empty():
+		return {"ok": true, "message": "Saved."}
+	if not spec_editable(p):
+		return {"ok": false, "message": "The contract is signed. Its terms can no longer change."}
+	var sp: Dictionary = p["spec"]
+	var before: String = spec_text(p)
+	for k in changes:
+		match str(k):
+			"surface":
+				if SURFACES.has(str(changes[k])):
+					sp["surface"] = str(changes[k])
+			"width":
+				if WIDTHS.has(str(changes[k])):
+					sp["width"] = str(changes[k])
+			"grade":
+				if GRADES.has(str(changes[k])):
+					sp["grade"] = str(changes[k])
+			"sidewalks", "lights", "penalty":
+				if sp.has(k):
+					sp[k] = bool(changes[k])
+			"deadline":
+				sp["deadline"] = clampi(int(changes[k]), 0, 720)
+			"ceiling":
+				var c: int = int(changes[k])
+				if c <= 0:
+					p["ceiling_set"] = false
+				else:
+					p["ceiling"] = maxi(c, LTMoney.dollars(1000.0))
+					p["ceiling_set"] = true
+	_apply_spec(p)
+	var msg: String = "Contract updated: %s. Budget ceiling %s." % [spec_text(p), LTMoney.fmt(int(p["ceiling"]))]
+	if str(p["status"]) == "review":
+		p["status"] = "bidding"
+		p["bids"] = []
+		p["bid_close_day"] = w.day + BID_DAYS
+		msg += " The bids were for the old terms, so it is back out to bid until %s." % LTCalendar.short(int(p["bid_close_day"]))
+	if spec_text(p) != before or changes.has("ceiling"):
+		_event(w, p, "The mayor changed the contract: %s. Budget ceiling %s." % [spec_text(p), LTMoney.fmt(int(p["ceiling"]))])
+	return {"ok": true, "message": msg}
+
+
+static func _deadline_terms(p: Dictionary, price: float, days: int) -> Array:
+	# a deadline shorter than the crew's honest schedule costs overtime and extra crews
+	var dl: int = int(p.get("spec", {}).get("deadline", 0))
+	if dl > 0 and days > dl:
+		var cut: float = float(days - dl) / float(days)
+		price *= 1.0 + cut * RUSH_COST
+		days = dl
+	return [price, days]
 
 
 static func _event(w: LTWorld, p: Dictionary, text: String) -> void:
@@ -224,6 +380,9 @@ static func _outside_bid(w: LTWorld, p: Dictionary, co: Dictionary) -> Dictionar
 	var q: float = clampf(skill * (0.75 + float(co["honesty"]) / 400.0) + w.rng.randf_range(-0.05, 0.05), 0.15, 1.0)
 	if cuts_materials:
 		q *= 0.6
+	var dt: Array = _deadline_terms(p, price, days)
+	price = float(dt[0])
+	days = int(dt[1])
 	return {
 		"kind": "outside", "company": int(co["id"]), "name": co["name"], "local": false,
 		"price": int(price), "days": days, "crew": int(co["crew"]), "warranty_years": 1 if int(co["honesty"]) < 50 else 3,
@@ -262,6 +421,9 @@ static func _local_bid(w: LTWorld, p: Dictionary, b: Dictionary) -> Dictionary:
 	var crew_factor: float = clampf(float(crew) / 4.0, 0.4, 1.5)
 	var days: int = int(float(p.get("base_days", BASE_DAYS.get(ptype, 30))) * (1.15 - skill * 0.2) / crew_factor * (1.0 + float(busy) * 0.3)) + 2
 	var q2: float = clampf(skill * (0.8 + float(t["honesty"]) / 500.0) + w.rng.randf_range(-0.06, 0.06), 0.15, 1.0)
+	var dt: Array = _deadline_terms(p, price, days)
+	price = float(dt[0])
+	days = int(dt[1])
 	var hist: String = "first public job" if int(b["jobs_done"]) == 0 else "%d jobs, %d overruns, %d defects" % [b["jobs_done"], b["overruns"], b["defects"]]
 	return {
 		"kind": "local", "company": int(b["id"]), "name": b["name"], "local": true,
@@ -299,7 +461,7 @@ static func _start(w: LTWorld, p: Dictionary, bid: Dictionary) -> void:
 	p["winner_name"] = bid["name"]
 	p["price"] = int(bid["price"])
 	p["days_promised"] = int(bid["days"])
-	p["quality_target"] = float(bid["hidden_quality"])
+	p["quality_target"] = clampf(float(bid["hidden_quality"]) + spec_quality(p), 0.1, 1.0)
 	p["plans_change_orders"] = bool(bid["plans_change_orders"])
 	p["warranty_until"] = -1
 	p["status"] = "building"
@@ -475,6 +637,16 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 	var late: int = (w.day - int(p["start_day"])) - int(p["days_promised"])
 	var over: int = int(p["change_orders"])
 	_event(w, p, "Finished. Quality %d of 100 (grade %s). %s %s" % [int(q * 100.0), _grade(q), "Finished %d days late." % late if late > 0 else "On time.", "Cost %s over the bid in change orders." % LTMoney.fmt(over) if over > 0 else "No change orders."])
+	var sp: Dictionary = p.get("spec", {})
+	if late > 0 and bool(sp.get("penalty", false)) and not bool(p["private"]):
+		var pen: int = int(float(p["price"]) * minf(0.2, LATE_PENALTY * float(late)))
+		var from: String = _payee(w, p)
+		if from != "outside":
+			pen = mini(pen, maxi(0, w.ledger.bal(from)))
+		if pen > 0:
+			w.ledger.pay(from, _payer(w, p), pen, "late penalty")
+			p["penalty_paid"] = pen
+			_event(w, p, "%s paid %s in late penalties under the contract." % [p["winner_name"], LTMoney.fmt(pen)])
 	if str(p["winner"]["kind"]) == "outside":
 		var co: Dictionary = w.companies[int(p["winner"]["id"])]
 		co["quality_hist"].append(q)
@@ -499,6 +671,10 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 	var ptype: String = str(p["ptype"])
 	w.dist_cache.clear()
 	if ptype == "road_build":
+		var st2: Dictionary = w.streets[int(p["street"])]
+		for k in ["surface", "width", "sidewalks", "lights"]:
+			if sp.has(k):
+				st2[k] = sp[k]
 		for sid in p["segments"]:
 			LTGeography.open_segment(w, int(sid), q)
 			w.roads[int(sid)]["last_project"] = int(p["id"])

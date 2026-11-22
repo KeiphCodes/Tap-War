@@ -92,7 +92,7 @@ static func business_tax_rate(w: LTWorld) -> float:
 
 
 static func lot_rent(w: LTWorld, lot_id: int) -> int:
-	return int(float(w.lot(lot_id)["value"]) * 0.008)
+	return int(float(LTGeography.asking_price(w, lot_id)) * 0.008)
 
 
 static func has_service(w: LTWorld, kind: String) -> bool:
@@ -141,7 +141,8 @@ static func _safety_level(w: LTWorld) -> float:
 	var unemp: float = 0.0
 	if not w.stats_history.is_empty():
 		unemp = float(w.stats_history[w.stats_history.size() - 1]["unemployment"])
-	return clampf(45.0 + law(w, "police_funding") * 28.0 - float(thefts) * 3.0 - unemp * 25.0, 5.0, 100.0)
+	var lit: float = LTGeography.amenity_share(w, "lights") * 8.0
+	return clampf(45.0 + law(w, "police_funding") * 28.0 - float(thefts) * 3.0 - unemp * 25.0 + lit, 5.0, 100.0)
 
 
 static func enforcement(w: LTWorld) -> float:
