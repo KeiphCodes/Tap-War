@@ -1214,9 +1214,7 @@ func _trip_hours(a: Vector3, b: Vector3, from_lot: int, to_lot: int, car: bool) 
 	var h: float = length / (DRIVE_UPH if car else WALK_UPH)
 	h = maxf(h, 2.0 / 60.0)
 	if time_scale > 1.5:
-		# Normal packs a day into three seconds: trips there only need a moment
-		var min_real: float = MIN_TRIP_REAL_S if time_scale <= 1000.0 else 0.3
-		h = maxf(h, min_real * time_scale / 3600.0)
+		h = maxf(h, MIN_TRIP_REAL_S * time_scale / 3600.0)
 	return h
 
 
@@ -1300,13 +1298,11 @@ func _between(a: Vector3, b: Vector3, t: float, car: bool, from_lot: int, to_lot
 func animate(delta: float, hour: float, watch: bool) -> void:
 	_watch_mode = watch
 	_last_hour = hour
-	# sun and sky follow the hour in Live and Watch; at Normal a day lasts three
-	# seconds, so the light holds at midday instead of flashing day and night
-	var light_hour: float = hour if time_scale <= 1000.0 else FREEZE_HOUR
-	var day_t: float = (light_hour - 6.0) / 12.0
+	# sun and sky follow the hour in watch mode
+	var day_t: float = (hour - 6.0) / 12.0
 	var elev: float = sin(clampf(day_t, 0.0, 1.0) * PI)
 	sun.rotation = Vector3(-deg_to_rad(8.0 + 62.0 * elev), deg_to_rad(-60.0 + 120.0 * clampf(day_t, 0.0, 1.0)), 0.0)
-	var night: bool = light_hour < 6.0 or light_hour > 19.5
+	var night: bool = hour < 6.0 or hour > 19.5
 	sun.light_energy = 0.05 if night else 0.35 + elev * 0.9
 	var sky: Color = Color(0.62, 0.78, 0.92)
 	if w.weather == "Rain" or w.weather == "Storm":
@@ -1315,7 +1311,7 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		sky = Color(0.78, 0.8, 0.84)
 	if night:
 		sky = Color(0.06, 0.08, 0.15)
-	elif light_hour < 7.5 or light_hour > 18.0:
+	elif hour < 7.5 or hour > 18.0:
 		sky = sky.lerp(Color(0.95, 0.6, 0.4), 0.45)
 	env.background_color = env.background_color.lerp(sky, clampf(delta * 2.0, 0.0, 1.0))
 	env.ambient_light_energy = 0.25 if night else 0.55
