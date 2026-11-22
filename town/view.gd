@@ -18,6 +18,9 @@ const DRIVE_UPH: float = 26400.0
 const FREEZE_HOUR: float = 12.5
 ## In Watch a trip lasts at least this many real seconds, so it can be followed.
 const MIN_TRIP_REAL_S: float = 1.2
+## Yard furniture on every lived in house, in the lot's own coordinates.
+const CHAIRS: Array = [Vector3(-4.7, 0, 4.2), Vector3(-3.6, 0, 4.2)]
+const FLOWER_X: float = 2.0
 const SOUND_FADE: float = 20.0
 const SKIN: Array = [Color(0.96, 0.8, 0.69), Color(0.87, 0.67, 0.5), Color(0.76, 0.55, 0.38), Color(0.6, 0.42, 0.28), Color(0.45, 0.31, 0.2), Color(0.33, 0.22, 0.15)]
 const HAIR: Array = [Color(0.1, 0.08, 0.06), Color(0.3, 0.2, 0.1), Color(0.55, 0.35, 0.15), Color(0.85, 0.7, 0.4), Color(0.6, 0.6, 0.6), Color(0.9, 0.9, 0.88), Color(0.5, 0.15, 0.08)]
@@ -813,6 +816,19 @@ func _house(root: Node3D, l: Dictionary, cond: float) -> void:
 	if not occupied:
 		var s: Label3D = _sign(root, "For sale", Vector3(3.5, 1.5, 4.5), 28)
 		s.pixel_size = 0.04
+	else:
+		# two lawn chairs facing the street and a flower bed by the front wall
+		for cp in CHAIRS:
+			var cv: Vector3 = cp
+			_box(root, Vector3(0.7, 0.12, 0.7), cv + Vector3(0, 0.45, 0), Color(0.85, 0.85, 0.8))
+			_box(root, Vector3(0.7, 0.7, 0.1), cv + Vector3(0, 0.8, -0.33), Color(0.85, 0.85, 0.8))
+			for lx in [-0.3, 0.3]:
+				_box(root, Vector3(0.06, 0.45, 0.6), cv + Vector3(lx, 0.22, 0), Color(0.5, 0.5, 0.5))
+		var bed: Vector3 = Vector3(hx + FLOWER_X, 0, 3.0)
+		_box(root, Vector3(1.8, 0.25, 0.7), bed + Vector3(0, 0.12, 0), Color(0.35, 0.25, 0.18))
+		if _season != "Winter":
+			for i in 4:
+				_ball(root, 0.16, bed + Vector3(-0.6 + i * 0.4, 0.35, 0), [Color(0.9, 0.3, 0.4), Color(0.95, 0.85, 0.3), Color(0.6, 0.4, 0.85), Color(0.95, 0.6, 0.3)][i])
 	if cond < 0.4:
 		_box(root, Vector3(1.4, 0.1, 1.1), Vector3(hx + 2.0, 2.1, 2.62), Color(0.4, 0.3, 0.2))
 	# a business run from home: a yard sign, and the work truck in the drive
@@ -1222,6 +1238,13 @@ func _make_sim(c: Dictionary) -> Node3D:
 	head.name = "Head"
 	var hair: MeshInstance3D = _ball(n, 0.21, Vector3.ZERO, Color.BLACK)
 	hair.name = "Hair"
+	# a face, so you can tell which way a Sim is looking
+	var face: Node3D = Node3D.new()
+	face.name = "Face"
+	n.add_child(face)
+	for x in [-0.075, 0.075]:
+		_ball(face, 0.035, Vector3(x, 0.03, 0.175), Color(0.08, 0.08, 0.1))
+	_ball(face, 0.03, Vector3(0, -0.03, 0.2), Color(0.85, 0.6, 0.5))
 	var car: Node3D = Node3D.new()
 	car.name = "Car"
 	n.add_child(car)
@@ -1255,7 +1278,11 @@ func _update_sim_look(n: Node3D, c: Dictionary) -> void:
 	head.material_override = _mat(SKIN[int(looks["skin"]) % SKIN.size()])
 	var hair: MeshInstance3D = n.get_node("Hair")
 	hair.scale = head.scale * Vector3(1.0, 0.6, 1.0)
-	hair.position = head.position + Vector3(0, 0.08, -0.02)
+	hair.position = head.position + Vector3(0, 0.08, -0.04)
+	var face: Node3D = n.get_node_or_null("Face")
+	if face != null:
+		face.position = head.position
+		face.scale = head.scale
 	var hc: Color = HAIR[int(looks["hair"]) % HAIR.size()]
 	if age >= 60:
 		hc = Color(0.85, 0.85, 0.85)
@@ -1336,7 +1363,7 @@ func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 					return _potter(c, sp, hour, true)
 				if hour >= stay_until and hour < stay_until + d:
 					return _between(sp, home_p, (hour - stay_until) / d, false, int(sb["lot"]), home)
-		return _potter(c, home_p, hour, hour > 8.0 and hour < 20.0)
+		return _at_home(c, home, home_p, hour, hour > 8.0 and hour < 20.0)
 	var leave: float = 7.0 + j
 	var back: float = 17.0 + j
 	var exit_p: Vector3 = _exit_pos() + Vector3(-60.0, 0, 0)
@@ -1345,14 +1372,14 @@ func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 	var far_lot: int = -1 if outside else dest_lot
 	var d_out: float = _trip_hours(home_p, far, home, far_lot, by_car)
 	if hour < leave or hour >= back + d_out:
-		return _potter(c, home_p, hour, hour > 6.5 and hour < 21.5)
+		return _at_home(c, home, home_p, hour, hour > 6.5 and hour < 21.5)
 	if hour < leave + d_out:
 		return _between(home_p, far, (hour - leave) / d_out, by_car, home, far_lot)
 	if hour >= back:
 		return _between(far, home_p, (hour - back) / d_out, by_car, far_lot, home)
 	if outside:
 		return {"pos": exit_p, "visible": false, "car": false, "moving": false}
-	return _potter(c, dest, hour, true)
+	return _at_work(c, dest, hour)
 
 
 ## How long a trip takes in game hours: by distance and by foot or car, and in
@@ -1383,6 +1410,82 @@ func _path_len(a: Vector3, b: Vector3, from_lot: int, to_lot: int) -> float:
 func _hash01(cid: int, k: int, salt: int) -> float:
 	var v: float = sin(float(cid) * 12.9898 + float(k) * 78.233 + float(salt) * 37.719) * 43758.5453
 	return v - floor(v)
+
+
+## Where the front of the house sits on its lot (the garage pushes it left).
+func _house_hx(l: Dictionary) -> float:
+	var spec: Dictionary = l.get("home", {"beds": 3, "garage": 1})
+	var hw: float = clampf(5.6 + float(int(spec["beds"])) * 0.85, 6.0, 10.0)
+	var gw: float = minf(float(int(spec.get("garage", 1))) * 2.8, 12.6 - hw)
+	return -gw * 0.5
+
+
+## Free time at home. Most of it is spent indoors, out of sight, as real people
+## do. Outside you can tell what a Sim is doing: sitting in a lawn chair, kneeling
+## at the flower bed, walking down the sidewalk and back, or (children) playing
+## in the yard. Each stretch of about twenty minutes is one choice.
+func _at_home(c: Dictionary, home: int, home_p: Vector3, hour: float, window: bool) -> Dictionary:
+	var inside: Dictionary = {"pos": home_p, "visible": false, "car": false, "moving": false}
+	if not window or home < 0 or str(w.lot(home)["use"]) != "house":
+		return inside if home >= 0 else {"pos": home_p, "visible": window, "car": false, "moving": false}
+	if w.weather == "Rain" or w.weather == "Storm" or (w.weather == "Snow" and w.age_years(c) >= 13):
+		return inside
+	var cid: int = int(c["id"])
+	var block_min: float = maxf(20.0, time_scale * 4.0 / 60.0)
+	var minute: float = hour * 60.0
+	var k: int = int(floor(minute / block_min))
+	var roll: float = _hash01(cid, k, 5)
+	var age: int = w.age_years(c)
+	var lc: Vector3 = lot_center(home)
+	if age < 13:
+		if roll < 0.55:
+			# playing: quicker and wider than an adult's pottering
+			var pl: Dictionary = _potter(c, lc + Vector3(-2.0, 0, 4.6), hour * 2.5, true)
+			pl["visible"] = true
+			return pl
+		return inside
+	var sit_p: float = 0.4 if age >= 60 else 0.22
+	if roll < sit_p:
+		var hh: Dictionary = w.hh(int(c["household"]))
+		var idx: int = maxi(0, hh["members"].find(cid)) % CHAIRS.size()
+		return {"pos": lc + (CHAIRS[idx] as Vector3) + Vector3(0, 0, 0.1), "visible": true, "car": false, "moving": false, "pose": "sit", "face": 0.0}
+	if roll < sit_p + 0.12 and _season != "Winter":
+		return {"pos": lc + Vector3(_house_hx(w.lot(home)) + FLOWER_X, 0, 3.75), "visible": true, "car": false, "moving": false, "pose": "kneel", "face": PI}
+	if roll < sit_p + 0.25:
+		# a walk down the sidewalk and back
+		var walk_t: float = fmod(minute, block_min) / block_min
+		var side: float = -1.0 if _hash01(cid, k, 6) < 0.5 else 1.0
+		var gate: Vector3 = lc + Vector3(0, 0, 7.6)
+		var far: Vector3 = gate + Vector3(side * CELL * 1.5, 0, 0)
+		var pos: Vector3
+		var dir: Vector3
+		if walk_t < 0.1:
+			pos = home_p.lerp(gate, walk_t / 0.1)
+			dir = (gate - home_p).normalized()
+		elif walk_t < 0.5:
+			pos = gate.lerp(far, (walk_t - 0.1) / 0.4)
+			dir = (far - gate).normalized()
+		elif walk_t < 0.9:
+			pos = far.lerp(gate, (walk_t - 0.5) / 0.4)
+			dir = (gate - far).normalized()
+		else:
+			pos = gate.lerp(home_p, (walk_t - 0.9) / 0.1)
+			dir = (home_p - gate).normalized()
+		return {"pos": pos, "visible": true, "car": false, "moving": time_scale > 0.0, "dir": dir}
+	return inside
+
+
+## At work or school: inside, except for a mid morning break, lunch and a mid
+## afternoon break (recess for children), when they step out front.
+func _at_work(c: Dictionary, spot: Vector3, hour: float) -> Dictionary:
+	var student: bool = w.age_years(c) < 18
+	var breaks: Array = [[10.25, 10.6], [12.25, 12.75]] if student else [[10.0, 10.25], [12.0, 12.5], [15.0, 15.2]]
+	for br in breaks:
+		if hour >= float(br[0]) and hour < float(br[1]):
+			var p: Dictionary = _potter(c, spot, hour * (2.5 if student else 1.0), true)
+			p["visible"] = true
+			return p
+	return {"pos": spot, "visible": false, "car": false, "moving": false}
 
 
 ## A Sim at home or at work does not stand frozen: every few minutes they walk a
@@ -1492,6 +1595,8 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		n.get_node("Body").visible = not bool(plan["car"])
 		n.get_node("Head").visible = not bool(plan["car"])
 		n.get_node("Hair").visible = not bool(plan["car"])
+		if n.has_node("Face"):
+			n.get_node("Face").visible = not bool(plan["car"])
 		var p: Vector3 = plan["pos"]
 		if not watch or not was_visible or n.position.distance_to(p) > 60.0:
 			# still frames, or the Sim was out of sight: just be there
@@ -1501,6 +1606,12 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		if plan.has("dir") and bool(plan["moving"]):
 			var d: Vector3 = plan["dir"]
 			n.rotation.y = atan2(d.x, d.z)
+		elif plan.has("face"):
+			n.rotation.y = float(plan["face"])
+		# sitting in a chair or kneeling in the garden: lower the whole Sim a little
+		var pose: String = str(plan.get("pose", ""))
+		var sink: float = 0.45 if pose == "sit" else (0.35 if pose == "kneel" else 0.0)
+		n.position.y = lerpf(n.position.y, -sink, clampf(delta * 8.0, 0.0, 1.0)) if watch else -sink
 		var body: Node3D = n.get_node("Body")
 		body.rotation.z = sin(Time.get_ticks_msec() / 120.0) * 0.08 if watch and time_scale > 0.0 and bool(plan["moving"]) and not bool(plan["car"]) else 0.0
 	for t in truck_nodes:
