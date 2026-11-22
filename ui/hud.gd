@@ -914,7 +914,7 @@ func _tab_projects() -> void:
 		var r: Dictionary = main.act({"kind": "define_project", "ptype": tlist[types.selected], "target": int(tgt.get_item_metadata(tgt.selected)) if tgt.item_count > 0 else -1, "ceiling": int(ceil_s.value) * 100})
 		show_toast(str(r["message"]))
 		if bool(r.get("ok", false)):
-			inspect("proj", int(r["project_id"]))), "Write the contract first. Nothing goes out to bid until you press Go live."))
+			inspect("proj", int(r["project_id"])), "Write the contract first. Nothing goes out to bid until you press Go live."))
 	box.add_child(_sep())
 	var plist: Array = ww.projects.duplicate()
 	plist.reverse()
@@ -1668,9 +1668,10 @@ func _road_text(id: int) -> String:
 			feat.append("streetlights")
 		if not feat.is_empty():
 			t += "Built as: %s.\n" % ", ".join(feat)
-	if planned > 0:
-		t += "%d %s staked out and waiting to be built.\n" % [planned, "block" if planned == 1 else "blocks"]
 	var pid: int = _road_project(id)
+	if planned > 0:
+		var drafted: bool = pid >= 0 and str(ww.projects[pid]["status"]) == "draft"
+		t += "%d %s %s.\n" % [planned, "block" if planned == 1 else "blocks", "drawn on your plan only" if drafted else "staked out and waiting to be built"]
 	if pid >= 0:
 		var p: Dictionary = ww.projects[pid]
 		t += "Project: [url=proj:%d]%s[/url], %s.\n" % [pid, p["title"], _status_words(p)]

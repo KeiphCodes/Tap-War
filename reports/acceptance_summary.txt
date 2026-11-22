@@ -1,5 +1,5 @@
 LIVING TOWN V1 SLICE ACCEPTANCE RUN
-Generated 2026-11-22T00:36:13 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 3850 ms.
+Generated 2026-11-22T00:56:54 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 4740 ms.
 
 [PASS] 365 daily ticks complete with the ledger balanced every day (no mystery money)
   Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 109, "transfers": 19911 }.
@@ -23,7 +23,7 @@ Generated 2026-11-22T00:36:13 by tests/acceptance.gd. Seed 20261120, 365 days. M
   Run A awarded the cheapest bid: Riverbend Contractors, quality 18, finished day 81, expected to need repair about 163 days later; it actually needed repair on day 259.
     Run C awarded the best record instead: Capital Construction Co, quality 73, finished day 72, expected to need repair about 1212 days later.
     The street segments store the finished quality (0.19) and wear at a rate set by it. Paper trail of run A:
-      Day 3: Defined with a budget ceiling of $130,500. Out to bid for 14 days.
+      Day 3: Out to bid for 14 days on these terms: Standard. Budget ceiling $130,500.
       Day 17: Bidding closed with 3 bids.
       Day 17: Awarded to Riverbend Contractors for $85,112, 48 days promised. It was the cheapest bid.
       Day 18: Stage: tearing out old pavement.
