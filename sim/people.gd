@@ -155,7 +155,9 @@ static func _married_age(w: LTWorld) -> int:
 	return w.rng.randi_range(75, 85)
 
 
-static func make_household(w: LTWorld, family_bias: bool, immigrant: bool) -> Dictionary:
+## `settler` households are the ones who move to a brand new town to build a house:
+## mostly younger couples and families, as on any real frontier.
+static func make_household(w: LTWorld, family_bias: bool, immigrant: bool, settler: bool = false) -> Dictionary:
 	var hid: int = w.households.size()
 	var h: Dictionary = {"id": hid, "members": [], "lot": -1, "unit": -1, "tenure": "none", "rent": 0, "rent_late": 0, "mortgage": -1, "pantry": 3.0, "car": true, "moved_in": w.day, "last_grocery": "", "shop_habit": -1, "evicted_day": -1}
 	w.households.append(h)
@@ -166,8 +168,11 @@ static func make_household(w: LTWorld, family_bias: bool, immigrant: bool) -> Di
 	var roll: int = w.rng.randi_range(0, 99)
 	if family_bias:
 		roll = w.rng.randi_range(0, 71)
+	if settler:
+		roll = w.rng.randi_range(0, 99)
+		roll = 0 if roll < 65 else (50 if roll < 78 else 60)
 	if roll < 47:
-		var wa: int = _married_age(w)
+		var wa: int = _married_age(w) if not settler else w.rng.randi_range(24, 50)
 		var ha: int = clampi(wa + w.rng.randi_range(-3, 5), 21, 92)
 		var a: Dictionary = make_adult(w, hid, last_name, "F", wa)
 		var b: Dictionary = make_adult(w, hid, last_name, "M", ha)

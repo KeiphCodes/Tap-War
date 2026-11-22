@@ -113,7 +113,7 @@ static func _settlers(w: LTWorld) -> void:
 
 ## Called when a settler's house is finished: the family arrives and owns it.
 static func settler_moves_in(w: LTWorld, p: Dictionary, l: Dictionary) -> void:
-	var h: Dictionary = LTPeople.make_household(w, true, true)
+	var h: Dictionary = LTPeople.make_household(w, true, true, true)
 	var fam: String = str(p["developer"].get("family", ""))
 	if fam != "":
 		for m in w.household_members(h):
