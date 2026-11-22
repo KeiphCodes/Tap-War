@@ -19,6 +19,12 @@ var lbl_stats: Label
 var speed_btns: Array = []
 var left: PanelContainer
 var tabs: TabContainer
+var tab_btns: Array = []
+
+
+func _mark_tab() -> void:
+	for i in tab_btns.size():
+		(tab_btns[i] as Button).set_pressed_no_signal(i == tabs.current_tab)
 var tab_boxes: Dictionary = {}
 var right: PanelContainer
 var inspect_text: RichTextLabel
@@ -106,11 +112,41 @@ func _make_theme() -> Theme:
 	t.set_stylebox("pressed", "Button", btn_p)
 	t.set_color("font_color", "Label", Color(0.88, 0.9, 0.93))
 	t.set_color("default_color", "RichTextLabel", Color(0.88, 0.9, 0.93))
-	t.set_font_size("font_size", "Label", 15)
-	t.set_font_size("font_size", "Button", 14)
-	t.set_font_size("normal_font_size", "RichTextLabel", 14)
-	t.set_font_size("bold_font_size", "RichTextLabel", 15)
-	t.set_font_size("font_size", "TabContainer", 13)
+	t.set_font_size("font_size", "Label", 17)
+	t.set_font_size("font_size", "Button", 17)
+	t.set_font_size("font_size", "OptionButton", 17)
+	t.set_font_size("font_size", "CheckBox", 17)
+	t.set_font_size("font_size", "LineEdit", 17)
+	t.set_font_size("font_size", "PopupMenu", 20)
+	t.set_constant("v_separation", "PopupMenu", 16)
+	t.set_font_size("normal_font_size", "RichTextLabel", 16)
+	t.set_font_size("bold_font_size", "RichTextLabel", 17)
+	t.set_font_size("font_size", "TabContainer", 15)
+	# buttons tall enough for a thumb
+	for st in ["normal", "hover", "pressed"]:
+		var sb: StyleBoxFlat = t.get_stylebox(st, "Button")
+		sb.content_margin_left = 12
+		sb.content_margin_right = 12
+		sb.content_margin_top = 9
+		sb.content_margin_bottom = 9
+	# scroll bars about a finger wide, with a grabber that is easy to hit
+	var track: StyleBoxFlat = StyleBoxFlat.new()
+	track.bg_color = Color(0.14, 0.16, 0.2)
+	track.set_corner_radius_all(8)
+	track.content_margin_left = 11
+	track.content_margin_right = 11
+	var grab: StyleBoxFlat = StyleBoxFlat.new()
+	grab.bg_color = Color(0.45, 0.52, 0.62)
+	grab.set_corner_radius_all(8)
+	grab.content_margin_left = 11
+	grab.content_margin_right = 11
+	var grab_h: StyleBoxFlat = grab.duplicate()
+	grab_h.bg_color = Color(0.85, 0.65, 0.2)
+	t.set_stylebox("scroll", "VScrollBar", track)
+	t.set_stylebox("scroll_focus", "VScrollBar", track)
+	t.set_stylebox("grabber", "VScrollBar", grab)
+	t.set_stylebox("grabber_highlight", "VScrollBar", grab_h)
+	t.set_stylebox("grabber_pressed", "VScrollBar", grab_h)
 	return t
 
 
@@ -137,6 +173,25 @@ func _big(b: Button, min_w: float = 0.0) -> Button:
 	b.add_theme_color_override("font_pressed_color", Color(0.1, 0.08, 0.04))
 	b.add_theme_color_override("font_hover_pressed_color", Color(0.1, 0.08, 0.04))
 	return b
+
+
+## Touch scrolling: a drag that starts on text or a button should scroll the
+## panel, not get stuck on the control. PASS lets the control still take taps
+## while the drag goes on to the scroll container.
+func _scroll_friendly(node: Node) -> void:
+	for ch in node.get_children():
+		if ch is ScrollBar:
+			continue
+		if ch is Control:
+			(ch as Control).mouse_filter = Control.MOUSE_FILTER_PASS
+		_scroll_friendly(ch)
+
+
+func _make_scroll(sc: ScrollContainer) -> void:
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.scroll_deadzone = 10
+	sc.get_v_scroll_bar().custom_minimum_size = Vector2(22, 0)
+	sc.get_v_scroll_bar().mouse_filter = Control.MOUSE_FILTER_STOP
 
 
 func _btn(text: String, cb: Callable, tip: String = "") -> Button:
@@ -365,19 +420,40 @@ func _build_left() -> void:
 	left.offset_left = 8
 	left.offset_right = 8 + LEFT_W
 	root.add_child(left)
+	var lv: VBoxContainer = VBoxContainer.new()
+	lv.add_theme_constant_override("separation", 8)
+	left.add_child(lv)
+	# the sections as big buttons in two rows, easier to hit than small tabs
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	lv.add_child(grid)
+	for i in TABS.size():
+		var tb: Button = _btn(str(TABS[i]), func(): _show_tab(str(TABS[i])))
+		tb.toggle_mode = true
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tb.custom_minimum_size = Vector2(0, 46)
+		tab_btns.append(tb)
+		grid.add_child(tb)
 	tabs = TabContainer.new()
-	left.add_child(tabs)
+	tabs.tabs_visible = false
+	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lv.add_child(tabs)
 	for t in TABS:
 		var sc: ScrollContainer = ScrollContainer.new()
 		sc.name = t
-		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		_make_scroll(sc)
 		tabs.add_child(sc)
 		var vb: VBoxContainer = VBoxContainer.new()
 		vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		vb.add_theme_constant_override("separation", 6)
 		sc.add_child(vb)
 		tab_boxes[t] = vb
-	tabs.tab_changed.connect(func(_i): refresh_tab())
+	tabs.tab_changed.connect(func(_i):
+		_mark_tab()
+		refresh_tab())
+	_mark_tab()
 
 
 func _build_right() -> void:
@@ -396,14 +472,14 @@ func _build_right() -> void:
 	inspect_actions = HBoxContainer.new()
 	vb.add_child(inspect_actions)
 	var sc: ScrollContainer = ScrollContainer.new()
+	_make_scroll(sc)
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vb.add_child(sc)
 	var body: VBoxContainer = VBoxContainer.new()
-	body.custom_minimum_size = Vector2(RIGHT_W - 30, 0)
+	body.custom_minimum_size = Vector2(RIGHT_W - 44, 0)
 	sc.add_child(body)
 	inspect_text = _rtl("")
-	inspect_text.custom_minimum_size = Vector2(RIGHT_W - 30, 0)
+	inspect_text.custom_minimum_size = Vector2(RIGHT_W - 44, 0)
 	body.add_child(inspect_text)
 	inspect_form = VBoxContainer.new()
 	body.add_child(inspect_form)
@@ -524,7 +600,40 @@ func _toggle_panels() -> void:
 		right.visible = false
 
 
+## Last time a finger or the mouse touched a side panel, in milliseconds. While
+## someone is reading or scrolling a panel it is not rebuilt under them.
+var _panel_touch_ms: int = -100000
+var _refresh_pending: bool = false
+const PANEL_QUIET_MS: int = 2500
+
+
+func _input(event: InputEvent) -> void:
+	# only scrolling counts (a drag or the wheel), so a tap on a button still
+	# updates the panel right away
+	var pos: Vector2 = Vector2(-1, -1)
+	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask != 0:
+		pos = (event as InputEventMouse).position
+	elif event is InputEventMouseButton and ((event as InputEventMouseButton).button_index == MOUSE_BUTTON_WHEEL_UP or (event as InputEventMouseButton).button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		pos = (event as InputEventMouse).position
+	elif event is InputEventScreenDrag:
+		pos = (event as InputEventScreenDrag).position
+	if pos.x < 0.0:
+		return
+	for pnl in [left, right]:
+		if pnl != null and pnl.visible and pnl.get_global_rect().has_point(pos):
+			_panel_touch_ms = Time.get_ticks_msec()
+
+
+func _panel_busy() -> bool:
+	return Time.get_ticks_msec() - _panel_touch_ms < PANEL_QUIET_MS
+
+
 func _process(delta: float) -> void:
+	if _refresh_pending and not _panel_busy():
+		_refresh_pending = false
+		refresh_tab()
+		if right.visible and inspect_kind != "":
+			inspect(inspect_kind, inspect_id, false)
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		toast.modulate.a = clampf(_toast_t, 0.0, 1.0)
@@ -691,6 +800,10 @@ func refresh_all() -> void:
 	refresh_undo()
 	refresh_steps()
 	refresh_top()
+	if _panel_busy():
+		# someone is scrolling or reading: refresh once they let go
+		_refresh_pending = true
+		return
 	refresh_tab()
 	if right.visible and inspect_kind != "":
 		inspect(inspect_kind, inspect_id, false)
@@ -725,6 +838,8 @@ func refresh_tab() -> void:
 	if tabs == null:
 		return
 	var t: String = TABS[tabs.current_tab]
+	var sc: ScrollContainer = tab_boxes[t].get_parent()
+	var keep: int = sc.scroll_vertical
 	match t:
 		"Mayor":
 			_tab_mayor()
@@ -742,9 +857,12 @@ func refresh_tab() -> void:
 			_tab_chronicle()
 		"Help":
 			_tab_help()
+	_scroll_friendly(tab_boxes[TABS[tabs.current_tab]])
+	sc.set_deferred("scroll_vertical", keep)
 
 
 # ================================================================ Mayor desk
+
 
 func _tab_mayor() -> void:
 	var box: VBoxContainer = tab_boxes["Mayor"]
@@ -1521,6 +1639,7 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 		main.view.select_lot(-1)
 		main.view.select_road(-1)))
 	inspect_text.text = t
+	_scroll_friendly(inspect_text.get_parent())
 
 
 func _sim_text(id: int) -> String:

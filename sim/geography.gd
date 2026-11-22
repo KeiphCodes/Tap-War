@@ -728,13 +728,18 @@ static func home_cost(spec: Dictionary) -> int:
 	return LTMoney.dollars(d)
 
 
+static func _thousands(n: int) -> String:
+	var t: String = str(n)
+	return t if n < 1000 else "%s,%s" % [t.substr(0, t.length() - 3), t.substr(t.length() - 3)]
+
+
 static func home_text(spec: Dictionary) -> String:
 	if spec.is_empty():
 		return ""
 	var baths: float = float(spec["baths"])
 	var parts: Array = ["%d bedroom%s" % [int(spec["beds"]), "" if int(spec["beds"]) == 1 else "s"],
 		"%s bath%s" % [("%d" % int(baths)) if baths == floor(baths) else ("%.1f" % baths), "" if baths == 1.0 else "s"],
-		"%d square feet" % home_sqft(spec), "two story" if int(spec["stories"]) == 2 else "one story"]
+		"%s square feet" % _thousands(home_sqft(spec)), "two story" if int(spec["stories"]) == 2 else "one story"]
 	if int(spec["garage"]) > 0:
 		parts.append("%d car garage" % int(spec["garage"]))
 	if bool(spec["basement"]):

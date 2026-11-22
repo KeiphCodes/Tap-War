@@ -96,6 +96,8 @@ Keith gave full permission to make the calls needed to finish. These are the one
 
 72. **What Sims do with their time, on screen.** Sims have faces, so you can see which way they look. Like real people they spend most of their time indoors, out of sight: at work they step out front only for a mid morning break, lunch and a mid afternoon break, and children only for recess. At home, each stretch of free time is a choice you can read: sitting in a lawn chair on the front lawn facing the street (older Sims more often), kneeling at the flower bed (not in winter), walking down the sidewalk and back, or for children, playing in the yard; nobody goes out in the rain or a storm. Every lived in house has two lawn chairs and a flower bed.
 
+73. **Panels made for thumbs.** The sections are two rows of big buttons instead of small tabs. Text, buttons, dropdowns and checkboxes are larger, scroll bars are about a finger wide, and a drag that starts on text or a button scrolls the panel instead of getting stuck. While someone is scrolling a panel it is not rebuilt under them (it catches up a couple of seconds after they stop), and a rebuilt panel keeps its scroll position.
+
 ## Scope calls
 
 23. **The outside bank** (Prairie State Bank) serves the town until the city charters a local one (item 34).
