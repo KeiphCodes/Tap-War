@@ -196,7 +196,7 @@ func _init() -> void:
 ## A scripted mayor for the test. Only uses the same actions the player has.
 func _mayor(w: LTWorld, policy: Dictionary) -> void:
 	if w.day == 3:
-		w.apply_action({"kind": "define_project", "ptype": "road_repair", "target": 1})
+		w.apply_action({"kind": "define_project", "ptype": "road_repair", "target": 1, "live": true})
 	for p in w.projects:
 		if str(p["status"]) == "review" and not bool(p["private"]) and str(p["ptype"]) == "road_repair":
 			var pick: int = -1

@@ -537,7 +537,7 @@ static func seg_between(w: LTWorld, a: int, b: int) -> int:
 
 ## Lays out a straight road between two grid corners. New pieces are planned, not
 ## built: they become a project for contractors to bid on.
-static func plan_road(w: LTWorld, a: int, b: int) -> Dictionary:
+static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false) -> Dictionary:
 	var na: Dictionary = w.road_nodes[a]
 	var nb: Dictionary = w.road_nodes[b]
 	var ax: int = int(na["x"])
@@ -571,7 +571,7 @@ static func plan_road(w: LTWorld, a: int, b: int) -> Dictionary:
 	if new_segs.is_empty():
 		return {"ok": false, "message": "There is already a road there."}
 	w.streets.append(street)
-	var r: Dictionary = LTProjects.define_road_build(w, int(street["id"]), new_segs)
+	var r: Dictionary = LTProjects.define_road_build(w, int(street["id"]), new_segs, draft)
 	r["street"] = int(street["id"])
 	return r
 

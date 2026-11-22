@@ -216,7 +216,7 @@ func _annex_and_pave() -> void:
 	var street: int = int(w.lot(new_lot)["street"])
 	var new_street: int = w.streets.size() - 1
 	w.apply_action({"kind": "zone_lot", "lot": new_lot, "zone": "residential"})
-	var pr: Dictionary = w.apply_action({"kind": "define_project", "ptype": "road_repair", "target": new_street})
+	var pr: Dictionary = w.apply_action({"kind": "define_project", "ptype": "road_repair", "target": new_street, "live": true})
 	w.run_days(16)
 	var p: Dictionary = w.projects[int(pr.get("project_id", 0))]
 	if str(p["status"]) == "review":
@@ -336,13 +336,13 @@ func _founder_mode() -> void:
 	var start_cash: int = w.ledger.bal("city")
 	var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
 	var only_highway: bool = w.lots.is_empty() and w.streets.size() == 1
-	var r1: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 4)})
-	var r2: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 8), "b": n.call(22, 8)})
+	var r1: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 4), "live": true})
+	var r2: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 8), "b": n.call(22, 8), "live": true})
 	w.apply_action({"kind": "plot_lots", "c0": 11, "r0": 7, "c1": 21, "r1": 8, "zone": "residential"})
 	w.apply_action({"kind": "plot_lots", "c0": 11, "r0": 11, "c1": 14, "r1": 11, "zone": "commercial"})
 	w.apply_action({"kind": "plot_lots", "c0": 9, "r0": 5, "c1": 9, "r1": 5, "zone": "civic"})
 	var mh_lot: int = LTGeography.lot_at(w, 9, 5)
-	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": mh_lot})
+	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": mh_lot, "live": true})
 	var inc_day: int = -1
 	for d in 730:
 		for p in w.projects:
@@ -374,6 +374,7 @@ func _contracts_and_lot_details() -> void:
 		w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 6)})
 		if not changes.is_empty():
 			w.apply_action({"kind": "edit_project", "project_id": 0, "changes": changes})
+		w.apply_action({"kind": "go_live", "project_id": 0})
 		for d in days:
 			var p: Dictionary = w.projects[0]
 			if str(p["status"]) == "review" and award:
@@ -384,6 +385,17 @@ func _contracts_and_lot_details() -> void:
 				w.apply_action({"kind": "award_bid", "project_id": 0, "bid_index": pick})
 			w.tick_day()
 		return w
+	# a drawn road is a draft: no contractor sees it until the mayor presses Go live
+	var dw: LTWorld = LTWorld.new()
+	dw.new_town(SEED, {}, {"start": "founder"})
+	dw.apply_action({"kind": "plan_road", "a": LTGeography.node_id(dw, 10, 12), "b": LTGeography.node_id(dw, 10, 6)})
+	for d in LTProjects.BID_DAYS + 5:
+		dw.tick_day()
+	var draft_quiet: bool = str(dw.projects[0]["status"]) == "draft" and dw.projects[0]["bids"].is_empty()
+	var gl: Dictionary = dw.apply_action({"kind": "go_live", "project_id": 0})
+	for d in LTProjects.BID_DAYS + 1:
+		dw.tick_day()
+	var went_live: bool = bool(gl["ok"]) and str(dw.projects[0]["status"]) == "review" and not dw.projects[0]["bids"].is_empty()
 	var base: LTWorld = run.call({}, 0)
 	var fancy_w: LTWorld = run.call({"surface": "concrete", "width": "avenue", "sidewalks": true, "lights": true, "name": "Founders Way"}, 0)
 	var cheap_w: LTWorld = run.call({"surface": "gravel", "width": "lane"}, 0)
@@ -428,8 +440,8 @@ func _contracts_and_lot_details() -> void:
 	var held_ok: bool = str(lw.lot(int(group[0]))["owner_kind"]) == "city" and str(lw.lot(int(group[0]))["name"]) == "Town Green"
 	var cheap_sold: bool = str(lw.lot(int(group[1]))["owner_kind"]) != "city"
 	var lots_ok: bool = group.size() == 6 and held_ok and cheap_sold and asking > 0
-	var ok: bool = priced and both_done and features and better and dl_ok and bool(re["ok"]) and reopened and not bool(locked["ok"]) and lots_ok
-	_check("Contracts and lot details: the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome", ok, "Fair price for 6 blocks: standard %s, concrete avenue with sidewalks and lights %s, gravel lane %s. Built: concrete avenue quality %d, %.1f minutes a block; gravel lane quality %d, %.1f minutes a block. Deadline 30 days: bids promised %s days. Changing terms after bids: %s Signed contract: %s Lots: held lot kept by the city: %s, half price lot sold: %s." % [LTMoney.fmt(b0), LTMoney.fmt(b1), LTMoney.fmt(b2), int(float(pf["quality"]) * 100.0), seg_f, int(float(pc["quality"]) * 100.0), seg_c, dl_days, re["message"], locked["message"], held_ok, cheap_sold], base)
+	var ok: bool = draft_quiet and went_live and priced and both_done and features and better and dl_ok and bool(re["ok"]) and reopened and not bool(locked["ok"]) and lots_ok
+	_check("Contracts and lot details: drawn roads are drafts until the mayor presses Go live; the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome", ok, "Draft stayed private for %d days: %s. After Go live: %s, %d bids. Fair price for 6 blocks: standard %s, concrete avenue with sidewalks and lights %s, gravel lane %s. Built: concrete avenue quality %d, %.1f minutes a block; gravel lane quality %d, %.1f minutes a block. Deadline 30 days: bids promised %s days. Changing terms after bids: %s Signed contract: %s Lots: held lot kept by the city: %s, half price lot sold: %s." % [LTProjects.BID_DAYS + 5, draft_quiet, gl["message"], dw.projects[0]["bids"].size(), LTMoney.fmt(b0), LTMoney.fmt(b1), LTMoney.fmt(b2), int(float(pf["quality"]) * 100.0), seg_f, int(float(pc["quality"]) * 100.0), seg_c, dl_days, re["message"], locked["message"], held_ok, cheap_sold], base)
 
 
 func _real_calendar() -> void:

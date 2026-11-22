@@ -60,7 +60,7 @@ const ROAD_BLOCK_DAYS: int = 9
 
 
 ## A new road the player drew: contractors bid on building its planned blocks.
-static func define_road_build(w: LTWorld, street_id: int, segs: Array) -> Dictionary:
+static func define_road_build(w: LTWorld, street_id: int, segs: Array, draft: bool = false) -> Dictionary:
 	var n: int = segs.size()
 	var p: Dictionary = {
 		"id": w.projects.size(), "ptype": "road_build", "title": "Build %s (%d %s)" % [w.streets[street_id]["name"], n, "block" if n == 1 else "blocks"], "lot": -1, "street": street_id, "ceiling": 0,
@@ -74,12 +74,15 @@ static func define_road_build(w: LTWorld, street_id: int, segs: Array) -> Dictio
 	}
 	_apply_spec(p)
 	w.projects.append(p)
-	_event(w, p, "Drawn by the mayor: %d new %s. Budget ceiling %s. Out to bid for %d days." % [n, "block" if n == 1 else "blocks", LTMoney.fmt(int(p["ceiling"])), BID_DAYS])
-	w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
+	_event(w, p, "Drawn by the mayor: %d new %s." % [n, "block" if n == 1 else "blocks"])
+	if draft:
+		_make_draft(p)
+		return {"ok": true, "message": "\"%s\" is drawn as a draft. Tap it to write the contract, then press Go live to send it out to bid." % p["title"], "project_id": int(p["id"])}
+	_open_bidding(w, p)
 	return {"ok": true, "message": "\"%s\" is drawn and out to bid until %s. Award it on the Projects tab." % [p["title"], LTCalendar.short(int(p["bid_close_day"]))], "project_id": int(p["id"])}
 
 
-static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int) -> Dictionary:
+static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int, draft: bool = false) -> Dictionary:
 	if not BASE_COST.has(ptype):
 		return {"ok": false, "message": "Unknown project type."}
 	var p: Dictionary = {
@@ -94,7 +97,7 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		if target < 0 or target >= w.streets.size():
 			return {"ok": false, "message": "Pick a street."}
 		for q in w.projects:
-			if int(q["street"]) == target and ["bidding", "review", "building"].has(str(q["status"])):
+			if int(q["street"]) == target and ["draft", "bidding", "review", "building"].has(str(q["status"])):
 				return {"ok": false, "message": "%s already has a project." % w.streets[target]["name"]}
 		p["street"] = target
 		p["title"] = TITLES[ptype] % w.streets[target]["name"]
@@ -131,9 +134,38 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		p["ceiling"] = ceiling
 		p["ceiling_set"] = true
 	w.projects.append(p)
-	_event(w, p, "Defined with a budget ceiling of %s. Out to bid for %d days." % [LTMoney.fmt(int(p["ceiling"])), BID_DAYS])
-	w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
+	if draft:
+		_event(w, p, "Drafted by the mayor.")
+		_make_draft(p)
+		return {"ok": true, "message": "\"%s\" is a draft. Open it to write the contract, then press Go live to send it out to bid." % p["title"], "project_id": int(p["id"])}
+	_open_bidding(w, p)
 	return {"ok": true, "message": "\"%s\" is out to bid until %s." % [p["title"], LTCalendar.short(int(p["bid_close_day"]))], "project_id": int(p["id"])}
+
+
+## A draft is the mayor's private worksheet: contractors cannot see it yet.
+static func _make_draft(p: Dictionary) -> void:
+	p["status"] = "draft"
+	p["bid_close_day"] = -1
+
+
+static func _open_bidding(w: LTWorld, p: Dictionary) -> void:
+	p["status"] = "bidding"
+	p["bid_close_day"] = w.day + BID_DAYS
+	var terms: String = spec_text(p) if p.has("spec") and not bool(p["private"]) else ""
+	_event(w, p, "Out to bid for %d days%s. Budget ceiling %s." % [BID_DAYS, (" on these terms: " + terms) if terms != "" else "", LTMoney.fmt(int(p["ceiling"]))])
+	if not bool(p["private"]):
+		w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
+
+
+## The mayor publishes a finished draft: contractors can now see it and bid.
+static func go_live(w: LTWorld, pid: int) -> Dictionary:
+	if pid < 0 or pid >= w.projects.size():
+		return {"ok": false, "message": "No such project."}
+	var p: Dictionary = w.projects[pid]
+	if str(p["status"]) != "draft":
+		return {"ok": false, "message": "This contract is already live."}
+	_open_bidding(w, p)
+	return {"ok": true, "message": "\"%s\" is live. Contractors have until %s to bid." % [p["title"], LTCalendar.short(int(p["bid_close_day"]))]}
 
 
 # ---------------------------------------------------------------- the contract
@@ -168,7 +200,7 @@ static func default_spec(ptype: String) -> Dictionary:
 
 
 static func spec_editable(p: Dictionary) -> bool:
-	return p.has("spec") and not bool(p["private"]) and ["bidding", "review"].has(str(p["status"]))
+	return p.has("spec") and not bool(p["private"]) and ["draft", "bidding", "review"].has(str(p["status"]))
 
 
 static func _apply_spec(p: Dictionary) -> void:
@@ -265,6 +297,8 @@ static func edit(w: LTWorld, pid: int, changes: Dictionary) -> Dictionary:
 					p["ceiling_set"] = true
 	_apply_spec(p)
 	var msg: String = "Contract updated: %s. Budget ceiling %s." % [spec_text(p), LTMoney.fmt(int(p["ceiling"]))]
+	if str(p["status"]) == "draft":
+		msg += " Still a draft: press Go live when it is ready."
 	if str(p["status"]) == "review":
 		p["status"] = "bidding"
 		p["bids"] = []
@@ -291,7 +325,7 @@ static func _event(w: LTWorld, p: Dictionary, text: String) -> void:
 
 static func cancel(w: LTWorld, pid: int) -> Dictionary:
 	var p: Dictionary = w.projects[pid]
-	if not ["bidding", "review"].has(str(p["status"])):
+	if not ["draft", "bidding", "review"].has(str(p["status"])):
 		return {"ok": false, "message": "Only projects not yet awarded can be cancelled."}
 	p["status"] = "cancelled"
 	if str(p["ptype"]) == "road_build":
@@ -798,7 +832,7 @@ static func _developers(w: LTWorld) -> void:
 	if pressure < 25.0:
 		return
 	for p in w.projects:
-		if str(p["ptype"]) == "apartments" and ["bidding", "review", "building"].has(str(p["status"])):
+		if str(p["ptype"]) == "apartments" and ["draft", "bidding", "review", "building"].has(str(p["status"])):
 			return
 	var lots: Array = LTGeography.vacant_lots(w, ["residential", "mixed"])
 	if lots.is_empty():

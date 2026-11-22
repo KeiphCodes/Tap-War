@@ -216,7 +216,9 @@ func apply_action(a: Dictionary) -> Dictionary:
 		"respond_petition":
 			result = LTCivic.respond_petition(self, int(act["petition_id"]), str(act["response"]), act)
 		"define_project":
-			result = LTProjects.define_project(self, str(act["ptype"]), int(act.get("target", -1)), int(act.get("ceiling", 0)), int(act.get("petition_id", -1)))
+			result = LTProjects.define_project(self, str(act["ptype"]), int(act.get("target", -1)), int(act.get("ceiling", 0)), int(act.get("petition_id", -1)), not bool(act.get("live", false)))
+		"go_live":
+			result = LTProjects.go_live(self, int(act["project_id"]))
 		"award_bid":
 			result = LTProjects.award(self, int(act["project_id"]), int(act["bid_index"]))
 		"cancel_project":
@@ -231,7 +233,7 @@ func apply_action(a: Dictionary) -> Dictionary:
 			else:
 				result = LTGeography.annex_row(self)
 		"plan_road":
-			result = LTGeography.plan_road(self, int(act["a"]), int(act["b"]))
+			result = LTGeography.plan_road(self, int(act["a"]), int(act["b"]), not bool(act.get("live", false)))
 		"plot_lots":
 			result = LTGeography.plot_lots(self, int(act["c0"]), int(act["r0"]), int(act["c1"]), int(act["r1"]), str(act.get("zone", "residential")))
 		"unplot":

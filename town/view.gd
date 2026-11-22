@@ -399,7 +399,13 @@ func _road_labels() -> void:
 		var a2: Dictionary = w.road_nodes[int(s0["a"])]
 		var b2: Dictionary = w.road_nodes[int(s0["b"])]
 		var mid: Vector3 = Vector3((float(a2["x"]) + float(b2["x"])) * 0.5 * CELL, 0.25, (float(a2["y"]) + float(b2["y"])) * 0.5 * CELL)
-		var l: Label3D = _sign(road_labels, str(st["name"]) + (" (planned)" if bool(s0.get("planned", false)) else ""), mid, 40, Color(0.95, 0.95, 0.8))
+		var tag: String = ""
+		if bool(s0.get("planned", false)):
+			tag = " (planned)"
+			for p in w.projects:
+				if int(p["street"]) == int(st["id"]) and str(p["ptype"]) == "road_build" and str(p["status"]) == "draft":
+					tag = " (draft)"
+		var l: Label3D = _sign(road_labels, str(st["name"]) + tag, mid, 40, Color(0.95, 0.95, 0.8))
 		l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		l.rotation = Vector3(-PI / 2.0, 0.0 if int(a2["y"]) == int(b2["y"]) else PI / 2.0, 0.0)
 
@@ -407,6 +413,10 @@ func _road_labels() -> void:
 func _rebuild_road_mesh() -> void:
 	if road_mi != null:
 		road_mi.queue_free()
+	var drafts: Dictionary = {}
+	for p in w.projects:
+		if str(p["status"]) == "draft" and str(p["ptype"]) == "road_build":
+			drafts[int(p["street"])] = true
 	_batch_begin()
 	for s in w.roads:
 		if bool(s.get("removed", false)):
@@ -443,8 +453,8 @@ func _rebuild_road_mesh() -> void:
 		elif not planned and str(st.get("surface", "")) == "gravel":
 			col = Color(0.55, 0.5, 0.42)
 		if planned:
-			# surveyed but not built: a strip of staked dirt
-			col = Color(0.47, 0.33, 0.2)
+			# surveyed but not built: a strip of staked dirt; a draft is only chalked out
+			col = Color(0.47, 0.33, 0.2) if not drafts.has(int(s["street"])) else Color(0.86, 0.84, 0.74)
 			size.y = 0.03
 		_box(road_root, size, (pa + pb) * 0.5, col)
 	road_mi = _batch_end(road_root)
@@ -1472,10 +1482,10 @@ func _tool_end(screen: Vector2) -> void:
 			r = main.act({"kind": "unplot", "lot": lid}) if lid >= 0 else {"message": "There is no lot there."}
 	if not r.is_empty():
 		var msg: String = str(r.get("message", ""))
-		if tool == "road" and bool(r.get("ok", false)):
-			msg += " Tap the road to set its contract: surface, width, sidewalks, lights, deadline and budget."
-			select_road(int(r.get("street", -1)))
 		main.hud.show_toast(msg)
+		if tool == "road" and bool(r.get("ok", false)):
+			# open the draft contract right away: write it, then Go live
+			main.hud.inspect("road", int(r.get("street", -1)))
 
 
 func _show_preview() -> void:

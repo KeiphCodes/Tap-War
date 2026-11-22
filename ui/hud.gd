@@ -322,7 +322,7 @@ func _build_tools() -> void:
 	root.add_child(tool_bar)
 	var hb: HBoxContainer = HBoxContainer.new()
 	tool_bar.add_child(hb)
-	for t in [["look", "Look", "Click lots and people to inspect them. Drag with right mouse to turn."], ["road", "Draw road", "Drag along the survey grid to draw a straight road. It goes out to bid and a contractor builds it."], ["plot", "Plot lots", "Drag over open land beside a road to mark lots in the chosen zone."], ["unplot", "Remove lot", "Click an empty lot the city still owns to return it to prairie."]]:
+	for t in [["look", "Look", "Click lots and people to inspect them. Drag with right mouse to turn."], ["road", "Draw road", "Drag along the survey grid to draw a straight road. It starts as a draft contract: set its terms, press Go live, and contractors bid to build it."], ["plot", "Plot lots", "Drag over open land beside a road to mark lots in the chosen zone."], ["unplot", "Remove lot", "Click an empty lot the city still owns to return it to prairie."]]:
 		var b: Button = _btn(t[1], func(): _set_tool(t[0]), t[2])
 		b.toggle_mode = true
 		tool_btns[t[0]] = b
@@ -501,7 +501,7 @@ func show_setup(first: bool = false) -> void:
 
 func _welcome() -> void:
 	if str(w().mode.get("start", "classic")) == "founder":
-		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nUse [b]Draw road[/b] (bottom right) to lay out streets off the county road; contractors bid to build them. Then [b]Plot lots[/b] beside your roads and pick a zone. Settlers will come, buy residential lots, and build their own homes. Put the mayor's house out to bid on the Projects tab. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
+		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nUse [b]Draw road[/b] (bottom right) to lay out streets off the county road. Each one is a draft contract: set the terms, press [b]Go live[/b], and contractors bid to build it. Then [b]Plot lots[/b] beside your roads and pick a zone. Settlers will come, buy residential lots, and build their own homes. Draft the mayor's house on the Projects tab and send it live. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
 		notice.visible = true
 		return
 	notice_text.text = "[b]Welcome, Mayor of %s.[/b]\nAbout %d people live here. Most drive to the next town to work and shop. There is no grocery, no school, no clinic.\nYou cannot build any of that yourself. Zone land, set laws, answer petitions, and put public projects out to bid. The people decide the rest, and every big decision they make is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Watch[/b] to see a single day up close. The Help tab has the controls.%s" % [w().city["name"], w().alive_count(), "\nThis town holds elections. Keep the people's trust to stay mayor." if bool(w().mode.get("elections", false)) else ""]
@@ -910,9 +910,11 @@ func _tab_projects() -> void:
 	ceil_s.tooltip_text = "0 means about 45% over the typical cost"
 	hb.add_child(ceil_s)
 	box.add_child(hb)
-	box.add_child(_btn("Put out to bid", func():
+	box.add_child(_btn("Draft contract", func():
 		var r: Dictionary = main.act({"kind": "define_project", "ptype": tlist[types.selected], "target": int(tgt.get_item_metadata(tgt.selected)) if tgt.item_count > 0 else -1, "ceiling": int(ceil_s.value) * 100})
-		show_toast(str(r["message"]))))
+		show_toast(str(r["message"]))
+		if bool(r.get("ok", false)):
+			inspect("proj", int(r["project_id"]))), "Write the contract first. Nothing goes out to bid until you press Go live."))
 	box.add_child(_sep())
 	var plist: Array = ww.projects.duplicate()
 	plist.reverse()
@@ -924,7 +926,7 @@ func _project_card(p: Dictionary) -> VBoxContainer:
 	var ww: LTWorld = w()
 	var vb: VBoxContainer = VBoxContainer.new()
 	var t: String = "[b][url=proj:%d]%s[/url][/b]  [color=#9fb0c0]%s%s[/color]" % [p["id"], p["title"], p["status"], ", private" if bool(p["private"]) else ""]
-	t += "\nCeiling %s. %s" % [_money(int(p["ceiling"])), "Bids close " + LTCalendar.short(int(p["bid_close_day"])) if str(p["status"]) == "bidding" else ""]
+	t += "\nCeiling %s. %s" % [_money(int(p["ceiling"])), "Bids close " + LTCalendar.short(int(p["bid_close_day"])) if str(p["status"]) == "bidding" else ("[color=#e8c35a]Draft: contractors cannot see it until you press Go live.[/color]" if str(p["status"]) == "draft" else "")]
 	if p.has("spec") and not bool(p["private"]):
 		t += "\n[color=#9fb0c0]Terms: %s.[/color]" % LTProjects.spec_text(p)
 	match str(p["status"]):
@@ -935,7 +937,11 @@ func _project_card(p: Dictionary) -> VBoxContainer:
 	vb.add_child(_rtl(t))
 	if LTProjects.spec_editable(p):
 		var pide: int = int(p["id"])
-		vb.add_child(_btn("Edit contract", func(): inspect("proj", pide), "Change what is built, the deadline and the budget before it is signed."))
+		var row2: HBoxContainer = HBoxContainer.new()
+		row2.add_child(_btn("Edit contract", func(): inspect("proj", pide), "Change what is built, the deadline and the budget before it is signed."))
+		if str(p["status"]) == "draft":
+			row2.add_child(_go_live_btn(pide))
+		vb.add_child(row2)
 	if str(p["status"]) == "review" and not bool(p["private"]):
 		var grid: GridContainer = GridContainer.new()
 		grid.columns = 1
@@ -1673,6 +1679,8 @@ func _road_text(id: int) -> String:
 
 func _status_words(p: Dictionary) -> String:
 	match str(p["status"]):
+		"draft":
+			return "a draft, not out to bid yet"
 		"bidding":
 			return "out to bid until %s" % LTCalendar.short(int(p["bid_close_day"]))
 		"review":
@@ -1801,19 +1809,46 @@ func _contract_form(p: Dictionary) -> void:
 	var est: String = "Fair price for these terms: about %s and %d days of work." % [_money(int(p["base_cost"])), int(p["base_days"])]
 	if int(sp["deadline"]) > 0 and int(sp["deadline"]) < int(p["base_days"]):
 		est += " The deadline is tighter than that, so expect rush pricing."
-	if str(p["status"]) == "review":
+	if str(p["status"]) == "draft":
+		est += "\n[color=#e8c35a]Draft. Contractors cannot see this until you press Go live. Bidding then runs %d days.[/color]" % LTProjects.BID_DAYS
+	elif str(p["status"]) == "review":
 		est += "\n[color=#e8c35a]Bids are in. Changing a term sends it back out to bid.[/color]"
 	else:
 		est += "\nBids close %s." % LTCalendar.short(int(p["bid_close_day"]))
 	inspect_form.add_child(_rtl(est))
+	if str(p["status"]) == "draft":
+		var gl: Button = _go_live_btn(pid)
+		gl.custom_minimum_size = Vector2(0, 44)
+		inspect_form.add_child(gl)
 	var hb: HBoxContainer = HBoxContainer.new()
 	if str(p["status"]) == "review":
 		hb.add_child(_btn("See the bids", func():
 			_show_tab("Projects")))
-	hb.add_child(_btn("Cancel project", func():
+	hb.add_child(_btn("Delete draft" if str(p["status"]) == "draft" else "Cancel project", func():
 		show_toast(str(main.act({"kind": "cancel_project", "project_id": pid})["message"]))
 		inspect(inspect_kind, inspect_id)))
 	inspect_form.add_child(hb)
+
+
+func _go_live_btn(pid: int) -> Button:
+	var b: Button = _btn("Go live", func():
+		var r: Dictionary = main.act({"kind": "go_live", "project_id": pid})
+		show_toast(str(r["message"]))
+		if bool(r.get("ok", false)):
+			main.sound.chime("good")
+		inspect(inspect_kind, inspect_id)
+		refresh_tab(), "Send this contract out to bid. Contractors will see it and bid on these terms.")
+	b.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.36, 0.78, 0.45)
+	sb.set_corner_radius_all(4)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	b.add_theme_stylebox_override("normal", sb)
+	var sbh: StyleBoxFlat = sb.duplicate()
+	sbh.bg_color = Color(0.45, 0.86, 0.54)
+	b.add_theme_stylebox_override("hover", sbh)
+	return b
 
 
 const PRICE_PCTS: Array = [50, 75, 100, 125, 150, 200]
