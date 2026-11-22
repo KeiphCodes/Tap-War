@@ -17,6 +17,8 @@ Start a new town from the **New town** button (it also opens when the game start
 - Optionally run on the **real calendar**, starting today. Time stops whenever the game is closed. **Live** runs one game second per real second, and **Today** fast forwards (only forward) until the town's date and clock match yours, then keeps running live.
 - **Milestones** on the Mayor desk track the town's big moments, from the mayor's house to 1,000 residents.
 
+The game saves itself as you play (and when you close it) and opens where you left off. **Undo** in the tool bar takes back your last changes until the next day begins. The **Map** picker colors lots by value, condition, happiness, safety or what is for sale, and a **Next steps** card shows what to do next.
+
 For now the player is a permanent resident with no needs of their own: the only goal is running the town well. Set your name, pronouns, age, hometown and color when you start, and change them (or rename the town) any time with **Edit your profile** on the Mayor tab.
 
 Odds are realistic: weather follows the eastern South Dakota climate month by month, damaging storms reach town once or twice a year and mostly hurt run down or cheaply built buildings, house fires and accidents happen at real US rates, and owners carry insurance. The Sims themselves are not people, so their choices come from their own traits and needs rather than human statistics. `tests/realism.gd` checks the world's rates against real figures.

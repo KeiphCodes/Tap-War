@@ -8,7 +8,7 @@ func _init() -> void:
 	root.add_child(main)
 	await process_frame
 	for card in main.hud.root.get_children():
-		if card is PanelContainer and card != main.hud.top_bar and card != main.hud.left and card != main.hud.right and card != main.hud.notice and card != main.hud.tool_bar:
+		if card is PanelContainer and card != main.hud.top_bar and card != main.hud.left and card != main.hud.right and card != main.hud.notice and card != main.hud.tool_bar and card != main.hud.steps_card:
 			card.queue_free()
 	main.new_town(20261120, {"start": "founder", "elections": true, "real_calendar": true})
 	await process_frame
@@ -30,6 +30,20 @@ func _init() -> void:
 	print("go live house: ", main.act({"kind": "go_live", "project_id": 1})["message"])
 	main.hud.inspect("road", 1)
 	main.hud.inspect("road", 0)
+	# undo: a drawn road comes back off the map the same day
+	var streets_before: int = main.world.streets.size()
+	var roads_before: int = main.world.projects.size()
+	main.act({"kind": "plan_road", "a": n.call(3, 12), "b": n.call(3, 8)})
+	var drew: bool = main.world.streets.size() == streets_before + 1
+	print("undo: ", main.undo(), " drew ", drew, " back to ", main.world.streets.size() == streets_before and main.world.projects.size() == roads_before)
+	if not drew or main.world.streets.size() != streets_before:
+		push_error("undo did not restore the town")
+	main.autosave()
+	var aw: LTWorld = LTWorld.new()
+	print("autosave: ", aw.load_from_file(main.AUTOSAVE_PATH) == OK and aw.day == main.world.day)
+	for k in main.view.OVERLAYS:
+		main.view.set_overlay(k)
+	main.view.set_overlay("")
 	main.hud.show_profile()
 	print("profile: ", main.act({"kind": "set_profile", "name": "Jordan Reyes", "pronouns": "she", "age": 45, "hometown": "Mitchell", "color": "green", "town_name": "Prairie Rose"})["message"], " | ", main.world.player["name"], ", ", main.world.player_age(), ", ", main.world.player_pronoun("subject"), ", ", main.world.city["name"])
 	main.hud._tab_mayor()

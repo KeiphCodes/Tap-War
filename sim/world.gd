@@ -238,6 +238,9 @@ func tick_day() -> void:
 	LTFinance.daily(self)
 	LTCivic.daily(self)
 	LTJustice.daily(self)
+	LTChoices.daily(self)
+	if LTCalendar.day_of_month(day) == 18:
+		LTChoices.monthly(self)
 	LTProjects.daily(self)
 	LTPeople.life_events(self)
 	if LTCalendar.day_of_month(day) == 25:
@@ -618,6 +621,23 @@ func load_from_file(path: String) -> Error:
 		var name: String = f.get_pascal_string()
 		data[name] = f.get_var()
 	f.close()
+	return from_save(data, version)
+
+
+## A whole town as bytes in memory, for undo. Same data as a save file.
+func to_bytes() -> PackedByteArray:
+	return var_to_bytes({"version": SAVE_VERSION, "data": to_save()})
+
+
+func from_bytes(b: PackedByteArray) -> Error:
+	var d: Variant = bytes_to_var(b)
+	if typeof(d) != TYPE_DICTIONARY:
+		return ERR_INVALID_DATA
+	# a deep copy, so the snapshot can be restored again later
+	return from_save((d["data"] as Dictionary).duplicate(true), int(d["version"]))
+
+
+func from_save(data: Dictionary, _version: int) -> Error:
 	var w: Dictionary = data["world"]
 	seed_value = int(w["seed"])
 	rng.seed = seed_value

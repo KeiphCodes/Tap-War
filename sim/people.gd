@@ -1127,7 +1127,8 @@ static func _maybe_birth(w: LTWorld, m: Dictionary) -> Dictionary:
 	score *= [1.3, 1.1, 0.7, 0.35, 0.15, 0.05][mini(kids, 5)]
 	score *= 0.6 + float(m["traits"]["kindness"] + sp["traits"]["kindness"]) / 250.0
 	score *= 0.8 + LTCivic.family_friendliness(w) * 0.4
-	if w.rng.randf() >= 0.0005 * score:
+	# couples here have about as many children as couples in South Dakota do
+	if w.rng.randf() >= 0.0006 * score:
 		return {}
 	var reason: String = "the couple had a home and enough money security to feel ready"
 	if float(n["money_security"]) < 45.0:
@@ -1162,27 +1163,41 @@ static func give_birth(w: LTWorld, m: Dictionary, sp: Dictionary) -> Dictionary:
 	return baby
 
 
+## About 6 marriages a year per 1,000 people (US and South Dakota): each single
+## adult has a small monthly chance of settling down, higher when sociable, and
+## marries the compatible single they like best.
+const MARRY_MONTHLY: float = 0.0024
+
+
 static func _monthly_partners(w: LTWorld) -> void:
 	var singles: Array = []
 	for c in w.citizens:
-		if w.is_present(c) and int(c["spouse"]) < 0 and w.age_years(c) >= 20 and w.age_years(c) <= 60:
+		if w.is_present(c) and int(c["spouse"]) < 0 and w.age_years(c) >= 20 and w.age_years(c) <= 70:
 			singles.append(c)
 	for a in singles:
 		if int(a["spouse"]) >= 0:
 			continue
+		var age: int = w.age_years(a)
+		var p: float = MARRY_MONTHLY * (0.5 + float(a["traits"]["sociability"]) / 100.0) * (1.4 if age < 35 else (1.0 if age < 50 else 0.45))
+		if w.rng.randf() >= p:
+			continue
+		var best: Dictionary = {}
+		var best_s: float = -1.0
 		for b in singles:
-			if int(b["id"]) <= int(a["id"]) or int(b["spouse"]) >= 0 or int(b["household"]) == int(a["household"]):
+			if int(b["id"]) == int(a["id"]) or int(b["spouse"]) >= 0 or int(b["household"]) == int(a["household"]):
 				continue
-			if str(a["sex"]) == str(b["sex"]) and w.rng.randf() < 0.85:
+			if str(a["sex"]) == str(b["sex"]) and w.rng.randf() < 0.95:
 				continue
-			if absi(w.age_years(a) - w.age_years(b)) > 10:
+			if absi(age - w.age_years(b)) > 10:
 				continue
-			var p: float = 0.012 * (float(a["traits"]["sociability"]) + float(b["traits"]["sociability"])) / 100.0
+			var sc: float = w.rng.randf() * 30.0 + float(b["traits"]["sociability"]) * 0.2
 			if a["rel"].has(int(b["id"])):
-				p += float(a["rel"][int(b["id"])]["affection"]) / 1000.0
-			if w.rng.randf() < p:
-				_marry(w, a, b)
-				break
+				sc += float(a["rel"][int(b["id"])]["affection"])
+			if sc > best_s:
+				best_s = sc
+				best = b
+		if not best.is_empty():
+			_marry(w, a, best)
 
 
 static func _marry(w: LTWorld, a: Dictionary, b: Dictionary) -> void:

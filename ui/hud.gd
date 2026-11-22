@@ -51,13 +51,14 @@ func setup(p_main: Node) -> void:
 	_build_right()
 	_build_feed()
 	_build_tools()
+	_build_steps()
 	# a notice card that stops time but never blocks the rest of the screen
 	notice = PanelContainer.new()
 	notice.anchor_left = 0.5
 	notice.anchor_right = 0.5
 	notice.offset_left = -270
 	notice.offset_right = 270
-	notice.offset_top = 60
+	notice.offset_top = TOP_H + 6
 	root.add_child(notice)
 	var nv: VBoxContainer = VBoxContainer.new()
 	notice.add_child(nv)
@@ -71,7 +72,10 @@ func setup(p_main: Node) -> void:
 	nh.add_child(_btn("OK", func(): notice.visible = false))
 	nv.add_child(nh)
 	notice.visible = false
-	show_setup(true)
+	if main.resumed:
+		show_toast("Welcome back to %s. Everything is as you left it on %s." % [w().city["name"], LTCalendar.short(w().day)])
+	else:
+		show_setup(true)
 
 
 func w() -> LTWorld:
@@ -275,7 +279,7 @@ func _build_top() -> void:
 	pm.add_theme_constant_override("v_separation", 18)
 	pm.add_theme_constant_override("item_start_padding", 16)
 	pm.add_theme_constant_override("item_end_padding", 24)
-	for it in ["Save", "Load", "New town", "Your profile", "Sound: on"]:
+	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps"]:
 		pm.add_item(it)
 	pm.id_pressed.connect(_on_menu)
 	menu_popup = pm
@@ -283,6 +287,54 @@ func _build_top() -> void:
 
 
 var menu_popup: PopupMenu
+var steps_card: PanelContainer
+var steps_text: RichTextLabel
+var steps_hidden: bool = false
+
+
+## A small card under the top bar with the next few things to do.
+func _build_steps() -> void:
+	steps_card = PanelContainer.new()
+	steps_card.anchor_left = 0.0
+	steps_card.anchor_top = 0.0
+	steps_card.offset_top = TOP_H + 6
+	steps_card.custom_minimum_size = Vector2(380, 0)
+	root.add_child(steps_card)
+	var vb: VBoxContainer = VBoxContainer.new()
+	steps_card.add_child(vb)
+	var hb: HBoxContainer = HBoxContainer.new()
+	var t: Label = _lbl("Next steps", 16, Color(1.0, 0.85, 0.45))
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(t)
+	hb.add_child(_btn("Hide", func():
+		steps_hidden = true
+		steps_card.visible = false
+		show_toast("Next steps hidden. Show them again from the Menu.")))
+	vb.add_child(hb)
+	steps_text = _rtl("")
+	steps_text.custom_minimum_size = Vector2(360, 0)
+	vb.add_child(steps_text)
+
+
+func refresh_steps() -> void:
+	if steps_card == null:
+		return
+	var all: Array = LTFounder.next_steps(w())
+	var lines: Array = []
+	var done_n: int = 0
+	for st in all:
+		if bool(st["done"]):
+			done_n += 1
+			continue
+		lines.append(("[color=#e8c35a]> %s[/color]" if lines.is_empty() else "[color=#9fb0c0]- %s[/color]") % st["text"])
+		if lines.size() >= 3:
+			break
+	if lines.is_empty():
+		lines.append("Every goal reached. The town is yours to keep growing.")
+	steps_text.text = "\n".join(lines) + "\n[color=#6f8090][font_size=12]%d of %d done[/font_size][/color]" % [done_n, all.size()]
+	steps_card.visible = not steps_hidden
+	steps_card.offset_left = (LEFT_W + 16) if left.visible else 8
+	steps_card.offset_right = steps_card.offset_left + 380
 
 
 func _on_menu(id: int) -> void:
@@ -299,6 +351,9 @@ func _on_menu(id: int) -> void:
 			main.sound.muted = not main.sound.muted
 			menu_popup.set_item_text(4, "Sound: off" if main.sound.muted else "Sound: on")
 			show_toast("Sound off." if main.sound.muted else "Sound on.")
+		5:
+			steps_hidden = false
+			refresh_steps()
 
 
 func _build_left() -> void:
@@ -306,7 +361,7 @@ func _build_left() -> void:
 	left.anchor_top = 0.0
 	left.anchor_bottom = 1.0
 	left.offset_top = TOP_H + 6
-	left.offset_bottom = -8
+	left.offset_bottom = -TOOL_H - 14
 	left.offset_left = 8
 	left.offset_right = 8 + LEFT_W
 	root.add_child(left)
@@ -358,6 +413,14 @@ func _build_right() -> void:
 var tool_btns: Dictionary = {}
 var tool_bar: PanelContainer
 var zone_opt: OptionButton
+var undo_btn: Button
+var map_opt: OptionButton
+
+
+func refresh_undo() -> void:
+	if undo_btn != null:
+		undo_btn.disabled = not main.can_undo()
+		undo_btn.tooltip_text = ("Undo %s. Works until the next day begins." % str(main.undo_stack[main.undo_stack.size() - 1]["label"])) if main.can_undo() else "Nothing to undo today."
 
 
 ## Build tools: look around, draw roads, plot lots, take lots back.
@@ -367,7 +430,7 @@ func _build_tools() -> void:
 	tool_bar.anchor_right = 1.0
 	tool_bar.anchor_top = 1.0
 	tool_bar.anchor_bottom = 1.0
-	tool_bar.offset_left = -760
+	tool_bar.offset_left = -1040
 	tool_bar.offset_right = -8
 	tool_bar.offset_top = -TOOL_H - 8
 	tool_bar.offset_bottom = -8
@@ -380,6 +443,25 @@ func _build_tools() -> void:
 		b.toggle_mode = true
 		tool_btns[t[0]] = b
 		hb.add_child(b)
+	map_opt = OptionButton.new()
+	for k in main.view.OVERLAYS:
+		map_opt.add_item("Map: normal" if k == "" else str({"value": "Map: value", "condition": "Map: condition", "happiness": "Map: happiness", "safety": "Map: safety", "sale": "Map: for sale"}[k]))
+		map_opt.set_item_metadata(map_opt.item_count - 1, k)
+	map_opt.item_selected.connect(func(i):
+		var k: String = str(map_opt.get_item_metadata(i))
+		main.view.set_overlay(k)
+		if k != "":
+			show_toast("%s. Red is low, yellow middling, green high.%s Lots left plain have nothing to show." % [main.view.OVERLAYS[k], " Blue lots are held for the city." if k == "sale" else ""]))
+	map_opt.focus_mode = Control.FOCUS_NONE
+	map_opt.tooltip_text = "Color the map to see problems at a glance."
+	_big(map_opt, 150)
+	map_opt.get_popup().add_theme_font_size_override("font_size", 20)
+	map_opt.get_popup().add_theme_constant_override("v_separation", 16)
+	hb.add_child(map_opt)
+	undo_btn = _big(_btn("Undo", func():
+		show_toast(main.undo())
+		refresh_undo(), "Take back your last change. Works until the next day begins."), 90)
+	hb.add_child(undo_btn)
 	zone_opt = OptionButton.new()
 	for z in LTGeography.ZONES:
 		if z != "none":
@@ -424,6 +506,14 @@ func _build_feed() -> void:
 	toast.offset_top = TOP_H + 8
 	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var tsb: StyleBoxFlat = StyleBoxFlat.new()
+	tsb.bg_color = Color(0.06, 0.07, 0.09, 0.9)
+	tsb.set_corner_radius_all(6)
+	tsb.set_content_margin_all(8)
+	toast.add_theme_stylebox_override("normal", tsb)
+	toast.z_index = 5
+	toast.modulate.a = 0.0
 	root.add_child(toast)
 
 
@@ -442,6 +532,11 @@ func _process(delta: float) -> void:
 	var vw: float = root.size.x
 	if vw < LEFT_W + RIGHT_W + 200 and right.visible and left.visible:
 		left.visible = false
+	if steps_card != null:
+		# the welcome and event cards sit in the same spot; the steps wait behind them
+		steps_card.visible = not steps_hidden and not notice.visible
+		steps_card.offset_left = (LEFT_W + 16) if left.visible else 8
+		steps_card.offset_right = steps_card.offset_left + 380
 
 
 func show_toast(text: String) -> void:
@@ -593,6 +688,8 @@ func on_new_world() -> void:
 
 
 func refresh_all() -> void:
+	refresh_undo()
+	refresh_steps()
 	refresh_top()
 	refresh_tab()
 	if right.visible and inspect_kind != "":
@@ -1463,6 +1560,17 @@ func _sim_text(id: int) -> String:
 	elif str(job["kind"]) == "none":
 		jt += ", looking for %d days" % int(c["days_unemployed"])
 	t += "Work: %s.\n" % jt
+	var doing: Array = []
+	if not c.get("side_job", {}).is_empty():
+		doing.append("extra work: %s until %s" % [c["side_job"].get("what", "extra shifts"), LTCalendar.short(int(c["side_job"]["until"]))])
+	if not c.get("study", {}).is_empty():
+		doing.append("night classes in %s until %s" % [c["study"]["skill"], LTCalendar.short(int(c["study"]["until"]))])
+	if str(c.get("volunteer", "")) != "":
+		doing.append("volunteers with %s" % LTChoices.VOLUNTEER_KINDS.get(str(c["volunteer"]), "a local group"))
+	if bool(c.get("caregiver", false)):
+		doing.append("looks after an aging parent")
+	if not doing.is_empty():
+		t += "Also: %s.\n" % "; ".join(doing)
 	if age >= 18:
 		t += "Education %d.\n" % int(c["education"])
 	else:

@@ -181,6 +181,55 @@ static func _milestones(w: LTWorld) -> void:
 			w.chronicle_add("Milestone: %s." % m[1], "milestone", true, [])
 
 
+## The next things to do, worked out from the town as it is right now: the first
+## steps of a new town, then the milestones still ahead. [{text, done}]
+static func next_steps(w: LTWorld) -> Array:
+	var out: Array = []
+	var founder: bool = str(w.mode.get("start", "")) == "founder"
+	if founder:
+		var drawn: bool = false
+		var live: bool = false
+		var awarded: bool = false
+		var built_road: bool = false
+		var house_live: bool = false
+		for p in w.projects:
+			if str(p["ptype"]) == "road_build" and str(p["status"]) != "cancelled":
+				drawn = true
+				if str(p["status"]) != "draft":
+					live = true
+				if ["building", "done"].has(str(p["status"])):
+					awarded = true
+				if str(p["status"]) == "done":
+					built_road = true
+			if str(p["ptype"]) == "mayor_house" and not ["draft", "cancelled"].has(str(p["status"])):
+				house_live = true
+		var homes: bool = false
+		for l in w.lots:
+			if not bool(l.get("removed", false)) and ["residential", "mixed"].has(str(l["zone"])):
+				homes = true
+				break
+		var steps: Array = [
+			["Draw your first road off the county road (Draw road, bottom right)", drawn],
+			["Tap the road, write its contract, and press Go live", live],
+			["When bids arrive, award one on the Projects tab", awarded],
+			["Plot residential lots beside your road (Plot lots)", homes],
+			["Draft the mayor's house on the Projects tab and send it live", house_live or int(w.player.get("home_lot", -1)) >= 0],
+			["Wait for a contractor to finish your first road", built_road],
+			["Welcome your first settler family", w.alive_count() > 0],
+			["Reach %d residents so the town incorporates" % INCORPORATE_AT, bool(w.city.get("incorporated", false))],
+		]
+		for st in steps:
+			out.append({"text": st[0], "done": bool(st[1])})
+	var got: Dictionary = w.city.get("milestones", {})
+	for m in MILESTONES:
+		if founder and ["home", "first_settler", "incorporated"].has(str(m[0])):
+			continue
+		if not founder and ["home", "first_settler", "incorporated"].has(str(m[0])):
+			continue
+		out.append({"text": str(m[1]), "done": got.has(str(m[0]))})
+	return out
+
+
 static func _all_paved(w: LTWorld) -> bool:
 	for st in w.streets:
 		if LTGeography.street_condition(w, int(st["id"])) < 60.0:

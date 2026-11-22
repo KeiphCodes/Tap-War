@@ -65,11 +65,32 @@ static func roll_weather(w: LTWorld) -> void:
 		w.region["event_today"] = "blizzard"
 
 
+## Snow on the ground, in inches. Snowfall adds to it, and it melts slowly in deep
+## winter and fast in spring, so the prairie stays white through most of a Dakota
+## winter, the way it really does.
+static func snow_depth(w: LTWorld) -> float:
+	return float(w.region.get("snow_depth", 0.0))
+
+
+static func _snow_cover(w: LTWorld) -> void:
+	var d: float = snow_depth(w)
+	var m: int = LTCalendar.month_index(w.day)
+	if w.weather == "Snow":
+		d += w.rng.randf_range(1.0, 5.0) * (3.0 if event_today(w) == "blizzard" else 1.0)
+	else:
+		var melt: float = [0.25, 0.35, 1.2, 3.0, 6.0, 6.0, 6.0, 6.0, 6.0, 3.0, 1.0, 0.3][m]
+		if w.weather == "Rain" or w.weather == "Storm":
+			melt += 2.0
+		d -= melt
+	w.region["snow_depth"] = clampf(d, 0.0, 40.0)
+
+
 static func event_today(w: LTWorld) -> String:
 	return str(w.region.get("event_today", ""))
 
 
 static func daily(w: LTWorld) -> void:
+	_snow_cover(w)
 	match event_today(w):
 		"severe_storm":
 			severe_storm(w)
@@ -218,7 +239,10 @@ static func _fire(w: LTWorld, l: Dictionary) -> void:
 	w.counters["fires"] = int(w.counters.get("fires", 0)) + 1
 	# most fires are small; better fire service reaches the rest sooner
 	var funding: float = float(w.city["laws"].get("fire_funding", 1.0))
-	var roll: float = w.rng.randf()
+	# a small town's fire crew is its volunteers: more of them, faster and fuller turnout
+	var crew: int = mini(LTChoices.volunteers(w, "fire"), 12)
+	funding *= 1.0 + float(crew) * 0.05
+	var roll: float = w.rng.randf() - float(crew) * 0.003
 	var dmg: float = 0.0
 	var size: String = ""
 	if roll < 0.55:

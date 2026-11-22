@@ -47,8 +47,16 @@ static func daily(w: LTWorld) -> void:
 
 
 ## How likely a crime is seen and solved this week.
+## How anonymous the town is, from 0 (everyone knows everyone) to 1 (a small city
+## of strangers). In a town of a few hundred, a stranger's car gets noticed and a
+## thief is somebody's cousin, so crime is rare and usually solved.
+static func anonymity(w: LTWorld) -> float:
+	return clampf(float(w.alive_count()) / 3000.0, 0.05, 1.0)
+
+
 static func detection(w: LTWorld, kind: String) -> float:
-	var base: float = LTCivic.enforcement(w)
+	# neighbors are the best police a small town has
+	var base: float = LTCivic.enforcement(w) + (1.0 - anonymity(w)) * 0.3
 	match kind:
 		"fraud", "tax_evasion":
 			base *= 0.5
@@ -59,8 +67,15 @@ static func detection(w: LTWorld, kind: String) -> float:
 	return base
 
 
+const CRIME_BASE: float = 0.0005
+const ASSAULT_BASE: float = 0.00008
+
+
 static func _weekly_crime(w: LTWorld) -> void:
 	var safety: float = LTCivic.safety_level(w)
+	var anon: float = anonymity(w)
+	# even a desperate person thinks twice when the shopkeeper taught their kids
+	var shame: float = 0.35 + 0.65 * anon
 	for c in w.citizens:
 		if not w.is_present(c) or w.age_years(c) < 14 or in_jail(w, c):
 			continue
@@ -72,14 +87,17 @@ static func _weekly_crime(w: LTWorld) -> void:
 		var addict: float = LTHealth.level(c) * 0.15
 		var cornered: float = LTFinance.debt_stress(w, c) * 15.0
 		var score: float = need + teen + addict + cornered - restraint - 30.0 + w.rng.randf_range(-8.0, 8.0)
-		if score > 0.0 and w.rng.randf() < clampf(score / 60.0, 0.0, 0.4):
+		var p_crime: float = (clampf(score / 60.0, 0.0, 0.4) * shame if score > 0.0 else 0.0) + minf(CRIME_BASE * exp((score + 50.0) / 14.0), 0.1) * anon
+		if w.rng.randf() < p_crime:
 			if w.rng.randf() < 0.25 and float(t["risk"]) > 55.0 and w.age_years(c) >= 17:
 				burglary(w, c)
 			else:
 				LTCivic.theft(w, c, "needed money and did not think they would get caught")
 		# assault risk: unsafe areas, drinking, anger
 		var anger: float = float(LTHealth.level(c)) * 0.2 + (40.0 - safety) * 0.3 + (100.0 - float(t["kindness"])) * 0.1 - 15.0
-		if anger > 0.0 and w.rng.randf() < anger / 2500.0:
+		# fights come from grudges, drink and hard times; most are between people who know each other
+		var p_fight: float = (anger / 2500.0 if anger > 0.0 else 0.0) + minf(ASSAULT_BASE * exp(anger / 10.0), 0.03)
+		if w.age_years(c) >= 16 and w.rng.randf() < p_fight:
 			assault(w, c)
 
 

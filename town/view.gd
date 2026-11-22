@@ -76,6 +76,17 @@ var _roads_built_day: int = -1
 var _roads_count: int = -1
 var selected_lot: int = -1
 var selected_road: int = -1
+## Map overlay: "" for none, or value, condition, happiness, safety, sale
+var overlay: String = ""
+var overlay_mi: MeshInstance3D
+const OVERLAYS: Dictionary = {
+	"": "Normal map",
+	"value": "Land and building value",
+	"condition": "Building condition",
+	"happiness": "Happiness of the people living there",
+	"safety": "How safe people feel at home",
+	"sale": "City lots for sale",
+}
 var road_hl_mi: MeshInstance3D
 ## What the town sounds like right now near the camera, for the sound node.
 var audio: Dictionary = {"traffic": 0.0, "building": 0.0, "crowd": 0.0}
@@ -90,7 +101,7 @@ func setup(p_main: Node) -> void:
 	rebuild()
 
 
-func rebuild() -> void:
+func rebuild(keep_camera: bool = false) -> void:
 	w = main.world
 	for r in [ground_root, road_root, lot_root, people_root, extra_root]:
 		if r != null:
@@ -122,13 +133,14 @@ func rebuild() -> void:
 	highlight.material_override = hmat
 	highlight.visible = false
 	extra_root.add_child(highlight)
-	var ms: Vector2 = map_size()
-	target = Vector3(ms.x * 0.5, 0.0, ms.y * 0.5)
-	dist = maxf(ms.x, ms.y) * (0.75 if bool(w.config.get("open_land", false)) else 1.05)
-	g_target = target
-	g_dist = dist
-	g_yaw = yaw
-	g_pitch = pitch
+	if not keep_camera:
+		var ms: Vector2 = map_size()
+		target = Vector3(ms.x * 0.5, 0.0, ms.y * 0.5)
+		dist = maxf(ms.x, ms.y) * (0.75 if bool(w.config.get("open_land", false)) else 1.05)
+		g_target = target
+		g_dist = dist
+		g_yaw = yaw
+		g_pitch = pitch
 	_build_tool_meshes()
 	_update_camera()
 	refresh_all()
@@ -242,6 +254,8 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, c: Color, glow: bool = fa
 
 
 func _roof(parent: Node3D, size: Vector3, pos: Vector3, c: Color) -> MeshInstance3D:
+	if _snow:
+		c = c.lerp(Color(0.93, 0.95, 0.98), 0.8)
 	if _batching:
 		_batch_add(PrismMesh.new(), "prism", Transform3D(Basis().scaled(size), pos), c, false)
 		return null
@@ -507,7 +521,7 @@ func _leaf_color() -> Color:
 func refresh_all() -> void:
 	w = main.world
 	var season: String = LTCalendar.season(w.day)
-	var snow: bool = w.weather == "Snow"
+	var snow: bool = w.weather == "Snow" or LTHazards.snow_depth(w) >= 1.0
 	if season != _season or snow != _snow:
 		_season = season
 		_snow = snow
@@ -531,6 +545,92 @@ func refresh_all() -> void:
 	_refresh_tier()
 	_refresh_trucks()
 	_refresh_camper()
+	_rebuild_overlay()
+
+
+func set_overlay(kind: String) -> void:
+	overlay = kind if OVERLAYS.has(kind) else ""
+	_rebuild_overlay()
+
+
+## A score from 0 (bad, red) to 1 (good, green) for one lot, or -1 to leave it plain.
+func overlay_score(l: Dictionary) -> float:
+	var use: String = str(l["use"])
+	match overlay:
+		"value":
+			if use == "empty":
+				return -1.0
+			return clampf(float(l["value"]) / float(LTMoney.dollars(400000.0)), 0.0, 1.0)
+		"condition":
+			if use == "empty" or use == "removed":
+				return -1.0
+			return clampf(float(l["condition"]) / 100.0, 0.0, 1.0)
+		"happiness", "safety":
+			var t: float = 0.0
+			var n: int = 0
+			for u in l["units"]:
+				if int(u) < 0:
+					continue
+				for m in w.household_members(w.hh(int(u))):
+					if w.is_present(m):
+						t += LTPeople.happiness(m) if overlay == "happiness" else float(m["needs"]["safety"])
+						n += 1
+			if n == 0:
+				return -1.0
+			return clampf(t / float(n) / 100.0, 0.0, 1.0)
+		"sale":
+			if use != "empty" or str(l["owner_kind"]) != "city":
+				return -1.0
+			if bool(l.get("hold", false)):
+				return 0.5
+			return clampf(1.25 - float(l.get("price_pct", 100)) / 200.0, 0.0, 1.0)
+	return -1.0
+
+
+func _rebuild_overlay() -> void:
+	if overlay_mi != null:
+		overlay_mi.queue_free()
+		overlay_mi = null
+	if overlay == "":
+		return
+	var st: SurfaceTool = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var half: float = (CELL - ROAD_W) * 0.5
+	var any: bool = false
+	for l in w.lots:
+		if bool(l.get("removed", false)):
+			continue
+		var v: float = overlay_score(l)
+		if v < 0.0:
+			continue
+		any = true
+		var c: Color = Color(0.85, 0.2, 0.15).lerp(Color(0.95, 0.85, 0.2), clampf(v * 2.0, 0.0, 1.0)) if v < 0.5 else Color(0.95, 0.85, 0.2).lerp(Color(0.2, 0.8, 0.3), clampf((v - 0.5) * 2.0, 0.0, 1.0))
+		if overlay == "sale" and bool(l.get("hold", false)):
+			c = Color(0.3, 0.5, 0.95)
+		c.a = 0.55
+		var p: Vector3 = lot_center(int(l["id"])) + Vector3(0, 0.35, 0)
+		var a: Vector3 = p + Vector3(-half, 0, -half)
+		var b: Vector3 = p + Vector3(half, 0, -half)
+		var d: Vector3 = p + Vector3(half, 0, half)
+		var e: Vector3 = p + Vector3(-half, 0, half)
+		for q in [a, b, d, a, d, e]:
+			st.set_color(c)
+			st.set_normal(Vector3.UP)
+			st.add_vertex(q)
+	if not any:
+		return
+	var m: StandardMaterial3D = StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.no_depth_test = true
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.render_priority = 2
+	overlay_mi = MeshInstance3D.new()
+	overlay_mi.mesh = st.commit()
+	overlay_mi.material_override = m
+	overlay_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	extra_root.add_child(overlay_mi)
 
 
 func _apply_season() -> void:

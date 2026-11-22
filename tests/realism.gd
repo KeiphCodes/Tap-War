@@ -168,5 +168,10 @@ func _town() -> void:
 	_info("Evictions per 100 renting households a year", per.call("evictions", maxf(renters, 1.0), 100.0), "about 3 to 4 filings")
 	_row("Building fires per 1,000 homes a year", per.call("fires", homes, 1000.0), 0.5, 6.0, "about 2.5 home fires plus some businesses")
 	_info("Layoffs per 100 workers a year", per.call("layoffs", workers, 100.0), "about 13 (all layoffs and discharges, JOLTS)")
+	_info("Sims taking extra work when money is tight, per 1,000 adults a year", per.call("side_jobs", adults, 1000.0), "about 50 to 80 take a second job")
+	_info("Sims starting night classes, per 1,000 adults a year", per.call("night_classes", adults, 1000.0), "about 20 to 40 adult learners")
+	_info("Sims joining a volunteer group, per 1,000 adults a year", per.call("volunteers_joined", adults, 1000.0), "about a quarter of adults volunteer")
+	_info("Sims helping family or friends with money, per 1,000 adults a year", per.call("helped_someone", adults, 1000.0), "common")
+	_info("Sims who start caring for an aging parent, per 1,000 adults a year", per.call("caregivers", adults, 1000.0), "about 10 to 20")
 	if bizn > 0.0:
 		_info("Business closures per 100 businesses a year", per.call("businesses_closed", bizn, 100.0), "about 8 to 10")

@@ -63,6 +63,8 @@ static func creditor_name(w: LTWorld, d: Dictionary) -> String:
 			return "Valley Wholesale"
 		"clinic":
 			return "County Medical Center"
+		"college":
+			return "the county college's student lender"
 		"business":
 			return str(w.biz(int(d["creditor_id"])).get("name", "a local business"))
 		"person":
@@ -713,7 +715,9 @@ static func _bankruptcy_month(w: LTWorld) -> void:
 				trigger = "a court judgment and wage garnishment"
 			if str(d["secured_by"]) == "house" and int(d["missed"]) >= 3:
 				trigger = "a foreclosure notice"
-		if behind == 0 or unsecured < LTMoney.dollars(3000.0):
+		# filing costs about $1,650 and stays on the record ten years, so people only
+		# file over about $10,000 or more they cannot pay; smaller debts go to collections
+		if behind == 0 or unsecured < LTMoney.dollars(10000.0):
 			continue
 		var h: Dictionary = w.hh(int(c["household"]))
 		var income: int = monthly_income(w, c)
