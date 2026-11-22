@@ -365,7 +365,10 @@ func _founder_mode() -> void:
 	var mh_lot: int = LTGeography.lot_at(w, 9, 5)
 	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": mh_lot, "live": true})
 	var inc_day: int = -1
-	for d in 730:
+	# two years, or until the first election 90 days after incorporating (at most three years)
+	for d in 1095:
+		if d >= 730 and (inc_day < 0 or w.day > inc_day + 100):
+			break
 		for p in w.projects:
 			if str(p["status"]) == "review" and not bool(p["private"]):
 				var pick: int = 0
