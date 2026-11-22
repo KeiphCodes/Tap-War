@@ -44,7 +44,7 @@ Keith gave full permission to make the calls needed to finish. These are the one
 37. **Divorce.** Marriages wear down under money stress, addiction, jail and unhappiness, and build up with kindness. Child support is about 17% of income for one child, more for more, until the youngest is 18, and climbs the same collection ladder as any debt, with contempt charges after three missed months.
 38. **The region** runs a slow business cycle (steady, growth, slowdown, recession, recovery) that sets outside hiring, layoffs, export prices and travelers. Six named county employers rise and fall; a failure lays off every town Sim who worked there.
 39. **Annexed land** arrives unzoned with a gravel street that must be paved through bids. The exit to the highway and every lot's street are stored, so the graph can grow without breaking paths.
-40. **Sound is synthesized in code** at a low sample rate (wind, rain, birds, chimes), so there are no audio files and it runs in the browser. A mute button is in the top bar.
+40. **Sound is synthesized in code** at a low sample rate (wind, rain, birds, chimes), so there are no audio files and it runs in the browser. Sound can be turned off from the Menu button in the top bar.
 41. **Performance.** Per day caches for market estimates, job seekers, debt stress, safety and open sites keep about 930 Sims near 150 ms per day. What remains is plain per Sim work, the hot loop section 14 expects to move to a faster language later.
 
 ## Founding a town and real time (third pass, Keith's direction)
@@ -79,6 +79,8 @@ Keith gave full permission to make the calls needed to finish. These are the one
 59. **The starting town** has the age mix and household types of a small midwestern town in the census (about 13% under 10, a quarter over 60).
 60. **Rules of the world fixed along the way:** a units bug made founders skip the business license far too often; a first unlicensed offense now means a fine and buying the license, not closure; a bankruptcy filing costs about $1,650 in lawyer and court fees.
 61. **The player has a profile:** name, pronouns, age (which grows with the calendar), hometown and a color that trims the camper and the mayor's house. All of it, and the town's name, can be changed any time from the Mayor tab.
+
+62. **Bigger buttons.** The time controls and the build tools are at least 48 pixels tall with larger text, the size touch guidelines ask for. To make room, Save, Load, New town, Your profile and Sound moved into one Menu button at the right end of the top bar.
 
 ## Scope calls
 

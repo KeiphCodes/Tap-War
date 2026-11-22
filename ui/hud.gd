@@ -7,6 +7,8 @@ const ChartScript = preload("res://ui/chart.gd")
 const TABS: Array = ["Mayor", "Requests", "Projects", "People", "Business", "City", "News", "Help"]
 const LEFT_W: int = 480
 const RIGHT_W: int = 440
+const TOP_H: int = 64
+const TOOL_H: int = 66
 
 var main: Node
 var root: Control
@@ -106,6 +108,31 @@ func _make_theme() -> Theme:
 	t.set_font_size("bold_font_size", "RichTextLabel", 15)
 	t.set_font_size("font_size", "TabContainer", 13)
 	return t
+
+
+## A big, easy to hit button for the top bar and the build tools: at least 48
+## pixels tall (the size touch guidelines ask for) with larger text.
+func _big(b: Button, min_w: float = 0.0) -> Button:
+	b.custom_minimum_size = Vector2(min_w, 48)
+	b.add_theme_font_size_override("font_size", 17)
+	# the game's own colors: slate, lighter on hover, gold when selected
+	var looks: Dictionary = {
+		"normal": Color(0.2, 0.26, 0.33), "hover": Color(0.28, 0.36, 0.46),
+		"pressed": Color(0.85, 0.65, 0.2), "hover_pressed": Color(0.92, 0.72, 0.28),
+		"disabled": Color(0.16, 0.18, 0.21),
+	}
+	for st in looks:
+		var sb: StyleBoxFlat = StyleBoxFlat.new()
+		sb.bg_color = looks[st]
+		sb.set_corner_radius_all(6)
+		sb.content_margin_left = 14
+		sb.content_margin_right = 14
+		sb.content_margin_top = 8
+		sb.content_margin_bottom = 8
+		b.add_theme_stylebox_override(st, sb)
+	b.add_theme_color_override("font_pressed_color", Color(0.1, 0.08, 0.04))
+	b.add_theme_color_override("font_hover_pressed_color", Color(0.1, 0.08, 0.04))
+	return b
 
 
 func _btn(text: String, cb: Callable, tip: String = "") -> Button:
@@ -212,12 +239,12 @@ func _on_meta(meta) -> void:
 func _build_top() -> void:
 	top_bar = PanelContainer.new()
 	top_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	top_bar.offset_bottom = 46
+	top_bar.offset_bottom = TOP_H
 	root.add_child(top_bar)
 	var hb: HBoxContainer = HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 10)
+	hb.add_theme_constant_override("separation", 8)
 	top_bar.add_child(hb)
-	var tg: Button = _btn("Panels", _toggle_panels, "Show or hide the side panels")
+	var tg: Button = _big(_btn("Panels", _toggle_panels, "Show or hide the side panels"))
 	hb.add_child(tg)
 	lbl_town = _lbl("", 18, Color(1.0, 0.85, 0.45))
 	lbl_town.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -233,27 +260,52 @@ func _build_top() -> void:
 	for i in main.SPEEDS.size():
 		var sp: Dictionary = main.SPEEDS[i]
 		var tip: String = ["Stop time to plan. Time also stops whenever the game is closed.", "Real time: one game second per real second. Use Today to match your own date and clock.", "One day in about two minutes. Watch Sims near the camera live their day.", "One day every few seconds.", "One week per step. Stops on events you care about.", "One month per step. Stops on events you care about."][i]
-		var b: Button = _btn(str(sp["name"]), func(): main.set_speed(i), tip)
+		var b: Button = _big(_btn(str(sp["name"]), func(): main.set_speed(i), tip))
 		b.toggle_mode = true
 		speed_btns.append(b)
 		hb.add_child(b)
-	hb.add_child(_btn("Today", func(): show_toast(main.match_real_time()), "Fast forward (only forward) until the town's date and clock match yours, then run live."))
-	hb.add_child(_btn("Save", func(): show_toast(main.save_game())))
-	hb.add_child(_btn("Load", func(): show_toast(main.load_game())))
-	hb.add_child(_btn("New town", func(): show_setup()))
-	var mute: Button = _btn("Sound on", func(): pass)
-	mute.toggle_mode = true
-	mute.toggled.connect(func(v):
-		main.sound.muted = v
-		mute.text = "Sound off" if v else "Sound on")
-	hb.add_child(mute)
+	hb.add_child(_big(_btn("Today", func(): show_toast(main.match_real_time()), "Fast forward (only forward) until the town's date and clock match yours, then run live.")))
+	# the things you do now and then live in one menu, so the bar has room for big buttons
+	var menu: MenuButton = MenuButton.new()
+	menu.text = "Menu"
+	menu.flat = false
+	_big(menu, 90)
+	var pm: PopupMenu = menu.get_popup()
+	pm.add_theme_font_size_override("font_size", 20)
+	pm.add_theme_constant_override("v_separation", 18)
+	pm.add_theme_constant_override("item_start_padding", 16)
+	pm.add_theme_constant_override("item_end_padding", 24)
+	for it in ["Save", "Load", "New town", "Your profile", "Sound: on"]:
+		pm.add_item(it)
+	pm.id_pressed.connect(_on_menu)
+	menu_popup = pm
+	hb.add_child(menu)
+
+
+var menu_popup: PopupMenu
+
+
+func _on_menu(id: int) -> void:
+	match id:
+		0:
+			show_toast(main.save_game())
+		1:
+			show_toast(main.load_game())
+		2:
+			show_setup()
+		3:
+			show_profile()
+		4:
+			main.sound.muted = not main.sound.muted
+			menu_popup.set_item_text(4, "Sound: off" if main.sound.muted else "Sound: on")
+			show_toast("Sound off." if main.sound.muted else "Sound on.")
 
 
 func _build_left() -> void:
 	left = PanelContainer.new()
 	left.anchor_top = 0.0
 	left.anchor_bottom = 1.0
-	left.offset_top = 52
+	left.offset_top = TOP_H + 6
 	left.offset_bottom = -8
 	left.offset_left = 8
 	left.offset_right = 8 + LEFT_W
@@ -281,8 +333,8 @@ func _build_right() -> void:
 	right.anchor_bottom = 1.0
 	right.offset_left = -RIGHT_W - 8
 	right.offset_right = -8
-	right.offset_top = 52
-	right.offset_bottom = -8
+	right.offset_top = TOP_H + 6
+	right.offset_bottom = -TOOL_H - 14
 	root.add_child(right)
 	var vb: VBoxContainer = VBoxContainer.new()
 	right.add_child(vb)
@@ -315,15 +367,16 @@ func _build_tools() -> void:
 	tool_bar.anchor_right = 1.0
 	tool_bar.anchor_top = 1.0
 	tool_bar.anchor_bottom = 1.0
-	tool_bar.offset_left = -560
+	tool_bar.offset_left = -760
 	tool_bar.offset_right = -8
-	tool_bar.offset_top = -52
+	tool_bar.offset_top = -TOOL_H - 8
 	tool_bar.offset_bottom = -8
+	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	root.add_child(tool_bar)
 	var hb: HBoxContainer = HBoxContainer.new()
 	tool_bar.add_child(hb)
 	for t in [["look", "Look", "Click lots and people to inspect them. Drag with right mouse to turn."], ["road", "Draw road", "Drag along the survey grid to draw a straight road. It starts as a draft contract: set its terms, press Go live, and contractors bid to build it."], ["plot", "Plot lots", "Drag over open land beside a road to mark lots in the chosen zone."], ["unplot", "Remove lot", "Click an empty lot the city still owns to return it to prairie."]]:
-		var b: Button = _btn(t[1], func(): _set_tool(t[0]), t[2])
+		var b: Button = _big(_btn(t[1], func(): _set_tool(t[0]), t[2]), 120)
 		b.toggle_mode = true
 		tool_btns[t[0]] = b
 		hb.add_child(b)
@@ -333,6 +386,9 @@ func _build_tools() -> void:
 			zone_opt.add_item(z)
 	zone_opt.item_selected.connect(func(i): main.view.plot_zone = zone_opt.get_item_text(i))
 	zone_opt.focus_mode = Control.FOCUS_NONE
+	_big(zone_opt, 150)
+	zone_opt.get_popup().add_theme_font_size_override("font_size", 20)
+	zone_opt.get_popup().add_theme_constant_override("v_separation", 16)
 	hb.add_child(zone_opt)
 	_set_tool("look")
 
@@ -365,7 +421,7 @@ func _build_feed() -> void:
 	toast.anchor_right = 0.5
 	toast.offset_left = -300
 	toast.offset_right = 300
-	toast.offset_top = 56
+	toast.offset_top = TOP_H + 8
 	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(toast)
