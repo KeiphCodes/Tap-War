@@ -138,8 +138,10 @@ func set_speed(i: int) -> void:
 	hud.refresh_top()
 
 
+## Live, Watch and Normal run the clock hour by hour so Sims move at that speed;
+## Fast and Turbo jump a week or a month at a time and show everyone still.
 func is_hourly() -> bool:
-	return speed == 1 or speed == 2
+	return speed == 1 or speed == 2 or speed == 3
 
 
 ## Live speed runs one game second per real second. Matching the real date fast
@@ -227,7 +229,8 @@ func _process(delta: float) -> void:
 		if _dirty_t <= 0.0:
 			autosave()
 	sound.weather = world.weather
-	sound.daytime = hour > 6.0 and hour < 20.0
+	# at Normal a day lasts three seconds: keep the daytime sounds steady
+	sound.daytime = (hour > 6.0 and hour < 20.0) or view.time_scale > 1000.0
 	sound.season = LTCalendar.season(world.day)
 	sound.ambience = view.street_level()
 	sound.city = view.audio
