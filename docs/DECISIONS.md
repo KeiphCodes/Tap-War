@@ -88,6 +88,8 @@ Keith gave full permission to make the calls needed to finish. These are the one
 66. **Map overlays and next steps.** The tool bar can color every lot by value, condition, happiness, safety or what the city has for sale. A small card under the top bar lists the next things to do in a new town, then the milestones ahead.
 67. **Snow stays.** Snowfall builds up on the ground and on roofs and melts slowly in deep winter and quickly in spring, so the prairie stays white through most of a Dakota winter.
 
+68. **How Sims move on screen.** Trips take real time by distance (walking about 1.4 m/s, driving about 40 km/h in town), so in Live a walk to work takes a few real minutes and Sims at home or work potter about every few minutes instead of standing frozen. In Watch each trip lasts at least about a second of real time so it can be followed. At day by day speeds (Normal, Fast, Turbo) everyone is shown still, where they are at half past noon, and moves to their new spot only when the next day comes. Pausing freezes everyone exactly where they are. A Sim only snaps to a new spot while out of sight.
+
 ## Scope calls
 
 23. **The outside bank** (Prairie State Bank) serves the town until the city charters a local one (item 34).

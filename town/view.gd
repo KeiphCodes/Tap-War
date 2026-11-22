@@ -9,6 +9,15 @@ const MAX_SIMS: int = 45
 ## Zoomed in closer than this, the town is at street level: Sims appear and the
 ## weather and town sounds fade in. Farther out it is a quiet planning map.
 const PEOPLE_DIST: float = 85.0
+## Map units are about 1.5 meters. People walk about 1.4 m/s and drive about
+## 40 km/h in town, so a trip takes real minutes, not a fixed hour.
+const WALK_UPH: float = 3360.0
+const DRIVE_UPH: float = 26400.0
+## At day by day speeds Sims are shown where they are at this time of day, still,
+## until the next day.
+const FREEZE_HOUR: float = 12.5
+## In Watch a trip lasts at least this many real seconds, so it can be followed.
+const MIN_TRIP_REAL_S: float = 1.2
 const SOUND_FADE: float = 20.0
 const SKIN: Array = [Color(0.96, 0.8, 0.69), Color(0.87, 0.67, 0.5), Color(0.76, 0.55, 0.38), Color(0.6, 0.42, 0.28), Color(0.45, 0.31, 0.2), Color(0.33, 0.22, 0.15)]
 const HAIR: Array = [Color(0.1, 0.08, 0.06), Color(0.3, 0.2, 0.1), Color(0.55, 0.35, 0.15), Color(0.85, 0.7, 0.4), Color(0.6, 0.6, 0.6), Color(0.9, 0.9, 0.88), Color(0.5, 0.15, 0.08)]
@@ -37,6 +46,8 @@ var dist: float = 95.0
 var _tier_timer: float = 0.0
 var _last_hour: float = 9.0
 var _watch_mode: bool = false
+## Game seconds per real second at the current speed (1 in Live, 720 in Watch).
+var time_scale: float = 1.0
 var _season: String = ""
 var _snow: bool = false
 var _touches: Dictionary = {}
@@ -1162,30 +1173,88 @@ func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 		outside = true
 	var weekend: bool = LTCalendar.is_weekend(w.day)
 	if weekend or int(c["sick_days"]) > 0 or (age < 5) or bool(c["retired"]) or kind == "none":
-		# a stroll in the afternoon, otherwise home
-		if hour > 13.0 + j and hour < 15.0 + j and age >= 5 and int(c["sick_days"]) == 0:
+		# an afternoon walk to the shops and back, otherwise around home
+		if age >= 5 and int(c["sick_days"]) == 0:
 			var shop: Array = w.open_businesses("grocery") + w.open_businesses("cafe")
 			if not shop.is_empty():
 				var sb: Dictionary = shop[int(c["id"]) % shop.size()]
-				return _between(home_p, lot_center(int(sb["lot"])) + Vector3(j * 4.0, 0, 5.0), clampf((hour - 13.0 - j) * 2.0, 0.0, 1.0), false, home, int(sb["lot"]))
-		return {"pos": home_p + Vector3(sin(float(c["id"])) * 2.0, 0, 0), "visible": hour > 8.0 and hour < 20.0, "car": false, "moving": false}
+				var sp: Vector3 = lot_center(int(sb["lot"])) + Vector3(j * 4.0, 0, 5.0)
+				var go: float = 13.0 + j
+				var d: float = _trip_hours(home_p, sp, home, int(sb["lot"]), false)
+				var stay_until: float = go + d + 0.75
+				if hour >= go and hour < go + d:
+					return _between(home_p, sp, (hour - go) / d, false, home, int(sb["lot"]))
+				if hour >= go + d and hour < stay_until:
+					return _potter(c, sp, hour, true)
+				if hour >= stay_until and hour < stay_until + d:
+					return _between(sp, home_p, (hour - stay_until) / d, false, int(sb["lot"]), home)
+		return _potter(c, home_p, hour, hour > 8.0 and hour < 20.0)
 	var leave: float = 7.0 + j
 	var back: float = 17.0 + j
-	if hour < leave - 0.1 or hour > back + 1.1:
-		return {"pos": home_p, "visible": hour > 6.5 and hour < 21.5, "car": false, "moving": false}
 	var exit_p: Vector3 = _exit_pos() + Vector3(-60.0, 0, 0)
+	var by_car: bool = outside and age >= 18
+	var far: Vector3 = exit_p if outside else dest
+	var far_lot: int = -1 if outside else dest_lot
+	var d_out: float = _trip_hours(home_p, far, home, far_lot, by_car)
+	if hour < leave or hour >= back + d_out:
+		return _potter(c, home_p, hour, hour > 6.5 and hour < 21.5)
+	if hour < leave + d_out:
+		return _between(home_p, far, (hour - leave) / d_out, by_car, home, far_lot)
+	if hour >= back:
+		return _between(far, home_p, (hour - back) / d_out, by_car, far_lot, home)
 	if outside:
-		var by_car: bool = age >= 18
-		if hour < leave + 1.0:
-			return _between(home_p, exit_p, hour - leave, by_car, home, -1)
-		if hour > back:
-			return _between(exit_p, home_p, hour - back, by_car, -1, home)
 		return {"pos": exit_p, "visible": false, "car": false, "moving": false}
-	if hour < leave + 1.0:
-		return _between(home_p, dest, hour - leave, false, home, dest_lot)
-	if hour > back:
-		return _between(dest, home_p, hour - back, false, dest_lot, home)
-	return {"pos": dest, "visible": true, "car": false, "moving": false}
+	return _potter(c, dest, hour, true)
+
+
+## How long a trip takes in game hours: by distance and by foot or car, and in
+## Watch never shorter than a moment you can actually see.
+func _trip_hours(a: Vector3, b: Vector3, from_lot: int, to_lot: int, car: bool) -> float:
+	var length: float = _path_len(a, b, from_lot, to_lot)
+	var h: float = length / (DRIVE_UPH if car else WALK_UPH)
+	h = maxf(h, 2.0 / 60.0)
+	if time_scale > 1.5:
+		h = maxf(h, MIN_TRIP_REAL_S * time_scale / 3600.0)
+	return h
+
+
+func _path_pts(a: Vector3, b: Vector3, from_lot: int, to_lot: int) -> Array:
+	var na: Vector3 = _node_pos(LTGeography.lot_access_node(w, from_lot)) if from_lot >= 0 else _exit_pos()
+	var nb: Vector3 = _node_pos(LTGeography.lot_access_node(w, to_lot)) if to_lot >= 0 else _exit_pos()
+	return [a, Vector3(a.x, 0, na.z), Vector3(nb.x, 0, na.z), Vector3(nb.x, 0, b.z), b]
+
+
+func _path_len(a: Vector3, b: Vector3, from_lot: int, to_lot: int) -> float:
+	var pts: Array = _path_pts(a, b, from_lot, to_lot)
+	var total: float = 0.0
+	for i in range(1, pts.size()):
+		total += (pts[i] as Vector3).distance_to(pts[i - 1])
+	return total
+
+
+func _hash01(cid: int, k: int, salt: int) -> float:
+	var v: float = sin(float(cid) * 12.9898 + float(k) * 78.233 + float(salt) * 37.719) * 43758.5453
+	return v - floor(v)
+
+
+## A Sim at home or at work does not stand frozen: every few minutes they walk a
+## few steps to somewhere nearby and stop again. Driven by the game clock, so it
+## is the same at any speed; only shown when time runs close to real time.
+func _potter(c: Dictionary, spot: Vector3, hour: float, visible: bool) -> Dictionary:
+	if time_scale > 60.0 or not visible:
+		return {"pos": spot, "visible": visible, "car": false, "moving": false}
+	var cid: int = int(c["id"])
+	var minute: float = hour * 60.0
+	var period: float = 2.0 + _hash01(cid, 0, 9) * 3.0
+	var k: int = int(floor(minute / period))
+	var p0: Vector3 = spot + Vector3(_hash01(cid, k - 1, 1) * 2.0 - 1.0, 0, _hash01(cid, k - 1, 2) * 2.0 - 1.0) * 2.4
+	var p1: Vector3 = spot + Vector3(_hash01(cid, k, 1) * 2.0 - 1.0, 0, _hash01(cid, k, 2) * 2.0 - 1.0) * 2.4
+	var walk_min: float = p0.distance_to(p1) / (WALK_UPH / 60.0) * 1.6
+	var into: float = minute - float(k) * period
+	if into < walk_min and walk_min > 0.0:
+		var dir: Vector3 = (p1 - p0).normalized()
+		return {"pos": p0.lerp(p1, into / walk_min), "visible": true, "car": false, "moving": true, "dir": dir}
+	return {"pos": p1, "visible": true, "car": false, "moving": false}
 
 
 func _rough_spot(c: Dictionary) -> Vector3:
@@ -1206,13 +1275,7 @@ func _node_pos(n: int) -> Vector3:
 ## Travel along the roads: down to the street, along it, up the avenue.
 func _between(a: Vector3, b: Vector3, t: float, car: bool, from_lot: int, to_lot: int) -> Dictionary:
 	t = clampf(t, 0.0, 1.0)
-	var pts: Array = [a]
-	var na: Vector3 = _node_pos(LTGeography.lot_access_node(w, from_lot)) if from_lot >= 0 else _exit_pos()
-	var nb: Vector3 = _node_pos(LTGeography.lot_access_node(w, to_lot)) if to_lot >= 0 else _exit_pos()
-	pts.append(Vector3(a.x, 0, na.z))
-	pts.append(Vector3(nb.x, 0, na.z))
-	pts.append(Vector3(nb.x, 0, b.z))
-	pts.append(b)
+	var pts: Array = _path_pts(a, b, from_lot, to_lot)
 	var total: float = 0.0
 	for i in range(1, pts.size()):
 		total += (pts[i] as Vector3).distance_to(pts[i - 1])
@@ -1227,7 +1290,8 @@ func _between(a: Vector3, b: Vector3, t: float, car: bool, from_lot: int, to_lot
 			dir = ((pts[i] as Vector3) - (pts[i - 1] as Vector3)).normalized()
 			break
 		acc += seg
-	var side: Vector3 = Vector3(dir.z, 0, -dir.x) * (1.2 if car else 2.6)
+	# keep to the side of the road, easing on and off it at each end of the trip
+	var side: Vector3 = Vector3(dir.z, 0, -dir.x) * (1.2 if car else 2.6) * clampf(minf(t, 1.0 - t) * 12.0, 0.0, 1.0)
 	return {"pos": pos + side, "visible": t > 0.0 and t < 1.0 or not car, "car": car and t > 0.0 and t < 1.0, "moving": t > 0.0 and t < 1.0, "dir": dir}
 
 
@@ -1266,7 +1330,9 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		if not w.is_present(c):
 			n.visible = false
 			continue
-		var plan: Dictionary = sim_plan(c, hour if watch else 12.5 + float(int(cid) % 3))
+		# day by day speeds show everyone still, where they are at one time of day
+		var plan: Dictionary = sim_plan(c, hour if watch else FREEZE_HOUR)
+		var was_visible: bool = n.visible
 		n.visible = bool(plan["visible"])
 		var car: Node3D = n.get_node("Car")
 		car.visible = bool(plan["car"])
@@ -1279,14 +1345,16 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		n.get_node("Head").visible = not bool(plan["car"])
 		n.get_node("Hair").visible = not bool(plan["car"])
 		var p: Vector3 = plan["pos"]
-		if not watch:
-			p += Vector3(sin(Time.get_ticks_msec() / 900.0 + float(cid)) * 0.6, 0, cos(Time.get_ticks_msec() / 1100.0 + float(cid)) * 0.6)
-		n.position = n.position.lerp(p, clampf(delta * 6.0, 0.0, 1.0)) if n.position.distance_to(p) < 30.0 else p
-		if plan.has("dir"):
+		if not watch or not was_visible or n.position.distance_to(p) > 60.0:
+			# still frames, or the Sim was out of sight: just be there
+			n.position = p
+		else:
+			n.position = n.position.lerp(p, clampf(delta * 10.0, 0.0, 1.0))
+		if plan.has("dir") and bool(plan["moving"]):
 			var d: Vector3 = plan["dir"]
 			n.rotation.y = atan2(d.x, d.z)
-		if bool(plan["moving"]) and not bool(plan["car"]):
-			n.get_node("Body").rotation.z = sin(Time.get_ticks_msec() / 120.0) * 0.08
+		var body: Node3D = n.get_node("Body")
+		body.rotation.z = sin(Time.get_ticks_msec() / 120.0) * 0.08 if watch and time_scale > 0.0 and bool(plan["moving"]) and not bool(plan["car"]) else 0.0
 	for t in truck_nodes:
 		var tn: Node3D = t["node"]
 		var tt: float = (hour - float(t["start"])) / 1.5 if watch else 0.5

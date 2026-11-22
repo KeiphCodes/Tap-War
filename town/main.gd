@@ -246,9 +246,12 @@ func _process(delta: float) -> void:
 		return
 	var sp: Dictionary = SPEEDS[speed]
 	if int(sp["days"]) == 0:
-		view.animate(delta, hour, false)
+		# paused: everyone stays exactly where they are at this moment
+		view.time_scale = 0.0
+		view.animate(delta, hour, true)
 		return
 	_accum += delta
+	view.time_scale = 86400.0 / float(sp["seconds"]) if is_hourly() else 0.0
 	if is_hourly():
 		# live and watch: hours pass visibly; live is one game second per real second
 		hour += delta / float(sp["seconds"]) * 24.0
@@ -258,7 +261,7 @@ func _process(delta: float) -> void:
 		view.animate(delta, hour, true)
 		hud.refresh_clock()
 		return
-	hour = 13.0
+	hour = view.FREEZE_HOUR
 	view.animate(delta, hour, false)
 	if _accum >= float(sp["seconds"]):
 		# on a slow machine, catch up a little instead of falling behind
