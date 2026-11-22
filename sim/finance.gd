@@ -713,7 +713,10 @@ static func _bankruptcy_month(w: LTWorld) -> void:
 				trigger = "a court judgment and wage garnishment"
 			if str(d["secured_by"]) == "house" and int(d["missed"]) >= 3:
 				trigger = "a foreclosure notice"
-		if behind == 0 or unsecured < LTMoney.dollars(3000.0):
+		# filing costs about $1,650 in lawyer and court fees and stays on the record for
+		# ten years, so real people rarely file over less than about $10,000 they cannot
+		# pay; smaller debts go to collections and get charged off instead
+		if behind == 0 or unsecured < LTMoney.dollars(10000.0):
 			continue
 		var h: Dictionary = w.hh(int(c["household"]))
 		var income: int = monthly_income(w, c)
@@ -757,7 +760,7 @@ static func file_bankruptcy(w: LTWorld, c: Dictionary, trigger: String, unsecure
 	var income: int = monthly_income(w, c)
 	var median: int = LTMoney.dollars(3200.0)
 	var chapter: int = 7
-	LTServices.spend(w, w.acct_p(c), "legal", LTMoney.dollars(1200.0), int(h["lot"]), c)
+	LTServices.spend(w, w.acct_p(c), "legal", LTMoney.dollars(1650.0), int(h["lot"]), c)
 	if income > median and spare > LTMoney.dollars(150.0):
 		chapter = 13
 	elif owns_house and spare > LTMoney.dollars(200.0) and wants_house + float(c["traits"]["discipline"]) * 0.3 > 40.0:

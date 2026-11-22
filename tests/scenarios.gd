@@ -279,18 +279,39 @@ func _region_employer_fails() -> void:
 
 
 func _storms_and_fires() -> void:
+	# a severe storm hurts run down and cheaply built buildings far more than sound ones,
+	# ordinary thunderstorms only touch the weak ones, and insurance pays the big bills
 	var w: LTWorld = _town()
-	var cond0: float = 0.0
+	var weak_ids: Array = []
+	var sound_ids: Array = []
 	for l in w.lots:
-		cond0 += float(l["condition"])
+		if not ["house", "apartment", "business"].has(str(l["use"])):
+			continue
+		if weak_ids.size() <= sound_ids.size():
+			l["condition"] = 35.0
+			weak_ids.append(int(l["id"]))
+		else:
+			l["condition"] = 85.0
+			l["build_quality"] = 0.8
+			sound_ids.append(int(l["id"]))
+	var loss: Callable = func(ids: Array, start: float) -> float:
+		var t: float = 0.0
+		for id in ids:
+			t += start - float(w.lot(int(id))["condition"])
+		return t / float(maxi(1, ids.size()))
 	w.weather = "Storm"
-	for i in 6:
-		LTRegion._storm(w)
-	var cond1: float = 0.0
-	for l in w.lots:
-		cond1 += float(l["condition"])
+	for i in 20:
+		LTHazards._ordinary_weather(w)
+	var ord_weak: float = loss.call(weak_ids, 35.0)
+	var ord_sound: float = loss.call(sound_ids, 85.0)
+	for i in 4:
+		LTHazards.severe_storm(w)
+	var sev_weak: float = loss.call(weak_ids, 35.0) - ord_weak
+	var sev_sound: float = loss.call(sound_ids, 85.0) - ord_sound
 	var repairs: int = int(w.spend_book.get("repairs", {}).get("outside", 0)) + int(w.spend_book.get("repairs", {}).get("local", 0))
-	_check("Storms damage buildings and roads, and owners pay real repair bills", cond1 < cond0 and repairs > 0, "Building condition total %d to %d. Repairs paid: %s." % [int(cond0), int(cond1), LTMoney.fmt(repairs)], w)
+	var claims: int = int(w.counters.get("insurance_claims", 0))
+	var ok: bool = ord_sound == 0.0 and ord_weak > 0.0 and sev_weak > sev_sound * 2.0 and repairs > 0
+	_check("Storms: ordinary thunderstorms only damage run down or cheap buildings, severe storms hit those far harder, owners and insurers pay real repair bills", ok, "Twenty ordinary thunderstorms: average loss %.1f condition points on weak buildings, %.1f on sound ones. Four severe storms: %.1f on weak, %.1f on sound. Repairs paid: %s. Insurance claims: %d." % [ord_weak, ord_sound, sev_weak, sev_sound, LTMoney.fmt(repairs), claims], w)
 
 
 func _every_type() -> void:

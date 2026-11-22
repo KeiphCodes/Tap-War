@@ -139,52 +139,74 @@ static func _seed_sim_landlords(w: LTWorld) -> void:
 		LTEconomy.create_landlord(w, owner, l)
 
 
+## The wife's age in a married couple, following the age mix of US married women.
+static func _married_age(w: LTWorld) -> int:
+	var r: float = w.rng.randf()
+	if r < 0.17:
+		return w.rng.randi_range(23, 34)
+	if r < 0.35:
+		return w.rng.randi_range(35, 44)
+	if r < 0.53:
+		return w.rng.randi_range(45, 54)
+	if r < 0.74:
+		return w.rng.randi_range(55, 64)
+	if r < 0.90:
+		return w.rng.randi_range(65, 74)
+	return w.rng.randi_range(75, 85)
+
+
 static func make_household(w: LTWorld, family_bias: bool, immigrant: bool) -> Dictionary:
 	var hid: int = w.households.size()
 	var h: Dictionary = {"id": hid, "members": [], "lot": -1, "unit": -1, "tenure": "none", "rent": 0, "rent_late": 0, "mortgage": -1, "pantry": 3.0, "car": true, "moved_in": w.day, "last_grocery": "", "shop_habit": -1, "evicted_day": -1}
 	w.households.append(h)
 	var last_name: String = LAST_NAMES[w.rng.randi_range(0, LAST_NAMES.size() - 1)]
+	# household types and ages follow the US census mix for a small midwestern town:
+	# about 47% married couples (a third with children at home), 9% single parents,
+	# 28% living alone (40% of those over 65), the rest unrelated adults sharing a home
 	var roll: int = w.rng.randi_range(0, 99)
 	if family_bias:
-		roll = w.rng.randi_range(0, 74)
-	if roll < 60:
-		var wa: int = w.rng.randi_range(23, 56)
-		var ha: int = clampi(wa + w.rng.randi_range(-4, 6), 21, 80)
+		roll = w.rng.randi_range(0, 71)
+	if roll < 47:
+		var wa: int = _married_age(w)
+		var ha: int = clampi(wa + w.rng.randi_range(-3, 5), 21, 92)
 		var a: Dictionary = make_adult(w, hid, last_name, "F", wa)
 		var b: Dictionary = make_adult(w, hid, last_name, "M", ha)
 		a["spouse"] = int(b["id"])
 		b["spouse"] = int(a["id"])
 		_relate(a, b, "spouse", 70.0, 75.0)
 		_relate(b, a, "spouse", 70.0, 75.0)
-		var kids: int = w.rng.randi_range(0, 3) if wa < 46 else w.rng.randi_range(0, 2)
-		if wa < 40 and kids == 0 and w.rng.randf() < 0.6:
-			kids = 1
+		var p_kids: float = 0.7 if wa < 45 else (0.25 if wa < 55 else 0.0)
+		var kids: int = 0
+		if w.rng.randf() < p_kids:
+			kids = [1, 1, 1, 2, 2, 2, 3, 4][w.rng.randi_range(0, 7)]
 		for k in kids:
 			var ka: int = w.rng.randi_range(0, 17)
-			if wa - ka < 19:
-				ka = maxi(0, wa - 19)
+			if wa - ka < 20:
+				ka = maxi(0, wa - w.rng.randi_range(20, 30))
 			make_child(w, hid, last_name, ka, a, b)
-	elif roll < 78:
-		var sex: String = "F" if w.rng.randf() < 0.75 else "M"
-		var pa: int = w.rng.randi_range(22, 50)
+	elif roll < 56:
+		var sex: String = "F" if w.rng.randf() < 0.78 else "M"
+		var pa: int = w.rng.randi_range(22, 55)
 		var p: Dictionary = make_adult(w, hid, last_name, sex, pa)
 		for k in w.rng.randi_range(1, 2):
-			var ka2: int = w.rng.randi_range(0, 15)
+			var ka2: int = w.rng.randi_range(0, 17)
 			if pa - ka2 < 19:
-				ka2 = maxi(0, pa - 19)
+				ka2 = maxi(0, pa - w.rng.randi_range(19, 30))
 			make_child(w, hid, last_name, ka2, p, {})
-	elif roll < 90:
+	elif roll < 72:
 		var sx: String = "F" if w.rng.randf() < 0.5 else "M"
 		make_adult(w, hid, last_name, sx, w.rng.randi_range(19, 64))
+	elif roll < 84:
+		# living alone over 65, more often a widow
+		var s3: String = "F" if w.rng.randf() < 0.68 else "M"
+		make_adult(w, hid, last_name, s3, w.rng.randi_range(65, 92))
 	else:
-		var s3: String = "F" if w.rng.randf() < 0.5 else "M"
-		var senior: Dictionary = make_adult(w, hid, last_name, s3, w.rng.randi_range(65, 84))
-		if w.rng.randf() < 0.5:
-			var partner: Dictionary = make_adult(w, hid, last_name, "M" if s3 == "F" else "F", w.rng.randi_range(65, 86))
-			senior["spouse"] = int(partner["id"])
-			partner["spouse"] = int(senior["id"])
-			_relate(senior, partner, "spouse", 75.0, 80.0)
-			_relate(partner, senior, "spouse", 75.0, 80.0)
+		# two unrelated adults sharing a home: roommates or an unmarried couple
+		var r1: String = "F" if w.rng.randf() < 0.5 else "M"
+		var aa: int = w.rng.randi_range(19, 45)
+		make_adult(w, hid, last_name, r1, aa)
+		var ln2: String = LAST_NAMES[w.rng.randi_range(0, LAST_NAMES.size() - 1)]
+		make_adult(w, hid, ln2, "M" if r1 == "F" and w.rng.randf() < 0.6 else r1, clampi(aa + w.rng.randi_range(-5, 5), 19, 60))
 	if immigrant:
 		for m in w.household_members(h):
 			_seed_finances(w, m)
@@ -1100,7 +1122,8 @@ static func _maybe_birth(w: LTWorld, m: Dictionary) -> Dictionary:
 	score *= [1.3, 1.1, 0.7, 0.35, 0.15, 0.05][mini(kids, 5)]
 	score *= 0.6 + float(m["traits"]["kindness"] + sp["traits"]["kindness"]) / 250.0
 	score *= 0.8 + LTCivic.family_friendliness(w) * 0.4
-	if w.rng.randf() >= 0.0005 * score:
+	# about 12 births a year per 1,000 people in South Dakota
+	if w.rng.randf() >= 0.0006 * score:
 		return {}
 	var reason: String = "the couple had a home and enough money security to feel ready"
 	if float(n["money_security"]) < 45.0:
@@ -1135,27 +1158,41 @@ static func give_birth(w: LTWorld, m: Dictionary, sp: Dictionary) -> Dictionary:
 	return baby
 
 
+## About 6 marriages a year per 1,000 people (US and South Dakota): each single
+## adult has a small monthly chance of settling down, higher when sociable, and
+## marries the compatible single they like best.
+const MARRY_MONTHLY: float = 0.0024
+
+
 static func _monthly_partners(w: LTWorld) -> void:
 	var singles: Array = []
 	for c in w.citizens:
-		if w.is_present(c) and int(c["spouse"]) < 0 and w.age_years(c) >= 20 and w.age_years(c) <= 60:
+		if w.is_present(c) and int(c["spouse"]) < 0 and w.age_years(c) >= 20 and w.age_years(c) <= 70:
 			singles.append(c)
 	for a in singles:
 		if int(a["spouse"]) >= 0:
 			continue
+		var age: int = w.age_years(a)
+		var p: float = MARRY_MONTHLY * (0.5 + float(a["traits"]["sociability"]) / 100.0) * (1.4 if age < 35 else (1.0 if age < 50 else 0.45))
+		if w.rng.randf() >= p:
+			continue
+		var best: Dictionary = {}
+		var best_s: float = -1.0
 		for b in singles:
-			if int(b["id"]) <= int(a["id"]) or int(b["spouse"]) >= 0 or int(b["household"]) == int(a["household"]):
+			if int(b["id"]) == int(a["id"]) or int(b["spouse"]) >= 0 or int(b["household"]) == int(a["household"]):
 				continue
-			if str(a["sex"]) == str(b["sex"]) and w.rng.randf() < 0.85:
+			if str(a["sex"]) == str(b["sex"]) and w.rng.randf() < 0.95:
 				continue
-			if absi(w.age_years(a) - w.age_years(b)) > 10:
+			if absi(age - w.age_years(b)) > 10:
 				continue
-			var p: float = 0.012 * (float(a["traits"]["sociability"]) + float(b["traits"]["sociability"])) / 100.0
+			var sc: float = w.rng.randf() * 30.0 + float(b["traits"]["sociability"]) * 0.2
 			if a["rel"].has(int(b["id"])):
-				p += float(a["rel"][int(b["id"])]["affection"]) / 1000.0
-			if w.rng.randf() < p:
-				_marry(w, a, b)
-				break
+				sc += float(a["rel"][int(b["id"])]["affection"])
+			if sc > best_s:
+				best_s = sc
+				best = b
+		if not best.is_empty():
+			_marry(w, a, best)
 
 
 static func _marry(w: LTWorld, a: Dictionary, b: Dictionary) -> void:

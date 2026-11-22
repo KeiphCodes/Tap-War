@@ -666,6 +666,8 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		_event(w, p, "Inspection found defects: %s." % ("cracked base and thin asphalt" if is_road(str(p["ptype"])) else "a leaking roof and uneven floors"))
 	p["quality"] = q
 	p["status"] = "done"
+	if int(p["lot"]) >= 0:
+		w.lot(int(p["lot"]))["build_quality"] = q
 	p["done_day"] = w.day
 	p["warranty_until"] = w.day + 365 * int(p["warranty_years"])
 	var late: int = (w.day - int(p["start_day"])) - int(p["days_promised"])

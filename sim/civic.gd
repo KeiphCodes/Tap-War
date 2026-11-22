@@ -245,7 +245,6 @@ static func _month_budget(w: LTWorld) -> void:
 	if sheltered > 0:
 		_spend(w, "outside", sheltered * LTMoney.dollars(18.0), "homeless shelter")
 		w.city["shelter_nights"] = 0
-	_fires(w)
 	if has_service(w, "clinic"):
 		_spend(w, "outside", int(float(LTMoney.dollars(1500.0)) * maxf(0.5, float(laws["health_funding"]))), "clinic supplies")
 	if has_service(w, "park"):
@@ -1081,7 +1080,7 @@ static func law_estimate(w: LTWorld, key: String, value: float) -> Dictionary:
 			hits = "%d adults out of work, hungry households, and anyone sleeping in the shelter. Cost changes by about %s a year at today's unemployment." % [un, LTMoney.fmt(-yearly)]
 		"fire_funding":
 			yearly = -int(float(LTMoney.dollars(800.0)) * 12.0 * (value - old))
-			hits = "Every building. Better fire service means fewer fires and less storm damage. Cost changes by about %s a year." % LTMoney.fmt(-yearly)
+			hits = "Every building. Better fire service reaches fires sooner, so they do less damage. Cost changes by about %s a year." % LTMoney.fmt(-yearly)
 		"license_fee":
 			var n_new: int = 0
 			for b in w.businesses:
@@ -1204,39 +1203,6 @@ static func shelter_bed(w: LTWorld, c: Dictionary) -> bool:
 		w.city["shelter_nights"] = int(w.city.get("shelter_nights", 0)) + 1
 		return true
 	return w.city.get("charity_shelter", -1) >= 0
-
-
-static func _fires(w: LTWorld) -> void:
-	# about one serious fire per 250 buildings a year at standard funding and code
-	var risk: float = 0.00033 * (2.0 - law(w, "fire_funding")) * (1.3 - law(w, "building_code") * 0.2)
-	if LTCalendar.season(w.day) == "Winter":
-		risk *= 1.5
-	for l in w.lots:
-		if not ["house", "apartment", "business"].has(str(l["use"])) or w.rng.randf() > risk:
-			continue
-		var dmg: float = w.rng.randf_range(15.0, 50.0) / law(w, "fire_funding")
-		w.counters["fires"] = int(w.counters.get("fires", 0)) + 1
-		l["condition"] = maxf(0.0, float(l["condition"]) - dmg)
-		var people: Array = []
-		for u in l["units"]:
-			if int(u) >= 0:
-				for m in w.household_members(w.hh(int(u))):
-					m["needs"]["safety"] = float(m["needs"]["safety"]) - 25.0
-					w.log_sim(m, "A fire damaged their home on %s." % LTGeography.lot_label(w, int(l["id"])), true)
-					people.append(m["id"])
-		var cost: int = int(dmg * float(LTMoney.dollars(400.0)))
-		match str(l["owner_kind"]):
-			"sim":
-				var o: Dictionary = w.cit(int(l["owner_id"]))
-				if w.is_present(o):
-					LTServices.spend(w, w.acct_p(o), "repairs", cost, int(l["id"]), o)
-			"business":
-				LTServices.spend(w, w.acct_b(w.biz(int(l["owner_id"]))), "repairs", cost, int(l["id"]))
-		if str(l["use"]) == "business":
-			var b: Dictionary = w.biz(int(l["ref"]))
-			b["condition"] = maxf(0.0, float(b["condition"]) - dmg)
-			b["stock"] = float(b["stock"]) * 0.6
-		w.chronicle_add("A fire damaged %s. %s" % [LTGeography.lot_label(w, int(l["id"])), "Nobody was hurt." if people.is_empty() or w.rng.randf() < 0.9 else "Two people were treated for smoke."], "city", true, people)
 
 
 # ================================================================ city bonds

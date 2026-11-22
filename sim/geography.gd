@@ -130,6 +130,8 @@ static func segment_minutes(w: LTWorld, s: Dictionary) -> float:
 			m *= 1.4
 		"Rain":
 			m *= 1.1
+	if str(w.region.get("event_today", "")) == "blizzard":
+		m *= 2.5
 	return m
 
 
@@ -326,17 +328,7 @@ static func lot_label(w: LTWorld, lot_id: int) -> String:
 
 
 static func roll_weather(w: LTWorld) -> void:
-	var s: String = LTCalendar.season(w.day)
-	var r: float = w.rng.randf()
-	match s:
-		"Winter":
-			w.weather = "Clear" if r < 0.45 else ("Snow" if r < 0.78 else ("Rain" if r < 0.9 else "Storm"))
-		"Spring":
-			w.weather = "Clear" if r < 0.5 else ("Rain" if r < 0.9 else "Storm")
-		"Summer":
-			w.weather = "Clear" if r < 0.7 else ("Rain" if r < 0.9 else "Storm")
-		_:
-			w.weather = "Clear" if r < 0.55 else ("Rain" if r < 0.9 else "Storm")
+	LTHazards.roll_weather(w)
 
 
 ## Daily wear on every road. Low quality roads wear faster, storms and snow add wear.

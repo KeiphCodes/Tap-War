@@ -63,8 +63,6 @@ static func shortage(w: LTWorld, btype: String) -> bool:
 static func daily(w: LTWorld) -> void:
 	if LTCalendar.is_month_start(w.day):
 		_month(w)
-	if w.weather == "Storm" and w.rng.randf() < 0.03:
-		_storm(w)
 	# shortages come more often in winter and in hard times
 	if w.rng.randf() < 0.0025 * (1.5 if LTCalendar.season(w.day) == "Winter" else 1.0) * (2.0 - index(w)):
 		var kinds: Array = ["grocery", "general_store", "cafe"]
@@ -138,6 +136,7 @@ static func _phase_text(phase: String) -> String:
 
 
 static func _employer_fails(w: LTWorld, e: Dictionary) -> void:
+	w.counters["employer_failures"] = int(w.counters.get("employer_failures", 0)) + 1
 	e["open"] = false
 	var hit: Array = []
 	for c in w.citizens:
@@ -148,38 +147,3 @@ static func _employer_fails(w: LTWorld, e: Dictionary) -> void:
 			LTPeople.clear_job(w, c)
 			w.counters["layoffs"] = int(w.counters["layoffs"]) + 1
 	w.chronicle_add("%s shut down in the county seat. %d people from town lost their jobs." % [e["name"], hit.size()], "region", true, hit)
-
-
-static func _storm(w: LTWorld) -> void:
-	w.region["storms"] = int(w.region["storms"]) + 1
-	var hit: int = 0
-	var fire_q: float = float(w.city["laws"].get("fire_funding", 1.0))
-	var code: float = float(w.city["laws"].get("building_code", 1.0))
-	for l in w.lots:
-		if str(l["use"]) == "empty" or w.rng.randf() > 0.25:
-			continue
-		var dmg: float = w.rng.randf_range(4.0, 18.0) * (1.4 - code * 0.25) * (1.2 - fire_q * 0.15)
-		l["condition"] = maxf(0.0, float(l["condition"]) - dmg)
-		hit += 1
-		# owners pay for repairs, local builders and repair shops get the work if they exist
-		var cost: int = int(dmg * float(LTMoney.dollars(90.0)))
-		match str(l["owner_kind"]):
-			"sim":
-				var o: Dictionary = w.cit(int(l["owner_id"]))
-				if w.is_present(o):
-					var paid: int = LTServices.spend(w, w.acct_p(o), "repairs", cost, int(l["id"]), o)
-					w.log_sim(o, "The storm damaged the house. Paid %s for repairs." % LTMoney.fmt(paid), true)
-			"business":
-				var b: Dictionary = w.biz(int(l["owner_id"]))
-				LTServices.spend(w, w.acct_b(b), "repairs", cost, int(l["id"]))
-		if str(l["use"]) == "business":
-			var b2: Dictionary = w.biz(int(l["ref"]))
-			if not b2.is_empty():
-				b2["condition"] = maxf(0.0, float(b2["condition"]) - dmg)
-	for s in w.roads:
-		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
-			continue
-		if w.rng.randf() < 0.3:
-			s["condition"] = maxf(0.0, float(s["condition"]) - w.rng.randf_range(2.0, 8.0))
-	w.dist_cache.clear()
-	w.chronicle_add("A storm hit town and damaged %d buildings and several roads." % hit, "region", true, [])

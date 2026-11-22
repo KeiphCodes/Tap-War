@@ -43,6 +43,9 @@ jobs:
       - name: Stress run (about 1,000 Sims)
         run: ~/godot/godot --headless --script tests/stress.gd
 
+      - name: Realism check (every random rate against real figures)
+        run: ~/godot/godot --headless --script tests/realism.gd
+
       - name: Export web build
         run: |
           mkdir -p build/web

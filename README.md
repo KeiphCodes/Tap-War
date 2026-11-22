@@ -17,7 +17,9 @@ Start a new town from the **New town** button (it also opens when the game start
 - Optionally run on the **real calendar**, starting today. Time stops whenever the game is closed. **Live** runs one game second per real second, and **Today** fast forwards (only forward) until the town's date and clock match yours, then keeps running live.
 - **Milestones** on the Mayor desk track the town's big moments, from the mayor's house to 1,000 residents.
 
-For now the player is a permanent resident with no needs of their own: the only goal is running the town well.
+For now the player is a permanent resident with no needs of their own: the only goal is running the town well. Set your name, pronouns, age, hometown and color when you start, and change them (or rename the town) any time with **Edit your profile** on the Mayor tab.
+
+Odds are realistic: weather follows the eastern South Dakota climate month by month, damaging storms reach town once or twice a year and mostly hurt run down or cheaply built buildings, house fires and other events happen at real US rates, and owners carry insurance. `tests/realism.gd` measures every rate against real figures.
 
 ## Play it
 
@@ -38,6 +40,7 @@ godot --headless --script tests/acceptance.gd  # section 18 gates, writes report
 godot --headless --script tests/scenarios.gd   # every system beyond the slice, writes reports/scenario_summary.txt
 godot --headless --script tests/ui_smoke.gd    # plays the real scene, opens every tab and inspector
 godot --headless --script tests/stress.gd      # about 1,000 Sims, writes reports/stress_summary.txt
+godot --headless --script tests/realism.gd     # every random rate against real US and South Dakota figures
 godot --headless --script tests/seed_scan.gd   # one line per seed, for calibration
 ```
 

@@ -69,6 +69,17 @@ Keith gave full permission to make the calls needed to finish. These are the one
 52. **Lots plotted together can be edited together.** Tap a city lot to set its zone, asking price (50% to 200% of land value), whether the city holds it back from sale and lease, and a name. Families look at the cheapest lots first, and above full value many keep looking. Commercial leases follow the asking price.
 53. **The town is only heard at street level.** Wind, rain, birds, night crickets, passing cars, hammering at building sites and voices fade in at the same zoom where Sims appear, and are silent on the planning map. Event chimes belong to the mayor's desk, so they always play. Sims are not drawn above street level either, which also saves work when zoomed out.
 
+## Realistic odds and the player's profile (sixth pass)
+
+54. **Every random rate is measured against real figures.** `tests/realism.gd` runs the weather alone for 200 years, the county economy for 100 years, and a 1,000 person town for three years after a settling year, then checks each rate against US and South Dakota data. The report is `reports/realism_summary.txt`.
+55. **Weather follows the real climate of eastern South Dakota by month** (NOAA normals for Sioux Falls): about 40 thunderstorm days, 34 snow days and 100 wet days a year, almost no winter thunder.
+56. **Disasters are rare and fall on the weak.** Severe thunderstorms reach town about 1.5 times a year (May to August), blizzards about 1.5 times (November to April), and a tornado about once in 400 years. Ordinary thunderstorms and snow only damage buildings that are run down (condition under 45) or were built cheaply (quality under 0.4). Severe storms dent about 1 sound roof in 10 with hail and hit weak buildings hard. A stricter building code lowers all of it. Blizzards close roads for the day.
+57. **Fires follow NFPA rates:** about 1 home in 400 a year, more in winter and in run down buildings. Most are small; about 1 in 20 destroys the house; about 1 in 30 injures someone and 1 in 125 kills someone. Fires now happen before the town incorporates too.
+58. **Homeowners insurance:** owners pay about 0.6% of the building's value a year and insurers pay repairs above a $1,500 deductible. A household that cannot pay lets the policy lapse and pays any damage in full.
+59. **People and families:** the starting age mix and household types follow the census for a small midwestern town (about 13% under 10, a quarter over 60). Births, deaths, marriages and divorces are tuned to South Dakota rates. Crime is mostly small and opportunistic rather than only desperate, at about 10 property crimes per 1,000 people a year. Work injuries, depression and layoffs follow BLS and health survey rates.
+60. **Businesses and bankruptcy:** owners ride out losses until savings run low instead of closing after two bad months; founders grow wary of a kind of business that recently failed in town; a first unlicensed business offense means a fine and buying the license, not closure. People only file for bankruptcy over about $10,000 or more they cannot pay, as filing costs about $1,650. A units bug made founders skip the license far too often; fixed.
+61. **The player has a profile:** name, pronouns, age (which grows with the calendar), hometown and a color that trims the camper and the mayor's house. All of it, and the town's name, can be changed any time from the Mayor tab.
+
 ## Scope calls
 
 23. **The outside bank** (Prairie State Bank) serves the town until the city charters a local one (item 34).

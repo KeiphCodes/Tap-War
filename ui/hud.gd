@@ -438,8 +438,8 @@ func show_setup(first: bool = false) -> void:
 	card.anchor_bottom = 0.5
 	card.offset_left = -300
 	card.offset_right = 300
-	card.offset_top = -220
-	card.offset_bottom = 150
+	card.offset_top = -240
+	card.offset_bottom = 170
 	root.add_child(card)
 	var vb: VBoxContainer = VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -471,6 +471,21 @@ func show_setup(first: bool = false) -> void:
 	pname.custom_minimum_size = Vector2(220, 0)
 	hb1.add_child(pname)
 	vb.add_child(hb1)
+	var who: HBoxContainer = HBoxContainer.new()
+	var pron: OptionButton = _opt(["they/them", "she/her", "he/him"], 0, func(_i): pass)
+	who.add_child(pron)
+	who.add_child(_lbl("Age"))
+	var age: SpinBox = SpinBox.new()
+	age.min_value = 18
+	age.max_value = 99
+	age.value = 38
+	who.add_child(age)
+	who.add_child(_lbl("From"))
+	var home: LineEdit = LineEdit.new()
+	home.text = "Sioux Falls"
+	home.custom_minimum_size = Vector2(130, 0)
+	who.add_child(home)
+	vb.add_child(who)
 	var hb2: HBoxContainer = HBoxContainer.new()
 	hb2.add_child(_lbl("Town name"))
 	var tname: LineEdit = LineEdit.new()
@@ -492,6 +507,9 @@ func show_setup(first: bool = false) -> void:
 			"lottery": [LTMoney.dollars(250000.0), LTMoney.dollars(1000000.0), LTMoney.dollars(5000000.0)][lotto.selected],
 			"real_calendar": cal.button_pressed,
 			"player_name": pname.text.strip_edges() if pname.text.strip_edges() != "" else "Sam Dakota",
+			"player_pronouns": ["they", "she", "he"][pron.selected],
+			"player_age": int(age.value),
+			"player_hometown": home.text.strip_edges(),
 			"town_name": tname.text.strip_edges() if tname.text.strip_edges() != "" else "New Hope",
 		}
 		card.queue_free()
@@ -579,6 +597,12 @@ func _tab_mayor() -> void:
 	var box: VBoxContainer = tab_boxes["Mayor"]
 	_clear(box)
 	var ww: LTWorld = w()
+	box.add_child(_h("You"))
+	var pl: Dictionary = ww.player
+	var where: String = "the mayor's house" if int(pl.get("home_lot", -1)) >= 0 else "a camper by the county road"
+	box.add_child(_rtl("[b]%s[/b] (%s), %d, from %s. Mayor of %s, living in %s." % [pl["name"], {"they": "they/them", "he": "he/him", "she": "she/her"}.get(str(pl.get("pronouns", "they")), "they/them"), ww.player_age(), pl.get("hometown", "somewhere"), ww.city["name"], where]))
+	box.add_child(_btn("Edit your profile", func(): show_profile(), "Your name, pronouns, age, hometown, color, and the town's name."))
+	box.add_child(_sep())
 	box.add_child(_h("Budget"))
 	var last: Dictionary = ww.city["budget_months"][ww.city["budget_months"].size() - 1] if not ww.city["budget_months"].is_empty() else {}
 	var bb: String = "City cash [b]%s[/b]. Last 12 months: income %s, spending %s. Credit standing [b]%s[/b].\n" % [_money(ww.ledger.bal("city")), _money(int(ww.city["income_12m"])), _money(int(ww.city["spend_12m"])), LTFinance.city_credit_rating(ww)]
@@ -1922,3 +1946,63 @@ func _show_tab(name: String) -> void:
 	left.visible = true
 	tabs.current_tab = maxi(0, TABS.find(name))
 	refresh_tab()
+
+
+## A card where the player says who they are, any time during the game.
+func show_profile() -> void:
+	var ww: LTWorld = w()
+	var pl: Dictionary = ww.player
+	var card: PanelContainer = PanelContainer.new()
+	card.anchor_left = 0.5
+	card.anchor_right = 0.5
+	card.anchor_top = 0.5
+	card.anchor_bottom = 0.5
+	card.offset_left = -230
+	card.offset_right = 230
+	card.offset_top = -190
+	card.offset_bottom = 190
+	root.add_child(card)
+	var vb: VBoxContainer = VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	card.add_child(vb)
+	vb.add_child(_h("Your profile"))
+	var rows: GridContainer = GridContainer.new()
+	rows.columns = 2
+	vb.add_child(rows)
+	var add: Callable = func(label: String, ctl: Control) -> void:
+		rows.add_child(_lbl(label, 14))
+		ctl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rows.add_child(ctl)
+	var nm: LineEdit = LineEdit.new()
+	nm.text = str(pl["name"])
+	nm.max_length = 40
+	add.call("Name", nm)
+	var pk: Array = ["they", "she", "he"]
+	var pron: OptionButton = _opt(["they/them", "she/her", "he/him"], maxi(0, pk.find(str(pl.get("pronouns", "they")))), func(_i): pass)
+	add.call("Pronouns", pron)
+	var age: SpinBox = SpinBox.new()
+	age.min_value = 18
+	age.max_value = 99
+	age.value = ww.player_age()
+	add.call("Age", age)
+	var home: LineEdit = LineEdit.new()
+	home.text = str(pl.get("hometown", ""))
+	home.max_length = 40
+	add.call("Hometown", home)
+	var ck: Array = LTWorld.PLAYER_COLORS.keys()
+	var col: OptionButton = _opt(ck.map(func(k): return str(k).capitalize()), maxi(0, ck.find(str(pl.get("color", "blue")))), func(_i): pass)
+	add.call("Your color", col)
+	var tn: LineEdit = LineEdit.new()
+	tn.text = str(ww.city["name"])
+	tn.max_length = 40
+	add.call("Town name", tn)
+	vb.add_child(_lbl("Your color trims the camper and the mayor's house.", 13, Color(0.7, 0.75, 0.8)))
+	var hb: HBoxContainer = HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_END
+	hb.add_child(_btn("Cancel", func(): card.queue_free()))
+	hb.add_child(_btn("Save", func():
+		var r: Dictionary = main.act({"kind": "set_profile", "name": nm.text, "pronouns": pk[pron.selected], "age": int(age.value), "hometown": home.text, "color": ck[col.selected], "town_name": tn.text})
+		show_toast(str(r["message"]))
+		card.queue_free()
+		refresh_all()))
+	vb.add_child(hb)

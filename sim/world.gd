@@ -62,6 +62,65 @@ static func default_config() -> Dictionary:
 	}
 
 
+const PLAYER_COLORS: Dictionary = {
+	"blue": Color(0.3, 0.45, 0.65), "red": Color(0.7, 0.2, 0.18), "green": Color(0.25, 0.55, 0.3),
+	"gold": Color(0.85, 0.65, 0.15), "purple": Color(0.45, 0.3, 0.6), "black": Color(0.15, 0.15, 0.17),
+	"orange": Color(0.9, 0.5, 0.15), "teal": Color(0.15, 0.55, 0.55),
+}
+
+
+## The player's pronoun: "subject" (they/he/she), "object" (them/him/her) or
+## "possessive" (their/his/her).
+func player_pronoun(form: String) -> String:
+	var table: Dictionary = {
+		"they": {"subject": "they", "object": "them", "possessive": "their"},
+		"he": {"subject": "he", "object": "him", "possessive": "his"},
+		"she": {"subject": "she", "object": "her", "possessive": "her"},
+	}
+	return str(table.get(str(player.get("pronouns", "they")), table["they"])[form])
+
+
+## The player's age today: they age with the town's calendar.
+func player_age() -> int:
+	return int(player.get("age", 38)) + day / 365
+
+
+func player_color() -> Color:
+	return PLAYER_COLORS.get(str(player.get("color", "blue")), PLAYER_COLORS["blue"])
+
+
+## The player edits who they are, and may rename the town.
+func set_profile(act: Dictionary) -> Dictionary:
+	var changed: Array = []
+	if act.has("name"):
+		var nm: String = str(act["name"]).strip_edges().left(40)
+		if nm != "" and nm != str(player["name"]):
+			chronicle_add("%s will now be known as %s." % [player["name"], nm], "town", false, [])
+			player["name"] = nm
+			changed.append("name")
+	if act.has("pronouns") and ["they", "he", "she"].has(str(act["pronouns"])):
+		player["pronouns"] = str(act["pronouns"])
+		changed.append("pronouns")
+	if act.has("age"):
+		player["age"] = clampi(int(act["age"]), 18, 99) - day / 365
+		changed.append("age")
+	if act.has("hometown"):
+		player["hometown"] = str(act["hometown"]).strip_edges().left(40)
+		changed.append("hometown")
+	if act.has("color") and PLAYER_COLORS.has(str(act["color"])):
+		player["color"] = str(act["color"])
+		changed.append("color")
+	if act.has("town_name"):
+		var tn: String = str(act["town_name"]).strip_edges().left(40)
+		if tn != "" and tn != str(city["name"]):
+			chronicle_add("The town of %s was renamed %s." % [city["name"], tn], "town", true, [])
+			city["name"] = tn
+			changed.append("town name")
+	if changed.is_empty():
+		return {"ok": true, "message": "Nothing changed."}
+	return {"ok": true, "message": "Saved your %s." % ", ".join(changed)}
+
+
 ## Game modes. "classic" starts in Prairie Hollow with about 100 people; "founder"
 ## starts on empty prairie with only the player and their lottery money.
 static func default_mode() -> Dictionary:
@@ -139,7 +198,9 @@ func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -
 	LTCivic.setup_city(self)
 	LTFinance.setup_bank(self)
 	LTProjects.setup_companies(self)
-	player = {"name": str(mode["player_name"]), "home_lot": -1, "since": 0, "title": "founder"}
+	player = {"name": str(mode["player_name"]), "home_lot": -1, "since": 0, "title": "founder",
+		"pronouns": str(mode.get("player_pronouns", "they")), "age": int(mode.get("player_age", 38)),
+		"hometown": str(mode.get("player_hometown", "Sioux Falls")), "color": str(mode.get("player_color", "blue"))}
 	city["elections"] = bool(mode["elections"])
 	if str(mode["start"]) == "founder":
 		LTFounder.setup(self)
@@ -150,7 +211,7 @@ func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -
 	ledger.tracked["city"] = {"in": {}, "out": {}}
 	city["outside_at_start"] = ledger.bal("outside")
 	if str(mode["start"]) == "founder":
-		chronicle_add("%s won %s in the lottery and had an idea: start a town. They bought a stretch of prairie on the county road and parked a camper on it. Population: 1." % [player["name"], LTMoney.fmt(int(mode["lottery"]))], "town", true, [])
+		chronicle_add("%s won %s in the lottery and had an idea: start a town. %s bought a stretch of prairie on the county road and parked a camper on it. Population: 1." % [player["name"], LTMoney.fmt(int(mode["lottery"])), player_pronoun("subject").capitalize()], "town", true, [])
 	else:
 		chronicle_add("The town of %s begins. %d people in %d households, and you, the mayor. Most adults with jobs drive to work outside town. There is no grocery, no school, and no clinic." % [city["name"], alive_count(), households.size()], "town", true, [])
 
@@ -164,10 +225,12 @@ func tick_day() -> void:
 	if day % 7 == 0:
 		dist_cache.clear()
 	debt_index_dirty = true
-	LTGeography.roll_weather(self)
+	LTHazards.roll_weather(self)
 	LTRegion.daily(self)
+	LTHazards.daily(self)
 	if LTCalendar.is_month_start(day):
 		LTServices.month_roll(self)
+		LTHazards.monthly_insurance(self)
 	LTPeople.morning(self)
 	LTHealth.daily(self)
 	LTEconomy.daily(self)
@@ -217,6 +280,8 @@ func apply_action(a: Dictionary) -> Dictionary:
 			result = LTCivic.respond_petition(self, int(act["petition_id"]), str(act["response"]), act)
 		"define_project":
 			result = LTProjects.define_project(self, str(act["ptype"]), int(act.get("target", -1)), int(act.get("ceiling", 0)), int(act.get("petition_id", -1)), not bool(act.get("live", false)))
+		"set_profile":
+			result = set_profile(act)
 		"go_live":
 			result = LTProjects.go_live(self, int(act["project_id"]))
 		"award_bid":

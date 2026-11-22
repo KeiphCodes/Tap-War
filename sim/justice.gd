@@ -59,6 +59,10 @@ static func detection(w: LTWorld, kind: String) -> float:
 	return base
 
 
+const CRIME_BASE: float = 0.0005
+const ASSAULT_BASE: float = 0.00012
+
+
 static func _weekly_crime(w: LTWorld) -> void:
 	var safety: float = LTCivic.safety_level(w)
 	for c in w.citizens:
@@ -72,14 +76,17 @@ static func _weekly_crime(w: LTWorld) -> void:
 		var addict: float = LTHealth.level(c) * 0.15
 		var cornered: float = LTFinance.debt_stress(w, c) * 15.0
 		var score: float = need + teen + addict + cornered - restraint - 30.0 + w.rng.randf_range(-8.0, 8.0)
-		if score > 0.0 and w.rng.randf() < clampf(score / 60.0, 0.0, 0.4):
+		# most property crime is small and opportunistic, not only from desperation:
+		# a low base chance that climbs steeply with need and falls with restraint,
+		# set so an ordinary small town sees about 15 a year per 1,000 people
+		if w.rng.randf() < minf(CRIME_BASE * exp((score + 50.0) / 14.0), 0.15):
 			if w.rng.randf() < 0.25 and float(t["risk"]) > 55.0 and w.age_years(c) >= 17:
 				burglary(w, c)
 			else:
 				LTCivic.theft(w, c, "needed money and did not think they would get caught")
 		# assault risk: unsafe areas, drinking, anger
 		var anger: float = float(LTHealth.level(c)) * 0.2 + (40.0 - safety) * 0.3 + (100.0 - float(t["kindness"])) * 0.1 - 15.0
-		if anger > 0.0 and w.rng.randf() < anger / 2500.0:
+		if w.age_years(c) >= 16 and w.rng.randf() < minf(ASSAULT_BASE * exp(anger / 10.0), 0.05):
 			assault(w, c)
 
 
@@ -94,6 +101,7 @@ static func burglary(w: LTWorld, c: Dictionary) -> void:
 	var victim: Dictionary = w.household_adults(vh)[0]
 	var took: int = w.ledger.pay(w.acct_p(victim), w.acct_p(c), mini(w.cash(victim) / 4, LTMoney.dollars(w.rng.randf_range(200.0, 1500.0))), "burglary")
 	w.counters["thefts"] = int(w.counters["thefts"]) + 1
+	w.counters["burglaries"] = int(w.counters.get("burglaries", 0)) + 1
 	w.city["thefts_90d"].append(w.day)
 	for m in w.household_members(vh):
 		m["needs"]["safety"] = float(m["needs"]["safety"]) - 30.0
@@ -108,13 +116,20 @@ static func burglary(w: LTWorld, c: Dictionary) -> void:
 
 static func assault(w: LTWorld, c: Dictionary) -> void:
 	var victims: Array = []
+	var known: Array = []
 	for k in c["rel"]:
 		var o: Dictionary = w.cit(int(k))
-		if w.is_present(o) and float(c["rel"][k]["affection"]) < 40.0:
+		if not w.is_present(o):
+			continue
+		known.append(o)
+		if float(c["rel"][k]["affection"]) < 40.0:
 			victims.append(o)
+	if victims.is_empty():
+		victims = known
 	if victims.is_empty():
 		return
 	var v: Dictionary = victims[w.rng.randi_range(0, victims.size() - 1)]
+	w.counters["assaults"] = int(w.counters.get("assaults", 0)) + 1
 	v["sick_days"] = maxi(int(v["sick_days"]), w.rng.randi_range(2, 10))
 	v["health_cond"] = "injured in a fight"
 	v["needs"]["health"] = float(v["needs"]["health"]) - 10.0
@@ -294,7 +309,19 @@ static func _trial(w: LTWorld, cs: Dictionary) -> void:
 		for bid in c["owns"].duplicate():
 			var b: Dictionary = w.biz(int(bid))
 			if str(cs["charge"]) == "unlicensed" and bool(b.get("unlicensed", false)):
-				LTEconomy.close_business(w, b, "the court shut it down for operating without a license")
+				# a first offense: pay the fine, get licensed and keep the doors open;
+				# a second one closes the business, as courts and cities really do
+				if int(b.get("license_strikes", 0)) >= 1:
+					LTEconomy.close_business(w, b, "the court shut it down for operating without a license a second time")
+				else:
+					b["license_strikes"] = 1
+					var fee: int = int(float(LTEconomy.tcfg(str(b["type"]))["license"]) * LTCivic.law(w, "license_fee"))
+					var got: int = w.ledger.pay(w.acct_b(b), "city", fee, "license_fees")
+					if got >= fee:
+						b["unlicensed"] = false
+						parts.append("ordered to buy the license, which %s did" % c["first_name"])
+					else:
+						LTEconomy.close_business(w, b, "the court ordered it licensed and the owner could not pay the fee")
 	cs["sentence"] = ", ".join(parts)
 	cs["trail"].append({"day": w.day, "text": "Guilty. %s." % (str(cs["sentence"]).substr(0, 1).to_upper() + str(cs["sentence"]).substr(1))})
 	w.remember(c, "convicted", -1, -40.0)

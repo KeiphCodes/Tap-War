@@ -563,6 +563,8 @@ func _lot_sig(l: Dictionary) -> String:
 	var use: String = str(l["use"])
 	var extra: String = ""
 	match use:
+		"mayor_house":
+			extra = "%s|%s" % [w.player.get("name", ""), w.player.get("color", "")]
 		"business", "closed":
 			var b: Dictionary = w.biz(int(l["ref"]))
 			if not b.is_empty():
@@ -847,7 +849,9 @@ func _mayor_house(root: Node3D, l: Dictionary) -> void:
 		_box(root, Vector3(1.6, 1.3, 0.1), Vector3(x, 2.2, 2.55), Color(1.0, 0.88, 0.55), true)
 	_box(root, Vector3(1.3, 2.3, 0.1), Vector3(0, 1.15, 2.55), Color(0.35, 0.2, 0.12))
 	_cyl(root, 0.07, 8.0, Vector3(5.5, 4.0, 5.5), Color(0.85, 0.85, 0.85))
-	_box(root, Vector3(1.6, 1.0, 0.05), Vector3(6.35, 7.4, 5.5), Color(0.2, 0.3, 0.65))
+	_box(root, Vector3(1.6, 1.0, 0.05), Vector3(6.35, 7.4, 5.5), w.player_color())
+	for sx in [-4.0, -2.0, 2.0, 4.0]:
+		_box(root, Vector3(0.5, 1.4, 0.12), Vector3(sx, 2.2, 2.55), w.player_color())
 	var s2: Label3D = _sign(root, "%s\nMayor %s" % [l["name"], w.player.get("name", "")], Vector3(0, 8.0, 0), 34, Color(1.0, 0.92, 0.6))
 	s2.pixel_size = 0.05
 
@@ -1232,13 +1236,17 @@ func _refresh_camper() -> void:
 			camper.queue_free()
 			camper = null
 		return
+	var sig: String = "%s|%s" % [w.player.get("name", ""), w.player.get("color", "")]
 	if camper != null and is_instance_valid(camper):
-		return
+		if str(camper.get_meta("sig", "")) == sig:
+			return
+		camper.queue_free()
 	camper = Node3D.new()
+	camper.set_meta("sig", sig)
 	camper.position = _exit_pos() + (Vector3(CELL * 1.5, 0, -8.0) if bool(w.config.get("open_land", false)) else Vector3(-12.0, 0, -7.0))
 	extra_root.add_child(camper)
 	_box(camper, Vector3(2.6, 2.6, 7.0), Vector3(0, 1.6, 0), Color(0.93, 0.92, 0.88))
-	_box(camper, Vector3(2.65, 0.4, 7.05), Vector3(0, 1.6, 0), Color(0.3, 0.45, 0.65))
+	_box(camper, Vector3(2.65, 0.4, 7.05), Vector3(0, 1.6, 0), w.player_color())
 	_box(camper, Vector3(1.2, 0.8, 0.05), Vector3(1.31, 2.0, 1.5), Color(1.0, 0.88, 0.55), true)
 	_box(camper, Vector3(2.4, 1.6, 3.0), Vector3(0, 1.0, 5.4), Color(0.55, 0.15, 0.12))
 	var l: Label3D = _sign(camper, "%s's camper" % w.player.get("name", "The founder"), Vector3(0, 4.2, 0), 28, Color(1.0, 0.92, 0.6))

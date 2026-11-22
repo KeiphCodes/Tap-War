@@ -66,12 +66,14 @@ static func _injury_check(w: LTWorld, c: Dictionary) -> void:
 	var risk: float = float(RISKY_JOBS.get(title, 0.4))
 	var sk: String = str(c["job"]["skill"])
 	var skill: float = float(c["skills"].get(sk, 40.0)) if sk != "" else 40.0
-	var p: float = 0.00006 * risk * (1.6 - skill / 100.0)
+	# about 2.7 recordable injuries per 100 workers a year (BLS), more in risky trades
+	var p: float = 0.0001 * risk * (1.6 - skill / 100.0)
 	if float(c.get("addiction", {}).get("alcohol", 0.0)) > 50.0 or float(c.get("addiction", {}).get("drugs", 0.0)) > 40.0:
 		p *= 2.0
 	if w.rng.randf() >= p:
 		return
 	var severe: bool = w.rng.randf() < 0.2
+	w.counters["injuries"] = int(w.counters.get("injuries", 0)) + 1
 	c["sick_days"] = w.rng.randi_range(20, 60) if severe else w.rng.randi_range(4, 14)
 	c["health_cond"] = "work injury"
 	c["needs"]["health"] = float(c["needs"]["health"]) - (25.0 if severe else 8.0)
@@ -106,8 +108,12 @@ static func _mental(w: LTWorld, c: Dictionary) -> void:
 	else:
 		stress = maxi(0, stress - 2)
 	c["stress_days"] = stress
-	if not bool(c.get("depressed", false)) and stress > 60 and w.rng.randf() < 0.02 * (1.4 - float(c["traits"]["discipline"]) / 100.0):
+	# about 3 in 100 adults a year start an episode of depression; long hardship,
+	# money trouble and low happiness raise the odds several times over
+	var dep_p: float = 0.0001 * (1.4 - float(c["traits"]["discipline"]) / 100.0) * (5.0 if stress > 60 else (2.0 if stress > 20 else 1.0))
+	if not bool(c.get("depressed", false)) and w.age_years(c) >= 16 and w.rng.randf() < dep_p:
 		c["depressed"] = true
+		w.counters["depression"] = int(w.counters.get("depression", 0)) + 1
 		w.log_sim(c, "Fell into depression after months of pressure. Low energy, hard to keep going.", true)
 	if bool(c.get("depressed", false)):
 		c["needs"]["energy"] = float(c["needs"]["energy"]) - 4.0
