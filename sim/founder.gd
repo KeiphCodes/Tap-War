@@ -100,13 +100,11 @@ static func _settlers(w: LTWorld) -> void:
 			continue
 		w.ledger.pay("outside", "city", price, "lot sales")
 		l["owner_kind"] = "outside"
-		var r: Dictionary = LTProjects.define_project(w, "house", int(l["id"]), int(float(LTProjects.BASE_COST["house"]) * 1.4), -1)
+		var family: String = LTPeople.LAST_NAMES[w.rng.randi_range(0, LTPeople.LAST_NAMES.size() - 1)]
+		var r: Dictionary = LTProjects.define_project(w, "house", int(l["id"]), int(float(LTProjects.BASE_COST["house"]) * 1.4), -1, false, {"kind": "settler", "id": -1, "name": "the %s family" % family, "acct": "bank", "family": family})
 		if not bool(r["ok"]):
 			continue
 		var pr: Dictionary = w.projects[int(r["project_id"])]
-		var family: String = LTPeople.LAST_NAMES[w.rng.randi_range(0, LTPeople.LAST_NAMES.size() - 1)]
-		pr["private"] = true
-		pr["developer"] = {"kind": "settler", "id": -1, "name": "the %s family" % family, "acct": "bank", "family": family}
 		pr["title"] = "The %s family's house" % family
 		w.chronicle_add("The %s family bought %s for %s and hired a builder. They will move in when the house is done." % [family, LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price)], "move", true, [])
 		bought += 1

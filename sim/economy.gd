@@ -115,12 +115,6 @@ static func consider_founding(w: LTWorld, c: Dictionary) -> Dictionary:
 		var plan: Dictionary = _evaluate(w, c, btype)
 		if plan.is_empty():
 			continue
-		# people notice when the last one failed: each recent failure of this kind
-		# of business in town makes the next founder much warier
-		var fails: int = recent_failures(w, btype)
-		if fails > 0:
-			plan["score"] = float(plan["score"]) - 18.0 * float(fails)
-			plan["doubt"] = "%d %s closed here in the last three years" % [fails, "of them" if fails > 1 else "like it"]
 		if best.is_empty() or float(plan["score"]) > float(best["score"]):
 			best = plan
 	if best.is_empty():
@@ -132,14 +126,6 @@ static func consider_founding(w: LTWorld, c: Dictionary) -> Dictionary:
 			w.log_sim(c, "Looked at starting a %s and decided against it. Reason: %s." % [str(tcfg(best["type"])["display"]).to_lower(), best["doubt"]], true)
 		return {}
 	return best
-
-
-static func recent_failures(w: LTWorld, btype: String) -> int:
-	var n: int = 0
-	for b in w.businesses:
-		if str(b["type"]) == btype and str(b["status"]) != "open" and int(b["closed_day"]) >= 0 and w.day - int(b["closed_day"]) < 3 * 365 and w.day - int(b["opened_day"]) < 3 * 365:
-			n += 1
-	return n
 
 
 ## Founders watch each other: right after one opens, others wait to see how it does.
@@ -1154,11 +1140,9 @@ static func _owner_monthly_decision(w: LTWorld, b: Dictionary, owner: Dictionary
 	var losses: int = int(b["loss_months"])
 	var age_days: int = w.day - int(b["opened_day"])
 	# cut losses: discipline and honesty push to stop early, risk and pride keep going
-	# real owners usually ride out a bad season and close when the savings run low
-	# or after most of a year of losses, not after two bad months
-	var quit_score: float = float(losses) * 6.0 + (25.0 if cash < LTMoney.dollars(500.0) else 0.0) + float(t["discipline"]) * 0.15 - float(t["risk"]) * 0.2 - float(t["ambition"]) * 0.1
-	if age_days < 180:
-		quit_score -= 20.0
+	var quit_score: float = float(losses) * 12.0 + (20.0 if cash < LTMoney.dollars(500.0) else 0.0) + float(t["discipline"]) * 0.15 - float(t["risk"]) * 0.2 - float(t["ambition"]) * 0.1
+	if age_days < 90:
+		quit_score -= 25.0
 	if quit_score > 35.0:
 		close_business(w, b, "%s decided to cut losses after %d losing months" % [owner["first_name"], losses])
 		w.log_sim(owner, "Closed %s. Reason: %d months of losses and only %s left in the account." % [b["name"], losses, LTMoney.fmt(cash)], true)

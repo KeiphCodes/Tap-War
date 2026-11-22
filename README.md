@@ -19,7 +19,7 @@ Start a new town from the **New town** button (it also opens when the game start
 
 For now the player is a permanent resident with no needs of their own: the only goal is running the town well. Set your name, pronouns, age, hometown and color when you start, and change them (or rename the town) any time with **Edit your profile** on the Mayor tab.
 
-Odds are realistic: weather follows the eastern South Dakota climate month by month, damaging storms reach town once or twice a year and mostly hurt run down or cheaply built buildings, house fires and other events happen at real US rates, and owners carry insurance. `tests/realism.gd` measures every rate against real figures.
+Odds are realistic: weather follows the eastern South Dakota climate month by month, damaging storms reach town once or twice a year and mostly hurt run down or cheaply built buildings, house fires and accidents happen at real US rates, and owners carry insurance. The Sims themselves are not people, so their choices come from their own traits and needs rather than human statistics. `tests/realism.gd` checks the world's rates against real figures.
 
 ## Play it
 

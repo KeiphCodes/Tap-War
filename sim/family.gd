@@ -32,12 +32,7 @@ static func _marriages(w: LTWorld) -> void:
 		for pair in [[a, b], [b, a]]:
 			LTPeople.relate_event(w, pair[0], pair[1], "spouse", -strain * 0.6 + bond, -strain + bond)
 		var aff: float = (float(a["rel"].get(int(b["id"]), {}).get("affection", 50.0)) + float(b["rel"].get(int(a["id"]), {}).get("affection", 50.0))) / 2.0
-		# about 1 in 100 marriages ends each year (2.4 divorces per 1,000 people);
-		# far more when affection has worn thin, fewer for long marriages
-		var p: float = 0.0008 + 0.0009 * exp((55.0 - aff) / 11.0)
-		if w.age_years(a) >= 60:
-			p *= 0.4
-		if w.rng.randf() < minf(p, 0.25):
+		if aff < 25.0 and w.rng.randf() < (25.0 - aff) / 120.0:
 			divorce(w, a, b)
 
 

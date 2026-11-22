@@ -108,10 +108,7 @@ static func _mental(w: LTWorld, c: Dictionary) -> void:
 	else:
 		stress = maxi(0, stress - 2)
 	c["stress_days"] = stress
-	# about 3 in 100 adults a year start an episode of depression; long hardship,
-	# money trouble and low happiness raise the odds several times over
-	var dep_p: float = 0.0001 * (1.4 - float(c["traits"]["discipline"]) / 100.0) * (5.0 if stress > 60 else (2.0 if stress > 20 else 1.0))
-	if not bool(c.get("depressed", false)) and w.age_years(c) >= 16 and w.rng.randf() < dep_p:
+	if not bool(c.get("depressed", false)) and stress > 60 and w.rng.randf() < 0.02 * (1.4 - float(c["traits"]["discipline"]) / 100.0):
 		c["depressed"] = true
 		w.counters["depression"] = int(w.counters.get("depression", 0)) + 1
 		w.log_sim(c, "Fell into depression after months of pressure. Low energy, hard to keep going.", true)

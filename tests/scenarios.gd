@@ -444,7 +444,7 @@ func _contracts_and_lot_details() -> void:
 	var dl_days: String = str(dl_w.projects[0]["bids"].map(func(b): return int(b["days"])))
 	# changing terms after bids are in sends it back out to bid
 	var re: Dictionary = dl_w.apply_action({"kind": "edit_project", "project_id": 0, "changes": {"deadline": 0}})
-	var reopened: bool = str(dl_w.projects[0]["status"]) == "bidding" and dl_w.projects[0]["bids"].is_empty()
+	var reopened: bool = str(dl_w.projects[0]["status"]) == "draft" and dl_w.projects[0]["bids"].is_empty()
 	# signed contracts are locked
 	var locked: Dictionary = built_fancy.apply_action({"kind": "edit_project", "project_id": 0, "changes": {"surface": "gravel"}})
 	# lot details: price, hold and zone, applied to a plotted group

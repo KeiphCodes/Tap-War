@@ -818,7 +818,7 @@ static func respond_petition(w: LTWorld, pid: int, response: String, act: Dictio
 			else:
 				var btype: String = "grocery" if kind == "grocery" else ("general_store" if kind == "jobs" else "landlord")
 				if kind == "housing":
-					var hr: Dictionary = LTProjects.define_project(w, "apartments", site, 0, pid)
+					var hr: Dictionary = LTProjects.define_project(w, "apartments", site, 0, pid, not bool(act.get("live", false)))
 					if not bool(hr["ok"]):
 						return hr
 					p["project_id"] = int(hr["project_id"])

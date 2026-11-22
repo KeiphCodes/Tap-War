@@ -82,7 +82,9 @@ static func define_road_build(w: LTWorld, street_id: int, segs: Array, draft: bo
 	return {"ok": true, "message": "\"%s\" is drawn and out to bid until %s. Award it on the Projects tab." % [p["title"], LTCalendar.short(int(p["bid_close_day"]))], "project_id": int(p["id"])}
 
 
-static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int, draft: bool = false) -> Dictionary:
+## `owner` set means a private job (a settler's house, a developer's apartments):
+## the owner picks the builder and it is never one of the mayor's contracts.
+static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int, draft: bool = false, owner: Dictionary = {}) -> Dictionary:
 	if not BASE_COST.has(ptype):
 		return {"ok": false, "message": "Unknown project type."}
 	var p: Dictionary = {
@@ -133,6 +135,10 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 	if ceiling > 0:
 		p["ceiling"] = ceiling
 		p["ceiling_set"] = true
+	if not owner.is_empty():
+		p["private"] = true
+		p["developer"] = owner
+		draft = false
 	w.projects.append(p)
 	if draft:
 		_event(w, p, "Drafted by the mayor.")
@@ -151,8 +157,11 @@ static func _make_draft(p: Dictionary) -> void:
 static func _open_bidding(w: LTWorld, p: Dictionary) -> void:
 	p["status"] = "bidding"
 	p["bid_close_day"] = w.day + BID_DAYS
-	var terms: String = spec_text(p) if p.has("spec") and not bool(p["private"]) else ""
-	_event(w, p, "Out to bid for %d days%s. Budget ceiling %s." % [BID_DAYS, (" on these terms: " + terms) if terms != "" else "", LTMoney.fmt(int(p["ceiling"]))])
+	if bool(p["private"]):
+		_event(w, p, "%s asked builders for bids. This is their own job: they pick the builder, not the mayor." % str(p["developer"].get("name", "The owner")).capitalize())
+		return
+	var terms: String = spec_text(p) if p.has("spec") else ""
+	_event(w, p, "The mayor sent it out to bid for %d days%s. Budget ceiling %s." % [BID_DAYS, (" on these terms: " + terms) if terms != "" else "", LTMoney.fmt(int(p["ceiling"]))])
 	if not bool(p["private"]):
 		w.chronicle_add("The city put \"%s\" out to bid, budget ceiling %s." % [p["title"], LTMoney.fmt(int(p["ceiling"]))], "project", false, [])
 
@@ -300,10 +309,11 @@ static func edit(w: LTWorld, pid: int, changes: Dictionary) -> Dictionary:
 	if str(p["status"]) == "draft":
 		msg += " Still a draft: press Go live when it is ready."
 	if str(p["status"]) == "review":
-		p["status"] = "bidding"
+		# the bids were for the old terms: they are thrown out and the contract goes
+		# back to a draft; it only goes out again when the mayor presses Go live
 		p["bids"] = []
-		p["bid_close_day"] = w.day + BID_DAYS
-		msg += " The bids were for the old terms, so it is back out to bid until %s." % LTCalendar.short(int(p["bid_close_day"]))
+		_make_draft(p)
+		msg += " The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid."
 	if spec_text(p) != before or changes.has("ceiling"):
 		_event(w, p, "The mayor changed the contract: %s. Budget ceiling %s." % [spec_text(p), LTMoney.fmt(int(p["ceiling"]))])
 	return {"ok": true, "message": msg}
@@ -861,11 +871,9 @@ static func _developers(w: LTWorld) -> void:
 			dev = {"kind": "business", "id": int(b["id"]), "name": b["name"], "acct": w.acct_b(b)}
 			w.log_sim(owner, "Decided to build a 4 unit apartment house. Reason: no vacancies in town and a %s construction loan came through." % LTMoney.fmt(loan), true)
 			break
-	var r: Dictionary = define_project(w, "apartments", int(lots[0]["id"]), int(float(BASE_COST["apartments"]) * 1.3), -1)
+	var r: Dictionary = define_project(w, "apartments", int(lots[0]["id"]), int(float(BASE_COST["apartments"]) * 1.3), -1, false, dev)
 	if bool(r["ok"]):
 		var p2: Dictionary = w.projects[int(r["project_id"])]
-		p2["private"] = true
-		p2["developer"] = dev
 		p2["title"] = "%s: 4 unit apartment house" % dev["name"]
 		_event(w, p2, "Private project by %s. They pick the builder, not the mayor." % dev["name"])
 

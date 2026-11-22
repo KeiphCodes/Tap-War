@@ -942,14 +942,26 @@ func _tab_projects() -> void:
 	box.add_child(_sep())
 	var plist: Array = ww.projects.duplicate()
 	plist.reverse()
+	box.add_child(_h("Your contracts"))
+	var mine: int = 0
 	for p in plist:
-		box.add_child(_project_card(p))
+		if not bool(p["private"]):
+			box.add_child(_project_card(p))
+			mine += 1
+	if mine == 0:
+		box.add_child(_lbl("None yet. Draw a road or draft a project above. Nothing goes out to bid until you press Go live.", 13, Color(0.7, 0.75, 0.8)))
+	var priv: Array = plist.filter(func(p): return bool(p["private"]))
+	if not priv.is_empty():
+		box.add_child(_h("Private builds"))
+		box.add_child(_lbl("Settlers and developers hiring their own builders. Not your contracts: you only see them.", 13, Color(0.7, 0.75, 0.8)))
+		for p in priv:
+			box.add_child(_project_card(p))
 
 
 func _project_card(p: Dictionary) -> VBoxContainer:
 	var ww: LTWorld = w()
 	var vb: VBoxContainer = VBoxContainer.new()
-	var t: String = "[b][url=proj:%d]%s[/url][/b]  [color=#9fb0c0]%s%s[/color]" % [p["id"], p["title"], p["status"], ", private" if bool(p["private"]) else ""]
+	var t: String = "[b][url=proj:%d]%s[/url][/b]  [color=#9fb0c0]%s%s[/color]" % [p["id"], p["title"], {"draft": "draft, not live", "bidding": "live, taking bids", "review": "bids in, waiting for you"}.get(str(p["status"]), str(p["status"])) if not bool(p["private"]) else str(p["status"]), ", the owner's own job" if bool(p["private"]) else ""]
 	t += "\nCeiling %s. %s" % [_money(int(p["ceiling"])), "Bids close " + LTCalendar.short(int(p["bid_close_day"])) if str(p["status"]) == "bidding" else ("[color=#e8c35a]Draft: contractors cannot see it until you press Go live.[/color]" if str(p["status"]) == "draft" else "")]
 	if p.has("spec") and not bool(p["private"]):
 		t += "\n[color=#9fb0c0]Terms: %s.[/color]" % LTProjects.spec_text(p)

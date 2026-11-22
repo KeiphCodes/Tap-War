@@ -713,10 +713,7 @@ static func _bankruptcy_month(w: LTWorld) -> void:
 				trigger = "a court judgment and wage garnishment"
 			if str(d["secured_by"]) == "house" and int(d["missed"]) >= 3:
 				trigger = "a foreclosure notice"
-		# filing costs about $1,650 in lawyer and court fees and stays on the record for
-		# ten years, so real people rarely file over less than about $10,000 they cannot
-		# pay; smaller debts go to collections and get charged off instead
-		if behind == 0 or unsecured < LTMoney.dollars(10000.0):
+		if behind == 0 or unsecured < LTMoney.dollars(3000.0):
 			continue
 		var h: Dictionary = w.hh(int(c["household"]))
 		var income: int = monthly_income(w, c)

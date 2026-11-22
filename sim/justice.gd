@@ -59,10 +59,6 @@ static func detection(w: LTWorld, kind: String) -> float:
 	return base
 
 
-const CRIME_BASE: float = 0.0005
-const ASSAULT_BASE: float = 0.00012
-
-
 static func _weekly_crime(w: LTWorld) -> void:
 	var safety: float = LTCivic.safety_level(w)
 	for c in w.citizens:
@@ -76,17 +72,14 @@ static func _weekly_crime(w: LTWorld) -> void:
 		var addict: float = LTHealth.level(c) * 0.15
 		var cornered: float = LTFinance.debt_stress(w, c) * 15.0
 		var score: float = need + teen + addict + cornered - restraint - 30.0 + w.rng.randf_range(-8.0, 8.0)
-		# most property crime is small and opportunistic, not only from desperation:
-		# a low base chance that climbs steeply with need and falls with restraint,
-		# set so an ordinary small town sees about 15 a year per 1,000 people
-		if w.rng.randf() < minf(CRIME_BASE * exp((score + 50.0) / 14.0), 0.15):
+		if score > 0.0 and w.rng.randf() < clampf(score / 60.0, 0.0, 0.4):
 			if w.rng.randf() < 0.25 and float(t["risk"]) > 55.0 and w.age_years(c) >= 17:
 				burglary(w, c)
 			else:
 				LTCivic.theft(w, c, "needed money and did not think they would get caught")
 		# assault risk: unsafe areas, drinking, anger
 		var anger: float = float(LTHealth.level(c)) * 0.2 + (40.0 - safety) * 0.3 + (100.0 - float(t["kindness"])) * 0.1 - 15.0
-		if w.age_years(c) >= 16 and w.rng.randf() < minf(ASSAULT_BASE * exp(anger / 10.0), 0.05):
+		if anger > 0.0 and w.rng.randf() < anger / 2500.0:
 			assault(w, c)
 
 
@@ -116,16 +109,10 @@ static func burglary(w: LTWorld, c: Dictionary) -> void:
 
 static func assault(w: LTWorld, c: Dictionary) -> void:
 	var victims: Array = []
-	var known: Array = []
 	for k in c["rel"]:
 		var o: Dictionary = w.cit(int(k))
-		if not w.is_present(o):
-			continue
-		known.append(o)
-		if float(c["rel"][k]["affection"]) < 40.0:
+		if w.is_present(o) and float(c["rel"][k]["affection"]) < 40.0:
 			victims.append(o)
-	if victims.is_empty():
-		victims = known
 	if victims.is_empty():
 		return
 	var v: Dictionary = victims[w.rng.randi_range(0, victims.size() - 1)]
