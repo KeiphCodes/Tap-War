@@ -706,3 +706,78 @@ static func unplot(w: LTWorld, lot_id: int) -> Dictionary:
 	l["use"] = "removed"
 	w.config["lot_at"].erase(cell_key(int(l["col"]), int(l["row"])))
 	return {"ok": true, "message": "Lot %d is open prairie again." % lot_id}
+
+
+
+# ================================================================ homes
+
+## What a family builds: bedrooms, bathrooms, stories, garage stalls and a
+## basement. Size and price follow, at small town new build prices: about $175
+## a finished square foot, $18,000 a garage stall, $35,000 for a basement.
+const HOME_PER_SQFT: float = 175.0
+const GARAGE_STALL: float = 18000.0
+const BASEMENT: float = 35000.0
+
+
+static func home_sqft(spec: Dictionary) -> int:
+	return 500 + int(spec["beds"]) * 280 + int(float(spec["baths"]) * 90.0) + (150 if int(spec["stories"]) == 2 else 0)
+
+
+static func home_cost(spec: Dictionary) -> int:
+	var d: float = float(home_sqft(spec)) * HOME_PER_SQFT + float(spec["garage"]) * GARAGE_STALL + (BASEMENT if bool(spec["basement"]) else 0.0)
+	return LTMoney.dollars(d)
+
+
+static func home_text(spec: Dictionary) -> String:
+	if spec.is_empty():
+		return ""
+	var baths: float = float(spec["baths"])
+	var parts: Array = ["%d bedroom%s" % [int(spec["beds"]), "" if int(spec["beds"]) == 1 else "s"],
+		"%s bath%s" % [("%d" % int(baths)) if baths == floor(baths) else ("%.1f" % baths), "" if baths == 1.0 else "s"],
+		"%d square feet" % home_sqft(spec), "two story" if int(spec["stories"]) == 2 else "one story"]
+	if int(spec["garage"]) > 0:
+		parts.append("%d car garage" % int(spec["garage"]))
+	if bool(spec["basement"]):
+		parts.append("basement")
+	return ", ".join(parts)
+
+
+## A family decides what to build from who they are and what they can carry:
+## a bedroom for the couple and roughly one for every one or two children, a
+## second bath once the family grows, a garage on the prairie where winters are
+## long, a basement for storm shelter if they can afford it. Ambitious or proud
+## families reach for more, careful ones build what they need. The bank lends up
+## to about four times the family's yearly income.
+static func choose_home(w: LTWorld, adults: int, kids: int, yearly_income: int, ambition: float, discipline: float) -> Dictionary:
+	var beds: int = clampi(1 + (1 if adults >= 2 else 0) + int(ceil(float(kids) / 1.5)), 1, 5)
+	if adults >= 2 and kids == 0 and w.rng.randf() < 0.6:
+		beds += 1   # a spare room or a nursery to come
+	var reach: float = (ambition - discipline) / 100.0 + w.rng.randf_range(-0.2, 0.2)
+	if reach > 0.25:
+		beds += 1
+	beds = clampi(beds, 1, 5)
+	var baths: float = 1.0 if beds <= 2 else (2.0 if beds <= 4 else 2.5)
+	if reach > 0.15 and beds >= 3:
+		baths += 0.5
+	var spec: Dictionary = {"beds": beds, "baths": baths, "stories": 2 if beds >= 4 and w.rng.randf() < 0.55 else 1,
+		"garage": 2 if adults >= 2 else 1, "basement": w.rng.randf() < 0.6}
+	if reach > 0.3 and w.rng.randf() < 0.5:
+		spec["garage"] = 3
+	# trim to what the bank will lend
+	var budget: int = maxi(LTMoney.dollars(180000.0), yearly_income * 4)
+	var guard: int = 0
+	while home_cost(spec) > budget and guard < 12:
+		guard += 1
+		if bool(spec["basement"]):
+			spec["basement"] = false
+		elif int(spec["garage"]) > 1:
+			spec["garage"] = int(spec["garage"]) - 1
+		elif float(spec["baths"]) > 1.5:
+			spec["baths"] = float(spec["baths"]) - 0.5
+		elif int(spec["stories"]) == 2:
+			spec["stories"] = 1
+		elif int(spec["beds"]) > maxi(1, beds - 1):
+			spec["beds"] = int(spec["beds"]) - 1
+		else:
+			break
+	return spec

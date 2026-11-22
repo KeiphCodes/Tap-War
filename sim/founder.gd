@@ -101,19 +101,36 @@ static func _settlers(w: LTWorld) -> void:
 		w.ledger.pay("outside", "city", price, "lot sales")
 		l["owner_kind"] = "outside"
 		var family: String = LTPeople.LAST_NAMES[w.rng.randi_range(0, LTPeople.LAST_NAMES.size() - 1)]
-		var r: Dictionary = LTProjects.define_project(w, "house", int(l["id"]), int(float(LTProjects.BASE_COST["house"]) * 1.4), -1, false, {"kind": "settler", "id": -1, "name": "the %s family" % family, "acct": "bank", "family": family})
+		# who is coming: mostly young couples and families
+		var roll: float = w.rng.randf()
+		var adults: int = 2 if roll < 0.78 else 1
+		var kids: int = 0
+		if roll < 0.55:
+			kids = [1, 1, 2, 2, 2, 3, 3, 4][w.rng.randi_range(0, 7)]
+		elif roll >= 0.78 and roll < 0.9:
+			kids = w.rng.randi_range(1, 2)
+		var income: int = LTMoney.dollars(w.rng.randf_range(38000.0, 62000.0) * (1.6 if adults == 2 else 1.0))
+		var spec: Dictionary = LTGeography.choose_home(w, adults, kids, income, w.rng.randf_range(25.0, 80.0), w.rng.randf_range(25.0, 80.0))
+		var cost: int = LTGeography.home_cost(spec)
+		var r: Dictionary = LTProjects.define_project(w, "house", int(l["id"]), int(float(cost) * 1.3), -1, false,
+			{"kind": "settler", "id": -1, "name": "the %s family" % family, "acct": "bank", "family": family, "adults": adults, "kids": kids, "home": spec},
+			cost, LTGeography.home_sqft(spec))
 		if not bool(r["ok"]):
 			continue
 		var pr: Dictionary = w.projects[int(r["project_id"])]
 		pr["title"] = "The %s family's house" % family
-		w.chronicle_add("The %s family bought %s for %s and hired a builder. They will move in when the house is done." % [family, LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price)], "move", true, [])
+		pr["home"] = spec
+		w.chronicle_add("The %s family bought %s for %s and hired a builder for a %s house (%s). They will move in when it is done." % [family, LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(cost), LTGeography.home_text(spec)], "move", true, [])
 		bought += 1
 		p *= 0.6
 
 
 ## Called when a settler's house is finished: the family arrives and owns it.
 static func settler_moves_in(w: LTWorld, p: Dictionary, l: Dictionary) -> void:
-	var h: Dictionary = LTPeople.make_household(w, true, true, true)
+	var dev: Dictionary = p["developer"]
+	var h: Dictionary = LTPeople.make_household(w, true, true, true) if not dev.has("adults") else LTPeople.make_family(w, int(dev["adults"]), int(dev["kids"]))
+	if p.has("home"):
+		l["home"] = p["home"]
 	var fam: String = str(p["developer"].get("family", ""))
 	if fam != "":
 		for m in w.household_members(h):

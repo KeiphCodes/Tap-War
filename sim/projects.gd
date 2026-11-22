@@ -7,18 +7,18 @@ extends RefCounted
 const BASE_COST: Dictionary = {
 	"road_repair": 9000000, "road_patch": 3500000, "school": 52000000, "school_small": 26000000,
 	"clinic": 34000000, "clinic_small": 15000000, "park": 6000000, "apartments": 42000000,
-	"house": 22000000, "mayor_house": 30000000,
+	"house": 22000000, "mayor_house": 30000000, "shop": 15000000,
 }
 const BASE_DAYS: Dictionary = {
 	"road_repair": 45, "road_patch": 20, "school": 180, "school_small": 120,
 	"clinic": 140, "clinic_small": 90, "park": 40, "apartments": 150,
-	"house": 90, "mayor_house": 120,
+	"house": 90, "mayor_house": 120, "shop": 75,
 }
 const TITLES: Dictionary = {
 	"road_repair": "Rebuild %s", "road_patch": "Patch %s", "school": "Build the town school",
 	"school_small": "Build a two room schoolhouse", "clinic": "Build the town clinic",
 	"clinic_small": "Open a small health office", "park": "Build a park", "apartments": "Build a 4 unit apartment house",
-	"house": "A settler's house", "mayor_house": "Build the mayor's house",
+	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building",
 }
 const BID_DAYS: int = 14
 const OUTSIDE: Array = [
@@ -84,7 +84,9 @@ static func define_road_build(w: LTWorld, street_id: int, segs: Array, draft: bo
 
 ## `owner` set means a private job (a settler's house, a developer's apartments):
 ## the owner picks the builder and it is never one of the mayor's contracts.
-static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int, draft: bool = false, owner: Dictionary = {}) -> Dictionary:
+## `cost` and `sqft` set a private building's price and size (a family's house, a
+## founder's shop) instead of the type's usual cost.
+static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int, petition_id: int, draft: bool = false, owner: Dictionary = {}, cost: int = 0, sqft: int = 0) -> Dictionary:
 	if not BASE_COST.has(ptype):
 		return {"ok": false, "message": "Unknown project type."}
 	var p: Dictionary = {
@@ -115,6 +117,8 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 			allowed = ["park", "civic", "mixed"]
 		elif ptype == "apartments" or ptype == "house":
 			allowed = ["residential", "mixed"]
+		elif ptype == "shop":
+			allowed = LTGeography.ZONES.duplicate()
 		elif ptype == "mayor_house":
 			allowed = LTGeography.ZONES.duplicate()
 			if int(w.player.get("home_lot", -1)) >= 0:
@@ -128,8 +132,12 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		p["title"] = TITLES[ptype]
 		l["use"] = "reserved"
 		l["ref"] = int(p["id"])
-	p["raw_cost"] = int(BASE_COST[ptype])
+	p["raw_cost"] = cost if cost > 0 else int(BASE_COST[ptype])
 	p["raw_days"] = int(BASE_DAYS.get(ptype, 30))
+	if sqft > 0:
+		# about a month of site work plus a day for every 60 square feet
+		p["raw_days"] = 30 + sqft / 60
+		p["sqft"] = sqft
 	p["spec"] = default_spec(ptype)
 	_apply_spec(p)
 	if ceiling > 0:
@@ -751,6 +759,11 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		l2["built_day"] = w.day
 		l2["value"] = int(p["price"]) + int(p["change_orders"]) + int(l2["value"])
 		LTFounder.settler_moves_in(w, p, l2)
+	elif ptype == "shop":
+		var sb: Dictionary = w.biz(int(p.get("business_id", -1)))
+		if not sb.is_empty() and str(sb["status"]) == "building":
+			sb["building_quality"] = q
+			LTEconomy.open_business(w, sb)
 	elif ptype == "mayor_house":
 		var l3: Dictionary = w.lot(int(p["lot"]))
 		l3["use"] = "mayor_house"

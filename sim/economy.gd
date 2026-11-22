@@ -100,6 +100,94 @@ static func open_positions(w: LTWorld) -> int:
 
 ## A Sim's own estimate of whether a business could work. Can be wrong: optimism
 ## scales with risk tolerance and falls with finance skill.
+# ---------------------------------------------------------------- what it really costs to start
+
+## Building size (square feet), equipment and opening stock in dollars, for a small
+## town start up bought used where people really do (trucks, kitchen gear, coolers).
+## Sheds are metal buildings, cheaper per foot than a storefront.
+const COSTS: Dictionary = {
+	"grocery": {"sqft": 4000, "equipment": 120000, "stock": 60000, "shed": false},
+	"cafe": {"sqft": 1500, "equipment": 70000, "stock": 5000, "shed": false},
+	"general_store": {"sqft": 2500, "equipment": 30000, "stock": 40000, "shed": false},
+	"farm": {"sqft": 2400, "equipment": 150000, "stock": 30000, "shed": true},
+	"construction": {"sqft": 1600, "equipment": 45000, "stock": 5000, "shed": true},
+	"clinic": {"sqft": 3000, "equipment": 150000, "stock": 15000, "shed": false},
+	"pharmacy": {"sqft": 1500, "equipment": 40000, "stock": 80000, "shed": false},
+	"private_school": {"sqft": 4000, "equipment": 40000, "stock": 5000, "shed": false},
+	"repair_shop": {"sqft": 2000, "equipment": 50000, "stock": 10000, "shed": true},
+	"factory": {"sqft": 10000, "equipment": 400000, "stock": 50000, "shed": true},
+	"warehouse": {"sqft": 8000, "equipment": 60000, "stock": 0, "shed": true},
+	"trucking": {"sqft": 1500, "equipment": 250000, "stock": 5000, "shed": true},
+	"hotel": {"sqft": 6000, "equipment": 120000, "stock": 5000, "shed": false},
+	"bar": {"sqft": 1500, "equipment": 50000, "stock": 10000, "shed": false},
+	"childcare": {"sqft": 2500, "equipment": 25000, "stock": 3000, "shed": false},
+	"funeral_home": {"sqft": 3000, "equipment": 60000, "stock": 15000, "shed": false},
+	"law_office": {"sqft": 800, "equipment": 15000, "stock": 0, "shed": false},
+	"real_estate": {"sqft": 600, "equipment": 8000, "stock": 0, "shed": false},
+	"mill": {"sqft": 3000, "equipment": 200000, "stock": 20000, "shed": true},
+	"bakery": {"sqft": 1500, "equipment": 60000, "stock": 3000, "shed": false},
+	"bank": {"sqft": 3000, "equipment": 200000, "stock": 0, "shed": false},
+}
+const STOREFRONT_PER_SQFT: float = 165.0
+const SHED_PER_SQFT: float = 95.0
+## Kinds of business people really start from home: a contractor with a truck and
+## tools, a mechanic in the garage, home daycare, a cottage bakery, a lawyer or
+## realtor with a home office, an owner operator with a truck in the yard.
+const HOME_OK: Dictionary = {
+	"construction": {"equipment": 45000, "stock": 3000, "what": "a used truck, a trailer and tools, run from home"},
+	"repair_shop": {"equipment": 20000, "stock": 4000, "what": "tools and a lift in the home garage"},
+	"childcare": {"equipment": 5000, "stock": 1000, "what": "a licensed home daycare"},
+	"bakery": {"equipment": 8000, "stock": 1000, "what": "a cottage bakery from the home kitchen"},
+	"law_office": {"equipment": 6000, "stock": 0, "what": "a home office"},
+	"real_estate": {"equipment": 3000, "stock": 0, "what": "a home office and a car"},
+	"trucking": {"equipment": 120000, "stock": 2000, "what": "one used semi parked in the yard"},
+}
+
+
+## Every dollar a founder needs before opening day, in cents:
+## {building, equipment, stock, reserve, license, total, sqft, home, existing}
+## Businesses are sized to the town: a 100 person town gets a corner market, not
+## a supermarket. `existing` means moving into an empty building already standing.
+static func startup_costs(w: LTWorld, btype: String, home_based: bool, existing: bool = false) -> Dictionary:
+	var cfg: Dictionary = tcfg(btype)
+	var sheet: Dictionary = COSTS.get(btype, {"sqft": 1500, "equipment": 20000, "stock": 5000, "shed": false})
+	var building: int = 0
+	var sqft: int = 0
+	var equipment: int = LTMoney.dollars(float(sheet["equipment"]))
+	var stock: int = LTMoney.dollars(float(sheet["stock"]))
+	var scale: float = clampf(float(w.alive_count()) / 1000.0, 0.35, 1.5)
+	if home_based and HOME_OK.has(btype):
+		equipment = LTMoney.dollars(float(HOME_OK[btype]["equipment"]))
+		stock = LTMoney.dollars(float(HOME_OK[btype]["stock"]))
+	else:
+		sqft = maxi(400, int(float(sheet["sqft"]) * scale / 50.0) * 50)
+		equipment = int(float(equipment) * (0.5 + scale * 0.5))
+		stock = int(float(stock) * scale)
+		if not existing:
+			building = LTMoney.dollars(float(sqft) * (SHED_PER_SQFT if bool(sheet["shed"]) else STOREFRONT_PER_SQFT))
+	# three months of wages and utilities to get through the slow start
+	var staff: int = 0 if home_based else int(cfg["staff"])
+	var wage: int = maxi(int(cfg["wage"]), LTCivic.min_daily_wage(w))
+	var reserve: int = (staff * wage * 22 + LTMoney.dollars(260.0)) * 3
+	var license: int = int(float(cfg["license"]) * LTCivic.law(w, "license_fee"))
+	return {"building": building, "equipment": equipment, "stock": stock, "reserve": reserve, "license": license,
+		"total": building + equipment + stock + reserve + license, "sqft": sqft, "home": home_based and HOME_OK.has(btype), "existing": existing}
+
+
+static func costs_text(cs: Dictionary) -> String:
+	var parts: Array = []
+	if int(cs["building"]) > 0:
+		parts.append("a %d square foot building %s" % [int(cs["sqft"]), LTMoney.fmt(int(cs["building"]))])
+	elif bool(cs.get("existing", false)):
+		parts.append("leasing an empty building already standing")
+	parts.append("equipment %s" % LTMoney.fmt(int(cs["equipment"])))
+	if int(cs["stock"]) > 0:
+		parts.append("opening stock %s" % LTMoney.fmt(int(cs["stock"])))
+	parts.append("three months of cash to get started %s" % LTMoney.fmt(int(cs["reserve"])))
+	parts.append("license %s" % LTMoney.fmt(int(cs["license"])))
+	return "%s in all: %s" % [LTMoney.fmt(int(cs["total"])), ", ".join(parts)]
+
+
 static func consider_founding(w: LTWorld, c: Dictionary) -> Dictionary:
 	var t: Dictionary = c["traits"]
 	var n: Dictionary = c["needs"]
@@ -141,6 +229,30 @@ static func recent_failures(w: LTWorld, btype: String) -> int:
 	return n
 
 
+## The nearest empty building (a business that closed) in one of the zones.
+static func _vacant_building(w: LTWorld, zones: Array, near_lot: int) -> int:
+	var best: int = -1
+	var best_d: float = 1e9
+	for l in w.lots:
+		if str(l["use"]) != "closed" or not zones.has(str(l["zone"])) or bool(l.get("hold", false)):
+			continue
+		var d: float = 0.0
+		if near_lot >= 0:
+			var a: Dictionary = w.lot(near_lot)
+			d = absf(float(a["col"]) - float(l["col"])) + absf(float(a["row"]) - float(l["row"]))
+		if d < best_d:
+			best_d = d
+			best = int(l["id"])
+	return best
+
+
+static func _home_free(w: LTWorld, lot_id: int) -> bool:
+	for b in w.businesses:
+		if int(b["lot"]) == lot_id and ["open", "building"].has(str(b["status"])):
+			return false
+	return true
+
+
 ## Founders watch each other: right after one opens, others wait to see how it does.
 static func _recently_opened(w: LTWorld, btype: String) -> bool:
 	for b in w.businesses:
@@ -166,6 +278,23 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	else:
 		var near: Array = [int(w.hh(int(c["household"]))["lot"])]
 		lot_id = LTGeography.best_site(w, zones, near)
+	# an empty building already standing is far cheaper than building new
+	var existing: bool = false
+	var vacant: int = _vacant_building(w, zones, int(w.hh(int(c["household"]))["lot"]))
+	if vacant >= 0 and (lot_id < 0 or need.is_empty() or int(need["lot"]) != lot_id):
+		lot_id = vacant
+		existing = true
+	# a founder who cannot put down 15% on a real building, and whose kind of
+	# business can run from home, starts at home instead
+	var home_based: bool = false
+	var hh_lot: int = int(w.hh(int(c["household"]))["lot"])
+	if HOME_OK.has(btype) and hh_lot >= 0 and str(w.lot(hh_lot)["use"]) == "house" and _home_free(w, hh_lot):
+		var full: Dictionary = startup_costs(w, btype, false)
+		# most small town businesses of these kinds start at home
+		if lot_id < 0 or w.alive_count() < 400 or (not existing and w.cash(c) < int(float(full["total"]) * 0.15)):
+			home_based = true
+			existing = false
+			lot_id = hh_lot
 	if lot_id < 0:
 		return {}
 	# expected monthly sales and margin, from the Sim's view of the market
@@ -211,18 +340,25 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 			gross_margin = float(est_s["margin"])
 			doubt = str(est_s["doubt"])
 			service_why = str(est_s["why"])
-	var staff: int = int(cfg["staff"])
+	var staff: int = 0 if home_based else int(cfg["staff"])
 	var wage: int = maxi(int(cfg["wage"]), LTCivic.min_daily_wage(w))
 	var costs: float = float(staff * wage) * 22.0
 	var lot_rent: int = LTCivic.lot_rent(w, lot_id)
 	if not need.is_empty() and bool(need["incentives"].get("free_lot", false)):
 		lot_rent = 0
+	if home_based:
+		lot_rent = 0
+	elif existing:
+		lot_rent *= 3   # leasing a building, not just the ground
 	costs += float(lot_rent) + 30000.0
-	var startup: int = int(cfg["startup"])
+	var cs: Dictionary = startup_costs(w, btype, home_based, existing)
+	var startup: int = int(cs["total"])
 	var loan_need: int = maxi(0, startup - maxi(0, w.cash(c) - LTMoney.dollars(2000.0)))
 	var grant: int = int(need["incentives"].get("grant", 0)) if not need.is_empty() else 0
 	loan_need = maxi(0, loan_need - grant)
-	costs += float(LTFinance.amortized_payment(loan_need, 0.09, 84))
+	# the building is a 20 year mortgage, equipment and stock a 7 year loan
+	var mort_need: int = mini(loan_need, int(float(cs["building"]) * 0.85))
+	costs += float(LTFinance.amortized_payment(mort_need, 0.075, 240)) + float(LTFinance.amortized_payment(loan_need - mort_need, 0.09, 84))
 	var tax: float = LTCivic.business_tax_rate(w)
 	if not need.is_empty() and int(need["incentives"].get("tax_break_years", 0)) > 0:
 		tax = 0.0
@@ -236,7 +372,8 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	if not can_fund:
 		var score: int = int(c["credit"]["score"])
 		var guarantee: bool = not need.is_empty() and bool(need["incentives"].get("loan_guarantee", false))
-		var down_ok: bool = w.cash(c) + grant >= int(float(startup) * (0.1 if guarantee else 0.2))
+		# small business loans (SBA style) need about 10% down, 5% with a city guarantee
+		var down_ok: bool = w.cash(c) + grant >= int(float(startup) * (0.05 if guarantee else 0.1))
 		var bar: int = LTFinance.bank_min_score(w, "business_loan") - (60 if guarantee else 0)
 		can_fund = down_ok and bool(c["credit"]["has_file"]) and score >= bar - int(float(t["risk"]) * 0.3)
 		funding_note = "savings and a bank loan" + (" backed by the city guarantee" if guarantee else "")
@@ -262,7 +399,7 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 		score_v -= 40.0
 	if est <= 0.0:
 		score_v -= 20.0
-	return {"type": btype, "lot": lot_id, "score": score_v, "est_monthly": int(est), "startup": startup, "loan_need": loan_need, "grant": grant, "need_id": int(need.get("id", -1)), "funding": funding_note, "reason": "", "doubt": doubt, "skill": skill, "service_why": service_why, "has_need": not need.is_empty()}
+	return {"type": btype, "lot": lot_id, "score": score_v, "est_monthly": int(est), "startup": startup, "loan_need": loan_need, "grant": grant, "need_id": int(need.get("id", -1)), "funding": funding_note, "reason": "", "doubt": doubt, "skill": skill, "service_why": service_why, "has_need": not need.is_empty(), "home": home_based, "costs": cs}
 
 
 ## The plain words a Sim gives for a plan, built only for the plan they pick.
@@ -316,9 +453,18 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 	var cfg: Dictionary = tcfg(btype)
 	w.counters["founding_attempts"] = int(w.counters["founding_attempts"]) + 1
 	var lot_id: int = int(plan["lot"])
-	if str(w.lot(lot_id)["use"]) != "empty":
+	var home: bool = bool(plan.get("home", false))
+	var existing: bool = bool(plan.get("costs", {}).get("existing", false))
+	if home:
+		if str(w.lot(lot_id)["use"]) != "house" or not _home_free(w, lot_id):
+			return
+	elif existing:
+		if str(w.lot(lot_id)["use"]) != "closed":
+			return
+	elif str(w.lot(lot_id)["use"]) != "empty":
 		return
-	var startup: int = int(plan["startup"])
+	var cs: Dictionary = plan.get("costs", startup_costs(w, btype, home))
+	var startup: int = int(cs["total"])
 	var need: Dictionary = w.city_needs[int(plan["need_id"])] if int(plan["need_id"]) >= 0 else {}
 	# legal form: an LLC costs money and paperwork, finance and management skill decide
 	var llc_score: float = float(c["skills"]["finance"]) * 0.5 + float(c["skills"]["management"]) * 0.3 + float(c["traits"]["discipline"]) * 0.2
@@ -341,15 +487,22 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		if not bool(dec["ok"]) and guarantee:
 			dec = {"ok": true, "rate": LTFinance.bank_rate(w, "business_loan", 680), "reason": "the city guarantee"}
 		if bool(dec["ok"]):
-			var d: Dictionary = LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", gap, float(dec["rate"]), 84, "equipment", -1, [])
-			if legal == "llc" and w.day - int(c.get("moved_in", 0)) >= 0:
-				d["guarantor"] = int(c["id"])
-				w.debt_index_dirty = true
-				LTFinance._dhist(w, d, "%s signed a personal guarantee, as the bank requires from new founders." % w.full_name(c))
-			if guarantee:
-				d["city_guarantee"] = true
-				LTFinance._dhist(w, d, "The city guarantees this loan if it defaults.")
-			LTFinance.fund_loan(w, d, acct, gap)
+			# the building is a 20 year commercial mortgage, the rest a 7 year equipment loan
+			var parts: Array = []
+			var mort: int = mini(gap, int(float(cs["building"]) * 0.85))
+			if mort > 0:
+				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "commercial_mortgage", mort, float(dec["rate"]) - 0.01, 240, "building", lot_id, []))
+			if gap - mort > 0:
+				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", gap - mort, float(dec["rate"]), 84, "equipment", -1, []))
+			for d in parts:
+				if legal == "llc" and w.day - int(c.get("moved_in", 0)) >= 0:
+					d["guarantor"] = int(c["id"])
+					w.debt_index_dirty = true
+					LTFinance._dhist(w, d, "%s signed a personal guarantee, as the bank requires from new founders." % w.full_name(c))
+				if guarantee:
+					d["city_guarantee"] = true
+					LTFinance._dhist(w, d, "The city guarantees this loan if it defaults.")
+				LTFinance.fund_loan(w, d, acct, int(d["balance"]))
 			w.bank["lent_12m"] = int(w.bank["lent_12m"]) + gap
 			w.counters["loans_made"] = int(w.counters["loans_made"]) + 1
 			sources.append("a %s bank loan at %.1f%%%s" % [LTMoney.fmt(gap), float(dec["rate"]) * 100.0, " with a personal guarantee" if legal == "llc" else ""])
@@ -391,17 +544,11 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 				w.log_sim(c, "Tried to start a %s and could not raise the money. The bank said no: %s." % [str(cfg["display"]).to_lower(), dec["reason"]], true)
 				w.remember(c, "loan_denied", -1, -15.0)
 				return
-	# spend the start up money: fit out and equipment, a local builder gets the work if one exists
-	var fitout: int = int(float(startup) * 0.55)
-	var builder: Dictionary = _local_builder(w, b)
-	if not builder.is_empty():
-		var local_part: int = int(float(fitout) * 0.6)
-		w.ledger.pay(acct, w.acct_b(builder), local_part, "fitout_local")
-		builder["contract_revenue"] = int(builder.get("contract_revenue", 0)) + local_part
-		w.log_biz(builder, "Did the fit out for %s for %s." % [b["name"], LTMoney.fmt(local_part)])
-		w.ledger.pay(acct, "outside", fitout - local_part, "fitout_materials")
-	else:
-		w.ledger.pay(acct, "outside", fitout, "fitout_outside")
+	# equipment is bought now, mostly used and from out of town; the building, if
+	# there is one, is built by a contractor the founder hires, and paid as it rises
+	w.ledger.pay(acct, "outside", int(cs["equipment"]), "equipment")
+	if not ["grocery", "cafe", "general_store"].has(btype) and int(cs["stock"]) > 0:
+		w.ledger.pay(acct, "outside", int(cs["stock"]), "opening_stock")
 	# the license: some founders who were told no by the city, or who are short and not too honest, skip it
 	var fee: int = int(float(cfg["license"]) * LTCivic.law(w, "license_fee"))
 	var t2: Dictionary = c["traits"]
@@ -413,13 +560,56 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		w.ledger.pay(acct, "city", fee, "license_fees")
 	if legal == "llc":
 		w.ledger.pay(acct, "outside", 50000, "llc_filing")
+	b["need_id"] = int(plan["need_id"])
+	b["plan_reason"] = str(plan["reason"])
+	b["costs"] = cs
+	c["owns"].append(int(b["id"]))
+	var reason: String = "%s. It cost %s. Funded with %s." % [str(plan["reason"]), costs_text(cs), ", ".join(sources)]
+	b["start_reason"] = reason
+	if bool(cs["home"]):
+		b["home_based"] = true
+		b["start_reason"] = reason + " Run from home: %s." % HOME_OK[btype]["what"]
+		open_business(w, b)
+		return
+	if bool(cs.get("existing", false)):
+		b["start_reason"] = reason + " Moved into the empty building on %s." % LTGeography.lot_label(w, lot_id)
+		b["building_lease"] = true
+		open_business(w, b)
+		return
+	# a real building: hire a builder through bids, open when it is finished
+	b["status"] = "building"
+	var r: Dictionary = LTProjects.define_project(w, "shop", lot_id, int(float(cs["building"]) * 1.3), -1, false,
+		{"kind": "business", "id": int(b["id"]), "name": str(b["name"]), "acct": acct}, int(cs["building"]), int(cs["sqft"]))
+	if bool(r.get("ok", false)):
+		var pr: Dictionary = w.projects[int(r["project_id"])]
+		pr["business_id"] = int(b["id"])
+		pr["title"] = "%s: a %d square foot building" % [b["name"], int(cs["sqft"])]
+		b["project_id"] = int(pr["id"])
+	w.log_sim(c, "Decided to start %s and hired builders for the building. Reason: %s" % [b["name"], reason], true)
+	w.log_biz(b, "Planned by %s on %s. Reason: %s" % [w.full_name(c), LTGeography.lot_label(w, lot_id), reason])
+	w.chronicle_add("%s is putting up a building on %s for %s." % [w.full_name(c), LTGeography.lot_street(w, lot_id)["name"], b["name"]], "business", false, [c["id"]])
+
+
+## Opening day: the building is finished (or the business runs from home).
+static func open_business(w: LTWorld, b: Dictionary) -> void:
+	var btype: String = str(b["type"])
+	var cfg: Dictionary = tcfg(btype)
+	var c: Dictionary = w.cit(int(b["owners"][0]))
+	var lot_id: int = int(b["lot"])
+	b["status"] = "open"
+	b["opened_day"] = w.day
+	var home: bool = bool(b.get("home_based", false))
 	var l: Dictionary = w.lot(lot_id)
-	l["use"] = "business"
-	l["ref"] = int(b["id"])
-	l["building"] = btype
-	l["built_day"] = w.day
-	l["condition"] = 85.0
-	l["name"] = str(b["name"])
+	if not home:
+		l["use"] = "business"
+		l["ref"] = int(b["id"])
+		l["building"] = btype
+		l["built_day"] = w.day
+		l["condition"] = 85.0
+		l["name"] = str(b["name"])
+	else:
+		b["free_lot"] = true
+	var need: Dictionary = w.city_needs[int(b["need_id"])] if int(b.get("need_id", -1)) >= 0 else {}
 	if not need.is_empty():
 		need["status"] = "taken"
 		need["taken_by"] = int(b["id"])
@@ -427,20 +617,19 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		b["incentives"] = need["incentives"].duplicate()
 		if int(need["incentives"].get("tax_break_years", 0)) > 0:
 			b["tax_break_until"] = w.day + 365 * int(need["incentives"]["tax_break_years"])
-	if not need.is_empty() and bool(need["incentives"].get("free_lot", false)):
-		b["free_lot"] = true
-	c["owns"].append(int(b["id"]))
+		if bool(need["incentives"].get("free_lot", false)):
+			b["free_lot"] = true
+	if not w.is_present(c):
+		return
 	if str(c["job"]["kind"]) != "none":
 		leave_job(w, c, "started a business")
 	LTPeople.set_job(w, c, "owner", int(b["id"]), "owner of " + str(b["name"]), 0, str(cfg["skill"]))
-	var reason: String = "%s. Funded with %s." % [str(plan["reason"]), ", ".join(sources)]
-	b["start_reason"] = reason
-	w.log_biz(b, "Opened by %s on %s. Reason: %s" % [w.full_name(c), LTGeography.lot_label(w, lot_id), reason])
-	w.log_biz(b, "Legal form: %s." % ("an LLC, which keeps business debt separate from the owner's own money unless they guaranteed it" if legal == "llc" else "a sole proprietorship, so the owner and the business are the same legal pocket"))
-	w.log_sim(c, "Started %s. Reason: %s" % [b["name"], reason], true)
+	w.log_biz(b, "Opened by %s %s. Reason: %s" % [w.full_name(c), "from home on " + LTGeography.lot_label(w, lot_id) if home else "on " + LTGeography.lot_label(w, lot_id), b["start_reason"]])
+	w.log_biz(b, "Legal form: %s." % ("an LLC, which keeps business debt separate from the owner's own money unless they guaranteed it" if str(b["legal_form"]) == "llc" else "a sole proprietorship, so the owner and the business are the same legal pocket"))
+	w.log_sim(c, "Opened %s. %s" % [b["name"], b["start_reason"]], true)
 	w.remember(c, "founded", int(b["id"]), 20.0)
 	w.counters["businesses_opened"] = int(w.counters["businesses_opened"]) + 1
-	w.chronicle_add("%s opened %s on %s. %s said: %s." % [w.full_name(c), b["name"], LTGeography.lot_street(w, lot_id)["name"], c["first_name"], plan["reason"]], "business", true, [c["id"]])
+	w.chronicle_add("%s opened %s%s. %s said: %s." % [w.full_name(c), b["name"], " from home" if home else " on " + str(LTGeography.lot_street(w, lot_id)["name"]), c["first_name"], b.get("plan_reason", "")], "business", true, [c["id"]])
 	order_stock(w, b, true)
 	analyze_market(w)
 
@@ -1106,7 +1295,7 @@ static func _month_close(w: LTWorld, b: Dictionary) -> void:
 	# fixed monthly costs
 	if btype != "landlord":
 		if not bool(b["free_lot"]):
-			var rent: int = LTCivic.lot_rent(w, int(b["lot"]))
+			var rent: int = LTCivic.lot_rent(w, int(b["lot"])) * (3 if bool(b.get("building_lease", false)) else 1)
 			var pr: int = w.ledger.pay(acct, "city", rent, "lot_leases")
 			b["month_costs"] = int(b["month_costs"]) + pr
 		var util: int = LTMoney.dollars(260.0 if btype != "farm" else 180.0)
@@ -1267,7 +1456,8 @@ static func close_business(w: LTWorld, b: Dictionary, reason: String) -> void:
 	b["closed_day"] = w.day
 	b["close_reason"] = reason
 	var l: Dictionary = w.lot(int(b["lot"]))
-	l["use"] = "closed"
+	if not bool(b.get("home_based", false)):
+		l["use"] = "closed"
 	w.counters["businesses_closed"] = int(w.counters["businesses_closed"]) + 1
 	w.log_biz(b, "Closed. Reason: %s." % reason)
 	w.chronicle_add("%s closed. Reason: %s." % [b["name"], reason], "business", true, b["owners"].duplicate())

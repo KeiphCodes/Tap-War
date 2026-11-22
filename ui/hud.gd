@@ -1689,7 +1689,13 @@ func _biz_text(id: int) -> String:
 	var owners: Array = []
 	for o in b["owners"]:
 		owners.append(sim_link(int(o)))
-	var t: String = "[font_size=19][b]%s[/b][/font_size]\n%s on %s. %s since %s.\n" % [b["name"], str(LTEconomy.tcfg(b["type"])["display"]), lot_link(int(b["lot"])), "Open" if str(b["status"]) == "open" else "Closed " + LTCalendar.short(int(b["closed_day"])) + ": " + str(b["close_reason"]), LTCalendar.short(maxi(1, int(b["opened_day"])))]
+	var t: String = "[font_size=19][b]%s[/b][/font_size]\n%s on %s. %s since %s.\n" % [b["name"], str(LTEconomy.tcfg(b["type"])["display"]), lot_link(int(b["lot"])), "Open" if str(b["status"]) == "open" else ("Building, not open yet" if str(b["status"]) == "building" else "Closed " + LTCalendar.short(int(b["closed_day"])) + ": " + str(b["close_reason"])), LTCalendar.short(maxi(1, int(b["opened_day"])))]
+	if bool(b.get("home_based", false)):
+		t += "Run from the owner's home.\n"
+	if b.has("costs"):
+		t += "Start up: %s.\n" % LTEconomy.costs_text(b["costs"])
+	if str(b["status"]) == "building" and int(b.get("project_id", -1)) >= 0:
+		t += "The building: [url=proj:%d]%s[/url].\n" % [int(b["project_id"]), ww.projects[int(b["project_id"])]["title"]]
 	t += "Owner: %s. Legal form: %s.\n" % [", ".join(owners), "LLC, so its debts stay with the company unless the owner guaranteed them" if str(b["legal_form"]) == "llc" else "sole proprietorship, so the owner and the business are one legal pocket"]
 	t += "Cash %s. Reputation %d. Condition %d, cleanliness %d.\n" % [_money(ww.biz_cash(b)), int(b["reputation"]), int(b["condition"]), int(b["cleanliness"])]
 	if str(b["type"]) != "landlord":
@@ -1747,7 +1753,13 @@ func _lot_text(id: int) -> String:
 	t += "Owner: %s.\n" % owner
 	match str(l["use"]):
 		"house", "apartment":
-			t += "%s. Condition %d.\nWho lives here:\n" % [str(l["use"]).capitalize(), int(l["condition"])]
+			t += "%s. Condition %d.\n" % [str(l["use"]).capitalize(), int(l["condition"])]
+			if l.has("home"):
+				t += "The house: %s.\n" % LTGeography.home_text(l["home"])
+			for hb in ww.businesses:
+				if int(hb["lot"]) == id and bool(hb.get("home_based", false)) and str(hb["status"]) == "open":
+					t += "Run from here: %s.\n" % biz_link(int(hb["id"]))
+			t += "Who lives here:\n"
 			for u in l["units"]:
 				if int(u) < 0:
 					t += "- empty unit%s\n" % (", rent %s" % _money(int(l["unit_rent"])) if int(l["unit_rent"]) > 0 else "")
@@ -1764,7 +1776,10 @@ func _lot_text(id: int) -> String:
 		"mayor_house":
 			t += "The mayor's house. %s lives here.\n" % w().player.get("name", "The mayor")
 		"site", "reserved":
-			t += "Project: [url=proj:%d]%s[/url].\n" % [int(l["ref"]), ww.projects[int(l["ref"])]["title"]]
+			var lp: Dictionary = ww.projects[int(l["ref"])]
+			t += "Project: [url=proj:%d]%s[/url].\n" % [int(l["ref"]), lp["title"]]
+			if lp.has("home"):
+				t += "Being built: %s, %s.\n" % [LTGeography.home_text(lp["home"]), _money(int(lp["raw_cost"]))]
 		"empty":
 			t += "Empty. You can rezone it. A Sim may build here if the zone fits what they want.\n"
 	if str(l["zone"]) == "commercial" and str(l["use"]) == "empty":

@@ -689,7 +689,7 @@ func _lot_sig(l: Dictionary) -> String:
 			for u in l["units"]:
 				if int(u) >= 0:
 					occ += 1
-			extra = "%d|%s|%d" % [occ, l["owner_kind"], int(float(l["condition"]) / 25.0)]
+			extra = "%d|%s|%d|%s|%s" % [occ, l["owner_kind"], int(float(l["condition"]) / 25.0), str(l.get("home", {})), _home_biz_name(int(l["id"]))]
 	return "%s|%s|%s|%s|%s|%s" % [use, l["zone"], l["building"], extra, _season, _snow]
 
 
@@ -765,23 +765,69 @@ func _wear(c: Color, cond: float) -> Color:
 	return c.lerp(Color(0.45, 0.42, 0.38), clampf(1.0 - cond, 0.0, 1.0) * 0.55)
 
 
+## The business run from this house, if any: its name, or "".
+func _home_biz_name(lot_id: int) -> String:
+	for b in w.businesses:
+		if int(b["lot"]) == lot_id and bool(b.get("home_based", false)) and str(b["status"]) == "open":
+			return str(b["name"]) + "|" + str(b["type"])
+	return ""
+
+
+## A house drawn from what the family built: wider with more bedrooms, a second
+## floor, and a garage with a stall per car.
 func _house(root: Node3D, l: Dictionary, cond: float) -> void:
 	var walls: Array = [Color(0.92, 0.88, 0.78), Color(0.75, 0.82, 0.9), Color(0.9, 0.78, 0.66), Color(0.82, 0.9, 0.8), Color(0.95, 0.95, 0.95), Color(0.7, 0.62, 0.55)]
 	var roofs: Array = [Color(0.35, 0.2, 0.18), Color(0.25, 0.27, 0.3), Color(0.45, 0.3, 0.2), Color(0.3, 0.35, 0.25)]
 	var wc: Color = _wear(_hash_color(int(l["id"]), walls), cond)
-	_box(root, Vector3(7.0, 3.6, 6.0), Vector3(0, 1.8, -0.5), wc)
-	_roof(root, Vector3(7.6, 2.4, 6.6), Vector3(0, 4.8, -0.5), _hash_color(int(l["id"]) + 3, roofs))
+	var rc: Color = _hash_color(int(l["id"]) + 3, roofs)
+	var spec: Dictionary = l.get("home", {"beds": 3, "baths": 2.0, "stories": 1, "garage": 1, "basement": false})
+	var beds: int = int(spec["beds"])
+	var hw: float = clampf(5.6 + float(beds) * 0.85, 6.0, 10.0)
+	var floors: int = int(spec["stories"])
+	var wall_h: float = 3.2 if floors == 1 else 6.0
+	var stalls: int = int(spec["garage"])
+	var gw: float = minf(float(stalls) * 2.8, 12.6 - hw)
+	var hx: float = -gw * 0.5
+	_box(root, Vector3(hw, wall_h, 6.0), Vector3(hx, wall_h * 0.5, -0.5), wc)
+	_roof(root, Vector3(hw + 0.6, 2.2, 6.6), Vector3(hx, wall_h + 1.1, -0.5), rc)
 	var occupied: bool = int(l["units"][0]) >= 0
 	var lit: bool = occupied
-	for x in [-2.0, 2.0]:
-		_box(root, Vector3(1.2, 1.0, 0.1), Vector3(x, 2.1, 2.55), Color(1.0, 0.86, 0.5) if lit else Color(0.25, 0.3, 0.35), lit)
-	_box(root, Vector3(1.0, 2.0, 0.1), Vector3(0, 1.0, 2.55), Color(0.4, 0.25, 0.15))
-	_box(root, Vector3(1.2, 0.05, 4.0), Vector3(0, 0.07, 4.5), Color(0.6, 0.6, 0.6))
+	var win_c: Color = Color(1.0, 0.86, 0.5) if lit else Color(0.25, 0.3, 0.35)
+	var n_win: int = clampi(beds, 2, 4)
+	for f in floors:
+		for i in n_win:
+			var x: float = hx - hw * 0.5 + hw * (float(i) + 0.5) / float(n_win)
+			if f == 0 and absf(x - hx) < 0.7:
+				continue
+			_box(root, Vector3(1.0, 1.0, 0.1), Vector3(x, 1.9 + f * 2.8, 2.55), win_c, lit)
+	_box(root, Vector3(1.0, 2.0, 0.1), Vector3(hx, 1.0, 2.55), Color(0.4, 0.25, 0.15))
+	if stalls > 0 and gw > 1.0:
+		var gx: float = hx + hw * 0.5 + gw * 0.5
+		_box(root, Vector3(gw, 2.8, 5.6), Vector3(gx, 1.4, -0.3), wc.darkened(0.08))
+		_roof(root, Vector3(gw + 0.3, 1.2, 5.9), Vector3(gx, 3.4, -0.3), rc)
+		for i in stalls:
+			_box(root, Vector3(gw / float(stalls) - 0.4, 2.0, 0.1), Vector3(gx - gw * 0.5 + (float(i) + 0.5) * gw / float(stalls), 1.0, 2.5), Color(0.85, 0.85, 0.85))
+		_box(root, Vector3(gw, 0.05, 4.0), Vector3(gx, 0.07, 4.5), Color(0.6, 0.6, 0.6))
+	else:
+		_box(root, Vector3(1.2, 0.05, 4.0), Vector3(hx, 0.07, 4.5), Color(0.6, 0.6, 0.6))
 	if not occupied:
 		var s: Label3D = _sign(root, "For sale", Vector3(3.5, 1.5, 4.5), 28)
 		s.pixel_size = 0.04
 	if cond < 0.4:
-		_box(root, Vector3(1.4, 0.1, 1.1), Vector3(2.0, 2.1, 2.62), Color(0.4, 0.3, 0.2))
+		_box(root, Vector3(1.4, 0.1, 1.1), Vector3(hx + 2.0, 2.1, 2.62), Color(0.4, 0.3, 0.2))
+	# a business run from home: a yard sign, and the work truck in the drive
+	var hb: String = _home_biz_name(int(l["id"]))
+	if hb != "":
+		var nm: String = hb.get_slice("|", 0)
+		var bt: String = hb.get_slice("|", 1)
+		_box(root, Vector3(0.12, 1.2, 0.12), Vector3(-5.2, 0.6, 5.2), Color(0.35, 0.25, 0.15))
+		_box(root, Vector3(2.2, 0.9, 0.1), Vector3(-5.2, 1.5, 5.2), Color(0.95, 0.93, 0.85))
+		var bs: Label3D = _sign(root, nm, Vector3(-5.2, 2.6, 5.2), 26, Color(1.0, 0.95, 0.7))
+		bs.pixel_size = 0.035
+		if bt == "construction" or bt == "trucking" or bt == "repair_shop":
+			var tc: Color = Color(0.85, 0.65, 0.1) if bt == "construction" else (Color(0.6, 0.15, 0.1) if bt == "trucking" else Color(0.3, 0.3, 0.35))
+			_box(root, Vector3(1.8, 1.0, 3.6), Vector3(4.8, 0.8, 5.0), tc)
+			_box(root, Vector3(1.7, 0.8, 1.4), Vector3(4.8, 1.6, 4.0), Color(0.6, 0.75, 0.85))
 
 
 func _apartment(root: Node3D, l: Dictionary, cond: float) -> void:
@@ -828,29 +874,131 @@ func _business(root: Node3D, l: Dictionary) -> void:
 		for i in 4:
 			_box(root, Vector3(3.0, 0.3, 0.3), Vector3(-3.0, 0.2 + i * 0.32, 4.0), Color(0.75, 0.6, 0.4))
 	else:
-		var wall: Color = Color(0.85, 0.82, 0.75) if open else Color(0.5, 0.48, 0.45)
-		_box(root, Vector3(10.0, 4.4, 7.0), Vector3(0, 2.2, -1.0), wall)
-		_box(root, Vector3(10.4, 0.5, 7.4), Vector3(0, 4.6, -1.0), Color(0.3, 0.3, 0.32))
-		_box(root, Vector3(10.2, 0.3, 1.8), Vector3(0, 3.5, 3.2), accent if open else Color(0.35, 0.33, 0.3))
-		var lit: bool = open and not struggling
-		var glass: Color = Color(1.0, 0.92, 0.65) if lit else (Color(0.55, 0.5, 0.4) if open else Color(0.15, 0.15, 0.17))
-		_box(root, Vector3(7.0, 2.2, 0.1), Vector3(-0.8, 1.5, 2.55), glass, lit)
-		if open and float(b["stock"]) > 5.0:
-			for i in 4:
-				_box(root, Vector3(1.2, 0.8, 0.5), Vector3(-3.5 + i * 1.8, 0.6, 2.2), Color(0.8, 0.6, 0.3))
-		_box(root, Vector3(1.2, 2.4, 0.12), Vector3(3.8, 1.2, 2.55), Color(0.35, 0.22, 0.12))
-		if not open:
-			for i in 3:
-				_box(root, Vector3(7.4, 0.35, 0.12), Vector3(-0.8, 0.8 + i * 0.7, 2.65), Color(0.55, 0.42, 0.28), false, Vector3(0, 0, 0.08 * (i - 1)))
-		if struggling:
-			var sale: Label3D = _sign(root, "SALE", Vector3(-3.0, 2.0, 2.75), 40, Color(1, 0.3, 0.25))
-			sale.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-			sale.pixel_size = 0.03
+		_storefront(root, b, btype, open, struggling, accent)
 	var title: String = str(b["name"])
 	if not open:
 		title += "\nCLOSED"
 	var s: Label3D = _sign(root, title, Vector3(0, 6.6, 0), 36, Color(1, 1, 1) if open else Color(0.75, 0.7, 0.65))
 	s.pixel_size = 0.05
+
+
+## Main street businesses, each with its own building: a wide grocery with a
+## cart corral, a small cafe with tables out front, a false front general store
+## with a porch, a cottage bakery with a chimney, a pharmacy with a green cross and
+## a drive through, a two bay repair garage, a brick law office, a little realty
+## office with a big sign, and a brick academy with a bell cupola.
+func _storefront(root: Node3D, b: Dictionary, btype: String, open: bool, struggling: bool, accent: Color) -> void:
+	var lit: bool = open and not struggling
+	var glass: Color = Color(1.0, 0.92, 0.65) if lit else (Color(0.55, 0.5, 0.4) if open else Color(0.15, 0.15, 0.17))
+	var dim: float = 1.0 if open else 0.6
+	var front_z: float = 2.55
+	var glass_w: float = 6.0
+	var glass_x: float = -0.8
+	match btype:
+		"grocery":
+			_box(root, Vector3(12.4, 4.2, 7.4), Vector3(0, 2.1, -1.2), Color(0.88, 0.86, 0.8) * dim)
+			_box(root, Vector3(12.8, 0.4, 7.8), Vector3(0, 4.4, -1.2), Color(0.3, 0.3, 0.32))
+			_box(root, Vector3(12.6, 0.35, 1.6), Vector3(0, 3.4, 3.2), accent if open else Color(0.35, 0.33, 0.3))
+			glass_w = 9.0
+			glass_x = -1.2
+			for i in 3:
+				_box(root, Vector3(0.1, 0.02, 2.6), Vector3(-4.0 + i * 3.0, 0.08, 5.2), Color(0.95, 0.95, 0.95))
+			_box(root, Vector3(1.8, 0.8, 0.9), Vector3(5.0, 0.4, 4.6), Color(0.7, 0.7, 0.72))
+			front_z = 2.65
+		"cafe":
+			_box(root, Vector3(7.5, 3.6, 6.0), Vector3(-1.5, 1.8, -1.5), Color(0.92, 0.86, 0.72) * dim)
+			_box(root, Vector3(7.9, 0.4, 6.4), Vector3(-1.5, 3.8, -1.5), Color(0.35, 0.25, 0.2))
+			for i in 4:
+				_box(root, Vector3(1.9, 0.12, 1.6), Vector3(-4.35 + i * 1.9, 2.9, 2.3), (accent if i % 2 == 0 else Color(0.95, 0.95, 0.9)) if open else Color(0.4, 0.38, 0.35), false, Vector3(0.35, 0, 0))
+			glass_w = 4.6
+			glass_x = -2.2
+			front_z = 1.55
+			if open:
+				for t in 2:
+					_cyl(root, 0.5, 0.08, Vector3(3.2 + t * 2.0, 0.8, 2.4), Color(0.9, 0.9, 0.9))
+					_cyl(root, 0.06, 0.8, Vector3(3.2 + t * 2.0, 0.4, 2.4), Color(0.3, 0.3, 0.3))
+		"general_store":
+			_box(root, Vector3(9.0, 4.0, 7.0), Vector3(0, 2.0, -1.5), Color(0.72, 0.6, 0.45) * dim)
+			_box(root, Vector3(9.4, 6.6, 0.3), Vector3(0, 3.3, 2.1), Color(0.78, 0.66, 0.5) * dim)
+			_box(root, Vector3(9.6, 0.25, 2.0), Vector3(0, 3.0, 3.2), Color(0.45, 0.32, 0.22))
+			for x in [-4.4, -1.5, 1.5, 4.4]:
+				_box(root, Vector3(0.2, 3.0, 0.2), Vector3(x, 1.5, 4.1), Color(0.5, 0.36, 0.24))
+			_box(root, Vector3(9.6, 0.2, 2.2), Vector3(0, 0.1, 3.2), Color(0.55, 0.42, 0.3))
+			front_z = 2.3
+		"bakery":
+			_box(root, Vector3(7.0, 3.6, 6.0), Vector3(-1.0, 1.8, -1.0), Color(0.95, 0.88, 0.8) * dim)
+			_roof(root, Vector3(7.6, 2.4, 6.6), Vector3(-1.0, 4.8, -1.0), Color(0.55, 0.3, 0.25))
+			_box(root, Vector3(0.9, 2.4, 0.9), Vector3(1.4, 5.6, -2.0), Color(0.6, 0.35, 0.3))
+			_box(root, Vector3(7.2, 0.15, 1.3), Vector3(-1.0, 2.9, 2.6), Color(0.95, 0.6, 0.65) if open else Color(0.4, 0.35, 0.35), false, Vector3(0.3, 0, 0))
+			glass_w = 4.0
+			glass_x = -2.0
+			front_z = 2.05
+		"pharmacy":
+			_box(root, Vector3(9.0, 3.8, 7.0), Vector3(-1.0, 1.9, -1.0), Color(0.95, 0.95, 0.95) * dim)
+			_box(root, Vector3(9.4, 0.4, 7.4), Vector3(-1.0, 4.0, -1.0), Color(0.2, 0.5, 0.35))
+			_box(root, Vector3(1.6, 0.45, 0.12), Vector3(-1.0, 3.2, 2.6), Color(0.2, 0.8, 0.35), lit)
+			_box(root, Vector3(0.45, 1.6, 0.12), Vector3(-1.0, 3.2, 2.6), Color(0.2, 0.8, 0.35), lit)
+			_box(root, Vector3(3.4, 0.3, 4.0), Vector3(5.0, 3.0, -1.0), Color(0.9, 0.9, 0.9))
+			for z in [-2.6, 0.6]:
+				_box(root, Vector3(0.2, 3.0, 0.2), Vector3(6.4, 1.5, z), Color(0.7, 0.7, 0.7))
+			glass_w = 5.0
+			glass_x = -1.6
+			front_z = 2.55
+		"repair_shop":
+			_box(root, Vector3(10.0, 4.6, 7.0), Vector3(0, 2.3, -1.0), Color(0.62, 0.62, 0.66) * dim)
+			_box(root, Vector3(10.4, 0.3, 7.4), Vector3(0, 4.7, -1.0), Color(0.35, 0.35, 0.38))
+			for x in [-2.6, 1.4]:
+				_box(root, Vector3(3.2, 3.2, 0.12), Vector3(x, 1.6, 2.55), Color(0.85, 0.85, 0.82) if not open else Color(0.25, 0.27, 0.3))
+			_box(root, Vector3(1.6, 1.0, 3.2), Vector3(4.4, 0.7, 4.5), Color(0.55, 0.2, 0.15))
+			for i in 3:
+				_cyl(root, 0.45, 0.3, Vector3(-4.6, 0.15 + i * 0.3, 4.0), Color(0.1, 0.1, 0.1))
+			glass_w = 1.2
+			glass_x = 4.2
+		"law_office":
+			_box(root, Vector3(6.5, 5.4, 6.0), Vector3(0, 2.7, -1.0), Color(0.62, 0.3, 0.25) * dim)
+			_box(root, Vector3(6.9, 0.4, 6.4), Vector3(0, 5.6, -1.0), Color(0.85, 0.83, 0.78))
+			for x in [-2.0, 2.0]:
+				for y in [1.6, 4.0]:
+					_box(root, Vector3(1.0, 1.3, 0.1), Vector3(x, y, 2.05), glass, lit)
+			_box(root, Vector3(1.2, 0.5, 0.1), Vector3(1.6, 2.6, 2.1), Color(0.75, 0.62, 0.25))
+			glass_w = 0.0
+			front_z = 2.05
+		"real_estate":
+			_box(root, Vector3(6.0, 3.4, 5.0), Vector3(-1.5, 1.7, -1.5), Color(0.85, 0.9, 0.95) * dim)
+			_roof(root, Vector3(6.4, 1.6, 5.4), Vector3(-1.5, 4.2, -1.5), Color(0.25, 0.35, 0.5))
+			_box(root, Vector3(0.15, 2.6, 0.15), Vector3(4.0, 1.3, 3.6), Color(0.9, 0.9, 0.9))
+			_box(root, Vector3(2.6, 1.4, 0.1), Vector3(4.0, 2.4, 3.6), accent if open else Color(0.4, 0.4, 0.42))
+			glass_w = 3.6
+			glass_x = -2.0
+			front_z = 1.05
+		"private_school":
+			_box(root, Vector3(11.0, 4.6, 7.0), Vector3(0, 2.3, -1.2), Color(0.62, 0.32, 0.26) * dim)
+			_roof(root, Vector3(11.4, 2.0, 7.4), Vector3(0, 5.6, -1.2), Color(0.25, 0.25, 0.28))
+			_box(root, Vector3(1.6, 2.0, 1.6), Vector3(0, 7.4, -1.2), Color(0.92, 0.92, 0.9))
+			_roof(root, Vector3(1.9, 1.4, 1.9), Vector3(0, 9.1, -1.2), Color(0.25, 0.25, 0.28))
+			_cyl(root, 0.07, 7.0, Vector3(5.2, 3.5, 4.6), Color(0.85, 0.85, 0.85))
+			_box(root, Vector3(1.4, 0.9, 0.05), Vector3(5.95, 6.4, 4.6), Color(0.2, 0.3, 0.65))
+			for x in [-4.0, -2.0, 2.0, 4.0]:
+				_box(root, Vector3(1.2, 1.4, 0.1), Vector3(x, 2.0, 2.35), glass, lit)
+			glass_w = 0.0
+			front_z = 2.35
+		_:
+			_box(root, Vector3(10.0, 4.4, 7.0), Vector3(0, 2.2, -1.0), Color(0.85, 0.82, 0.75) * dim)
+			_box(root, Vector3(10.4, 0.5, 7.4), Vector3(0, 4.6, -1.0), Color(0.3, 0.3, 0.32))
+			_box(root, Vector3(10.2, 0.3, 1.8), Vector3(0, 3.5, 3.2), accent if open else Color(0.35, 0.33, 0.3))
+	if glass_w > 0.0:
+		_box(root, Vector3(glass_w, 2.0, 0.1), Vector3(glass_x, 1.4, front_z), glass, lit)
+		if open and float(b["stock"]) > 5.0 and ["grocery", "general_store", "bakery", "cafe"].has(btype):
+			for i in 3:
+				_box(root, Vector3(1.0, 0.7, 0.4), Vector3(glass_x - glass_w * 0.3 + i * glass_w * 0.3, 0.6, front_z - 0.35), Color(0.8, 0.6, 0.3))
+	_box(root, Vector3(1.1, 2.3, 0.12), Vector3(glass_x + glass_w * 0.5 + 0.9, 1.15, front_z), Color(0.35, 0.22, 0.12))
+	if not open:
+		for i in 3:
+			_box(root, Vector3(maxf(glass_w, 3.0) + 0.4, 0.35, 0.12), Vector3(glass_x, 0.8 + i * 0.7, front_z + 0.1), Color(0.55, 0.42, 0.28), false, Vector3(0, 0, 0.08 * (i - 1)))
+	if struggling:
+		var sale: Label3D = _sign(root, "SALE", Vector3(glass_x, 2.0, front_z + 0.2), 40, Color(1, 0.3, 0.25))
+		sale.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		sale.pixel_size = 0.03
 
 
 func _special(root: Node3D, b: Dictionary, btype: String, open: bool, struggling: bool) -> void:

@@ -79,6 +79,10 @@ static func generate_town(w: LTWorld) -> void:
 		var l: Dictionary = w.lot(int(h["lot"]))
 		if str(l["use"]) == "house":
 			_setup_owner(w, h, l)
+			# what the house is: built long ago, roughly for the family living there
+			var ad: int = w.household_adults(h).size()
+			var kids: int = w.household_members(h).size() - ad
+			l["home"] = LTGeography.choose_home(w, maxi(1, ad), kids, LTMoney.dollars(w.rng.randf_range(35000.0, 90000.0)), w.rng.randf_range(20.0, 80.0), w.rng.randf_range(20.0, 80.0))
 		else:
 			h["tenure"] = "rent"
 			h["rent"] = int(l["unit_rent"])
@@ -153,6 +157,30 @@ static func _married_age(w: LTWorld) -> int:
 	if r < 0.90:
 		return w.rng.randi_range(65, 74)
 	return w.rng.randi_range(75, 85)
+
+
+## A household of a given shape: one or two adults (a couple if two) and some
+## children, for settlers who planned their house around their family.
+static func make_family(w: LTWorld, adults: int, kids: int) -> Dictionary:
+	var hid: int = w.households.size()
+	var h: Dictionary = {"id": hid, "members": [], "lot": -1, "unit": -1, "tenure": "none", "rent": 0, "rent_late": 0, "mortgage": -1, "pantry": 3.0, "car": true, "moved_in": w.day, "last_grocery": "", "shop_habit": -1, "evicted_day": -1}
+	w.households.append(h)
+	var last_name: String = LAST_NAMES[w.rng.randi_range(0, LAST_NAMES.size() - 1)]
+	var wa: int = w.rng.randi_range(24, 46) if kids > 0 else w.rng.randi_range(23, 60)
+	var a: Dictionary = make_adult(w, hid, last_name, "F" if adults == 2 or w.rng.randf() < 0.7 else "M", wa)
+	var b: Dictionary = {}
+	if adults >= 2:
+		b = make_adult(w, hid, last_name, "M", clampi(wa + w.rng.randi_range(-3, 5), 21, 80))
+		a["spouse"] = int(b["id"])
+		b["spouse"] = int(a["id"])
+		_relate(a, b, "spouse", 70.0, 75.0)
+		_relate(b, a, "spouse", 70.0, 75.0)
+	for k in kids:
+		var ka: int = clampi(w.rng.randi_range(0, 17), 0, maxi(0, wa - 20))
+		make_child(w, hid, last_name, ka, a, b)
+	for m in w.household_members(h):
+		_seed_finances(w, m)
+	return h
 
 
 ## `settler` households are the ones who move to a brand new town to build a house:
