@@ -127,6 +127,18 @@ const COSTS: Dictionary = {
 	"mill": {"sqft": 3000, "equipment": 200000, "stock": 20000, "shed": true},
 	"bakery": {"sqft": 1500, "equipment": 60000, "stock": 3000, "shed": false},
 	"bank": {"sqft": 3000, "equipment": 200000, "stock": 0, "shed": false},
+	"outfitter": {"sqft": 2000, "equipment": 25000, "stock": 40000, "shed": false},
+	"marina": {"sqft": 1200, "equipment": 90000, "stock": 5000, "shed": true},
+	"campground": {"sqft": 800, "equipment": 60000, "stock": 2000, "shed": true},
+	"guide_service": {"sqft": 600, "equipment": 30000, "stock": 3000, "shed": false},
+	"sawmill": {"sqft": 6000, "equipment": 350000, "stock": 10000, "shed": true},
+	"quarry": {"sqft": 2000, "equipment": 600000, "stock": 0, "shed": true},
+	"gold_mine": {"sqft": 5000, "equipment": 3500000, "stock": 0, "shed": true},
+}
+## Businesses that live off the land need it close by: [feature, meters, lakefront only]
+const NEEDS_LAND: Dictionary = {
+	"marina": ["lake", 60.0, true], "campground": ["lake|forest", 300.0, false], "sawmill": ["forest", 450.0, false],
+	"quarry": ["mountain", 400.0, false], "gold_mine": ["mountain", 300.0, false],
 }
 const STOREFRONT_PER_SQFT: float = 165.0
 const SHED_PER_SQFT: float = 95.0
@@ -141,6 +153,7 @@ const HOME_OK: Dictionary = {
 	"law_office": {"equipment": 6000, "stock": 0, "what": "a home office"},
 	"real_estate": {"equipment": 3000, "stock": 0, "what": "a home office and a car"},
 	"trucking": {"equipment": 120000, "stock": 2000, "what": "one used semi parked in the yard"},
+	"guide_service": {"equipment": 15000, "stock": 1000, "what": "a truck, a boat and gear, run from home"},
 }
 
 
@@ -293,6 +306,20 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	else:
 		var near: Array = [int(w.hh(int(c["household"]))["lot"])]
 		lot_id = LTGeography.best_site(w, zones, near)
+	# businesses that live off the land go where the land is
+	if NEEDS_LAND.has(btype):
+		var nl: Array = NEEDS_LAND[btype]
+		if LTTerrain.t(w).is_empty():
+			return {}
+		var best_l: int = -1
+		for feat in str(nl[0]).split("|"):
+			var cand: int = LTTerrain.site_near(w, zones, feat, float(nl[1]), bool(nl[2]))
+			if cand >= 0:
+				best_l = cand
+				break
+		if best_l < 0:
+			return {}
+		lot_id = best_l
 	# an empty building already standing is far cheaper than building new
 	var existing: bool = false
 	var vacant: int = _vacant_building(w, zones, int(w.hh(int(c["household"]))["lot"]))

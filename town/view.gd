@@ -120,6 +120,16 @@ func setup(p_main: Node) -> void:
 
 func rebuild(keep_camera: bool = false) -> void:
 	w = main.world
+	# a new town: its land, trees and animals are drawn fresh
+	_shores.clear()
+	_trail_pts.clear()
+	_season = ""
+	_trees_sig = ""
+	land_mi = null
+	water_mi = null
+	pine_mm = null
+	leaf_mm = null
+	wildlife_root = null
 	for r in [ground_root, road_root, lot_root, people_root, extra_root]:
 		if r != null:
 			r.queue_free()
@@ -586,6 +596,9 @@ func refresh_all() -> void:
 	_refresh_trucks()
 	_refresh_camper()
 	_rebuild_overlay()
+	_build_forest()
+	if wildlife_root == null or not is_instance_valid(wildlife_root):
+		_build_wildlife()
 
 
 func set_overlay(kind: String) -> void:
@@ -689,7 +702,299 @@ func _apply_season() -> void:
 			leaf = Color(0.8, 0.45, 0.15)
 	if _snow:
 		g = Color(0.8, 0.82, 0.85)
-	ground_mi.material_override = _mat(g)
+	_ground_color = g
+	_build_land()
+
+
+# ------------------------------------------------------------------ the land: hills, lakes, forest, wildlife
+
+var _ground_color: Color = Color(0.45, 0.6, 0.28)
+var land_mi: MeshInstance3D
+var water_mi: MeshInstance3D
+var pine_mm: MultiMeshInstance3D
+var leaf_mm: MultiMeshInstance3D
+var wildlife_root: Node3D
+var _trees_sig: String = ""
+const LAND_STEP: float = 20.0
+
+
+## The ground: flat prairie with the mountain rising in its corner, colored by
+## season, forest floor darker, bare granite up high and snow on the peak in winter.
+func _build_land() -> void:
+	if land_mi != null:
+		land_mi.queue_free()
+	if water_mi != null:
+		water_mi.queue_free()
+	var ms: Vector2 = map_size()
+	var margin: float = 700.0
+	var nx: int = int((ms.x + margin * 2.0) / LAND_STEP)
+	var nz: int = int((ms.y + margin * 2.0) / LAND_STEP)
+	var peak: float = maxf(1.0, LTTerrain.mountain_peak(w))
+	var winter: bool = _season == "Winter"
+	var st: SurfaceTool = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hs: PackedFloat32Array = PackedFloat32Array()
+	hs.resize((nx + 1) * (nz + 1))
+	var cols: PackedColorArray = PackedColorArray()
+	cols.resize((nx + 1) * (nz + 1))
+	for j in nz + 1:
+		for i in nx + 1:
+			var x: float = -margin + float(i) * LAND_STEP
+			var z: float = -margin + float(j) * LAND_STEP
+			var h: float = LTTerrain.height(w, x, z)
+			hs[j * (nx + 1) + i] = h
+			var c: Color = _ground_color
+			if LTTerrain.forest_value(w, x, z) > 0.0 and h < peak * 0.55:
+				c = c.darkened(0.18) if not _snow else c.darkened(0.06)
+			var k: float = h / peak
+			if k > 0.35:
+				c = c.lerp(Color(0.55, 0.53, 0.5), clampf((k - 0.35) / 0.25, 0.0, 1.0))
+			if (winter or _snow) and k > 0.62:
+				c = c.lerp(Color(0.95, 0.96, 0.98), clampf((k - 0.62) / 0.12, 0.0, 1.0))
+			cols[j * (nx + 1) + i] = c
+	for j in nz:
+		for i in nx:
+			var x0: float = -margin + float(i) * LAND_STEP
+			var z0: float = -margin + float(j) * LAND_STEP
+			var idx: Array = [j * (nx + 1) + i, j * (nx + 1) + i + 1, (j + 1) * (nx + 1) + i + 1, (j + 1) * (nx + 1) + i]
+			var pts: Array = [Vector3(x0, hs[idx[0]], z0), Vector3(x0 + LAND_STEP, hs[idx[1]], z0), Vector3(x0 + LAND_STEP, hs[idx[2]], z0 + LAND_STEP), Vector3(x0, hs[idx[3]], z0 + LAND_STEP)]
+			for tri in [[0, 2, 1], [0, 3, 2]]:
+				var a: Vector3 = pts[tri[0]]
+				var b: Vector3 = pts[tri[1]]
+				var cc: Vector3 = pts[tri[2]]
+				var nrm: Vector3 = (b - a).cross(cc - a).normalized()
+				if nrm.y < 0.0:
+					nrm = -nrm
+				for q in tri:
+					st.set_color(cols[idx[q]])
+					st.set_normal(nrm)
+					st.add_vertex(pts[q] + Vector3(0, -0.3, 0))
+	land_mi = MeshInstance3D.new()
+	land_mi.mesh = st.commit()
+	var lm: StandardMaterial3D = StandardMaterial3D.new()
+	lm.vertex_color_use_as_albedo = true
+	lm.roughness = 0.95
+	lm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	land_mi.material_override = lm
+	ground_root.add_child(land_mi)
+	if ground_mi != null:
+		ground_mi.visible = false
+	# lakes: open water, or white ice from December to February
+	var frozen: bool = winter and LTCalendar.month_index(w.day) != 2
+	var ws: SurfaceTool = SurfaceTool.new()
+	ws.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for lk in LTTerrain.t(w).get("lakes", []):
+		var c2: Vector2 = lk["c"]
+		var seg: int = 48
+		for k2 in seg:
+			var a0: float = TAU * float(k2) / float(seg)
+			var a1: float = TAU * float(k2 + 1) / float(seg)
+			var p0: Vector3 = Vector3(c2.x, 0.12, c2.y)
+			var p1: Vector3 = Vector3(c2.x + cos(a0) * float(lk["rx"]), 0.12, c2.y + sin(a0) * float(lk["rz"]))
+			var p2: Vector3 = Vector3(c2.x + cos(a1) * float(lk["rx"]), 0.12, c2.y + sin(a1) * float(lk["rz"]))
+			for v in [p0, p2, p1]:
+				ws.set_normal(Vector3.UP)
+				ws.add_vertex(v)
+	water_mi = MeshInstance3D.new()
+	water_mi.mesh = ws.commit()
+	var wm: StandardMaterial3D = StandardMaterial3D.new()
+	wm.albedo_color = Color(0.86, 0.9, 0.95) if frozen else Color(0.2, 0.42, 0.62, 0.92)
+	wm.roughness = 0.2 if not frozen else 0.6
+	wm.metallic = 0.1
+	wm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if not frozen:
+		wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water_mi.material_override = wm
+	ground_root.add_child(water_mi)
+	_build_forest()
+
+
+## Animals for the eye only (the simulation does not count them): deer at the
+## forest edge, ducks and geese on the lakes, elk and mountain goats on the hills,
+## and pheasants in the fields. They wander slowly and only near the camera.
+func _build_wildlife() -> void:
+	wildlife_root = Node3D.new()
+	extra_root.add_child(wildlife_root)
+	var tt: Dictionary = LTTerrain.t(w)
+	if tt.is_empty():
+		return
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = int(tt["seed"]) + 99
+	var f: Dictionary = tt["forest"]
+	for i in 8:
+		var a: float = rng.randf() * TAU
+		var p: Vector2 = (f["c"] as Vector2) + Vector2(cos(a) * float(f["rx"]), sin(a) * float(f["rz"])) * rng.randf_range(0.6, 1.0)
+		_animal("deer", p, rng)
+	for lk in tt["lakes"]:
+		for i in (6 if float(lk["rx"]) > 80.0 else 3):
+			var a2: float = rng.randf() * TAU
+			_animal("duck", (lk["c"] as Vector2) + Vector2(cos(a2) * float(lk["rx"]), sin(a2) * float(lk["rz"])) * rng.randf_range(0.2, 0.8), rng)
+	var m: Dictionary = tt["mountain"]
+	for i in 5:
+		var a3: float = rng.randf() * TAU
+		_animal("elk" if i < 3 else "goat", (m["c"] as Vector2) + Vector2(cos(a3), sin(a3)) * float(m["r"]) * rng.randf_range(0.2, 0.6), rng)
+	for i in 6:
+		_animal("pheasant", Vector2(rng.randf_range(100.0, 1500.0), rng.randf_range(100.0, 1100.0)), rng)
+
+
+func _animal(kind: String, at: Vector2, rng: RandomNumberGenerator) -> void:
+	if kind == "pheasant" and (LTTerrain.is_water(w, at.x, at.y) or LTGeography.lot_at(w, at.x, at.y) >= 0):
+		return
+	var n: Node3D = Node3D.new()
+	n.set_meta("home", at)
+	n.set_meta("kind", kind)
+	n.set_meta("phase", rng.randf() * 100.0)
+	wildlife_root.add_child(n)
+	match kind:
+		"deer":
+			_box(n, Vector3(0.5, 0.8, 1.4), Vector3(0, 1.0, 0), Color(0.55, 0.38, 0.22))
+			_box(n, Vector3(0.3, 0.6, 0.3), Vector3(0, 1.6, 0.75), Color(0.55, 0.38, 0.22))
+			for lx in [-0.18, 0.18]:
+				for lz in [-0.5, 0.5]:
+					_box(n, Vector3(0.1, 0.7, 0.1), Vector3(lx, 0.35, lz), Color(0.4, 0.28, 0.16))
+		"elk":
+			_box(n, Vector3(0.7, 1.1, 2.0), Vector3(0, 1.4, 0), Color(0.45, 0.32, 0.2))
+			_box(n, Vector3(0.4, 0.8, 0.4), Vector3(0, 2.2, 1.0), Color(0.35, 0.25, 0.16))
+			for lx in [-0.25, 0.25]:
+				_box(n, Vector3(0.08, 0.6, 0.08), Vector3(lx, 2.8, 1.0), Color(0.8, 0.75, 0.6))
+			for lx in [-0.25, 0.25]:
+				for lz in [-0.7, 0.7]:
+					_box(n, Vector3(0.14, 0.9, 0.14), Vector3(lx, 0.45, lz), Color(0.3, 0.22, 0.14))
+		"goat":
+			_box(n, Vector3(0.45, 0.6, 1.0), Vector3(0, 0.8, 0), Color(0.92, 0.92, 0.9))
+			_box(n, Vector3(0.25, 0.35, 0.3), Vector3(0, 1.2, 0.55), Color(0.92, 0.92, 0.9))
+		"duck":
+			_box(n, Vector3(0.3, 0.2, 0.5), Vector3(0, 0.22, 0), Color(0.45, 0.35, 0.25))
+			_box(n, Vector3(0.15, 0.18, 0.15), Vector3(0, 0.42, 0.22), Color(0.1, 0.45, 0.2))
+		"pheasant":
+			_box(n, Vector3(0.25, 0.25, 0.55), Vector3(0, 0.35, 0), Color(0.65, 0.3, 0.12))
+			_box(n, Vector3(0.12, 0.2, 0.12), Vector3(0, 0.55, 0.25), Color(0.15, 0.4, 0.25))
+			_box(n, Vector3(0.05, 0.05, 0.5), Vector3(0, 0.4, -0.5), Color(0.55, 0.4, 0.2))
+
+
+func _move_wildlife(delta: float) -> void:
+	if wildlife_root == null or not is_instance_valid(wildlife_root):
+		return
+	wildlife_root.visible = dist < PEOPLE_DIST * 2.0
+	if not wildlife_root.visible:
+		return
+	var tsec: float = float(Time.get_ticks_msec()) / 1000.0
+	var frozen: bool = _season == "Winter"
+	for a in wildlife_root.get_children():
+		var home: Vector2 = a.get_meta("home")
+		var ph: float = float(a.get_meta("phase"))
+		var kind: String = str(a.get_meta("kind"))
+		# ducks leave when the lake freezes; everything wanders slowly around home
+		if kind == "duck":
+			a.visible = not frozen
+		var r: float = 6.0 if kind == "duck" else 12.0
+		var p: Vector2 = home + Vector2(sin(tsec * 0.05 + ph) * r, cos(tsec * 0.037 + ph * 1.3) * r)
+		var nxt: Vector2 = home + Vector2(sin((tsec + 0.5) * 0.05 + ph) * r, cos((tsec + 0.5) * 0.037 + ph * 1.3) * r)
+		a.position = Vector3(p.x, LTTerrain.height(w, p.x, p.y) + (0.1 if kind == "duck" else 0.0), p.y)
+		var d: Vector2 = nxt - p
+		if d.length() > 0.001:
+			a.rotation.y = atan2(d.x, d.y)
+
+
+## Thousands of trees, drawn in two batches: ponderosa pines (always green) and
+## leafy trees that turn in the fall and go bare in winter. None stand on a lot
+## that has something built on it.
+func _build_forest() -> void:
+	var built: Array = []
+	var buckets: Dictionary = {}
+	for l in w.lots:
+		if not bool(l.get("removed", false)) and str(l["use"]) != "empty":
+			var rr: Rect2 = Rect2(float(l["x0"]), float(l["z0"]), float(l["x1"]) - float(l["x0"]), float(l["z1"]) - float(l["z0"]))
+			built.append(rr)
+			for bx in range(int(rr.position.x / 50.0), int(rr.end.x / 50.0) + 1):
+				for bz in range(int(rr.position.y / 50.0), int(rr.end.y / 50.0) + 1):
+					var key: int = bz * 1000 + bx
+					if not buckets.has(key):
+						buckets[key] = []
+					buckets[key].append(rr)
+	var sig: String = "%s|%d|%d" % [_season, built.size(), int(_snow)]
+	if sig == _trees_sig and pine_mm != null:
+		return
+	_trees_sig = sig
+	if pine_mm != null:
+		pine_mm.queue_free()
+	if leaf_mm != null:
+		leaf_mm.queue_free()
+	var tt: Dictionary = LTTerrain.t(w)
+	if tt.is_empty():
+		return
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = int(tt["seed"])
+	var pines: Array = []
+	var leafy: Array = []
+	var peak: float = maxf(1.0, LTTerrain.mountain_peak(w))
+	var step: float = 9.0
+	var ms: Vector2 = map_size()
+	var x: float = 0.0
+	while x < ms.x:
+		var z: float = 0.0
+		while z < ms.y:
+			var px: float = x + rng.randf_range(-3.5, 3.5)
+			var pz: float = z + rng.randf_range(-3.5, 3.5)
+			var h: float = LTTerrain.height(w, px, pz)
+			var in_forest: bool = LTTerrain.forest_value(w, px, pz) > 0.0
+			var on_hill: bool = h > 3.0 and h < peak * 0.55 and rng.randf() < 0.55
+			if (in_forest or on_hill) and not LTTerrain.is_water(w, px, pz):
+				var blocked: bool = false
+				for r in buckets.get(int(pz / 50.0) * 1000 + int(px / 50.0), []):
+					if (r as Rect2).has_point(Vector2(px, pz)):
+						blocked = true
+						break
+				if not blocked:
+					var tr: Transform3D = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * rng.randf_range(0.8, 1.35)), Vector3(px, h, pz))
+					if on_hill or rng.randf() < 0.55:
+						pines.append(tr)
+					else:
+						leafy.append(tr)
+			z += step
+		x += step
+	pine_mm = _tree_batch(pines, true)
+	leaf_mm = _tree_batch(leafy, false)
+
+
+func _tree_batch(xfs: Array, pine: bool) -> MultiMeshInstance3D:
+	var mm: MultiMesh = MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var m: Mesh
+	if pine:
+		var cone: CylinderMesh = CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 2.2
+		cone.height = 9.0
+		cone.radial_segments = 6
+		m = cone
+	else:
+		var ball: SphereMesh = SphereMesh.new()
+		ball.radius = 2.6
+		ball.height = 4.6
+		ball.radial_segments = 6
+		ball.rings = 4
+		m = ball
+	mm.mesh = m
+	mm.instance_count = xfs.size()
+	for i in xfs.size():
+		var tr: Transform3D = xfs[i]
+		tr.origin += Vector3(0, 4.5 if pine else 4.0, 0)
+		mm.set_instance_transform(i, tr)
+	var mi: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	if pine:
+		mat.albedo_color = Color(0.16, 0.32, 0.18) if not _snow else Color(0.6, 0.68, 0.64)
+	else:
+		mat.albedo_color = _leaf_color()
+		if _season == "Winter" and not _snow:
+			mat.albedo_color = Color(0.4, 0.33, 0.25)
+	mat.roughness = 0.9
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	extra_root.add_child(mi)
+	return mi
 
 
 func lot_center(lot_id: int) -> Vector3:
@@ -958,7 +1263,7 @@ func _business(root: Node3D, l: Dictionary) -> void:
 	var accent: Color = {"grocery": Color(0.2, 0.55, 0.3), "cafe": Color(0.7, 0.35, 0.2), "general_store": Color(0.25, 0.4, 0.65), "farm": Color(0.6, 0.2, 0.15), "construction": Color(0.85, 0.65, 0.1), "bakery": Color(0.85, 0.6, 0.3), "pharmacy": Color(0.2, 0.6, 0.4), "repair_shop": Color(0.3, 0.3, 0.35), "law_office": Color(0.3, 0.25, 0.4), "real_estate": Color(0.2, 0.45, 0.6), "private_school": Color(0.55, 0.15, 0.15)}.get(btype, Color(0.5, 0.5, 0.5))
 	if btype == "farm":
 		_farm(root, b, open)
-	elif ["factory", "mill", "warehouse", "trucking", "hotel", "bank", "clinic", "bar", "childcare", "funeral_home"].has(btype):
+	elif ["factory", "mill", "warehouse", "trucking", "hotel", "bank", "clinic", "bar", "childcare", "funeral_home", "outfitter", "marina", "campground", "guide_service", "sawmill", "quarry", "gold_mine"].has(btype):
 		_special(root, b, btype, open, struggling)
 	elif btype == "construction":
 		_box(root, Vector3(8.0, 4.0, 6.0), Vector3(-1.5, 2.0, -2.0), Color(0.6, 0.6, 0.62))
@@ -973,6 +1278,61 @@ func _business(root: Node3D, l: Dictionary) -> void:
 		title += "\nCLOSED"
 	var s: Label3D = _sign(root, title, Vector3(0, 6.6, 0), 36, Color(1, 1, 1) if open else Color(0.75, 0.7, 0.65))
 	s.pixel_size = 0.05
+
+
+## The outdoor businesses: an outfitter with a canoe on the roof, a marina with
+## docks and boats, a campground of tents and cabins, a guide's log cabin, a
+## sawmill with log decks, a quarry pit with gravel piles, and a mine headframe.
+func _special_outdoors(root: Node3D, b: Dictionary, btype: String, open: bool, win: Color, lit: bool) -> void:
+	var dim: float = 1.0 if open else 0.6
+	match btype:
+		"outfitter":
+			_box(root, Vector3(9.0, 4.0, 7.0), Vector3(0, 2.0, -1.0), Color(0.55, 0.38, 0.22) * dim)
+			_roof(root, Vector3(9.6, 2.2, 7.6), Vector3(0, 5.1, -1.0), Color(0.25, 0.32, 0.22))
+			_box(root, Vector3(1.0, 0.5, 5.0), Vector3(0, 6.5, -1.0), Color(0.85, 0.35, 0.15))
+			_box(root, Vector3(6.0, 1.8, 0.1), Vector3(-0.5, 1.4, 2.55), win, lit)
+			_box(root, Vector3(1.1, 2.3, 0.12), Vector3(3.6, 1.15, 2.55), Color(0.35, 0.22, 0.12))
+		"marina":
+			_box(root, Vector3(6.0, 3.2, 5.0), Vector3(-3.0, 1.6, -2.0), Color(0.85, 0.88, 0.9) * dim)
+			_box(root, Vector3(6.4, 0.3, 5.4), Vector3(-3.0, 3.3, -2.0), Color(0.2, 0.35, 0.6))
+			_box(root, Vector3(2.0, 0.3, 14.0), Vector3(3.5, 0.4, 2.0), Color(0.55, 0.42, 0.28))
+			for i in 3:
+				_box(root, Vector3(1.4, 0.5, 3.6), Vector3(5.2, 0.45, -2.0 + float(i) * 4.5), [Color(0.9, 0.9, 0.92), Color(0.8, 0.25, 0.2), Color(0.25, 0.45, 0.7)][i])
+			_box(root, Vector3(3.0, 1.2, 0.1), Vector3(-3.0, 1.6, 0.55), win, lit)
+		"campground":
+			for i in 4:
+				var tp: Vector3 = Vector3(-4.5 + float(i % 2) * 6.0, 0.0, -3.5 + float(i / 2) * 5.5)
+				_roof(root, Vector3(2.6, 1.8, 3.0), tp + Vector3(0, 0.9, 0), [Color(0.25, 0.5, 0.3), Color(0.8, 0.5, 0.15), Color(0.3, 0.4, 0.7), Color(0.7, 0.25, 0.2)][i])
+			_box(root, Vector3(4.0, 3.0, 4.0), Vector3(4.0, 1.5, 3.0), Color(0.5, 0.35, 0.2) * dim)
+			_roof(root, Vector3(4.4, 1.6, 4.4), Vector3(4.0, 3.8, 3.0), Color(0.3, 0.25, 0.2))
+			_cyl(root, 0.6, 0.3, Vector3(0, 0.15, 1.0), Color(0.3, 0.3, 0.3))
+		"guide_service":
+			_box(root, Vector3(7.0, 3.2, 6.0), Vector3(0, 1.6, -1.0), Color(0.5, 0.33, 0.18) * dim)
+			_roof(root, Vector3(7.6, 2.2, 6.6), Vector3(0, 4.3, -1.0), Color(0.22, 0.3, 0.2))
+			_box(root, Vector3(1.2, 0.45, 3.4), Vector3(4.6, 0.5, 2.5), Color(0.3, 0.45, 0.3))
+			_box(root, Vector3(2.4, 1.0, 0.1), Vector3(-1.5, 1.8, 2.05), win, lit)
+		"sawmill":
+			_box(root, Vector3(12.0, 5.0, 7.0), Vector3(0, 2.5, -2.0), Color(0.6, 0.6, 0.62) * dim)
+			_roof(root, Vector3(12.4, 1.6, 7.4), Vector3(0, 5.8, -2.0), Color(0.4, 0.4, 0.42))
+			for i in 3:
+				for k in 3:
+					_cyl(root, 0.4, 5.0, Vector3(-4.0 + float(i) * 3.0, 0.4 + float(k) * 0.75, 4.0), Color(0.55, 0.38, 0.22))
+		"quarry":
+			for i in 3:
+				var sz: float = 11.0 - float(i) * 3.0
+				_box(root, Vector3(sz, 0.6, sz), Vector3(0, 0.1 - float(i) * 0.05, -1.0), Color(0.6, 0.58, 0.55).darkened(float(i) * 0.12))
+			for i in 2:
+				_roof(root, Vector3(4.0, 3.0, 4.0), Vector3(-4.5 + float(i) * 9.0, 1.5, 4.0), Color(0.7, 0.68, 0.62))
+			_box(root, Vector3(2.2, 1.6, 3.8), Vector3(3.0, 1.0, -5.0), Color(0.95, 0.75, 0.15))
+		"gold_mine":
+			for x in [-1.6, 1.6]:
+				for z in [-1.6, 1.6]:
+					_box(root, Vector3(0.3, 10.0, 0.3), Vector3(x, 5.0, z - 1.0), Color(0.35, 0.3, 0.25))
+			_box(root, Vector3(3.8, 0.4, 3.8), Vector3(0, 10.2, -1.0), Color(0.35, 0.3, 0.25))
+			_cyl(root, 1.2, 0.4, Vector3(0, 10.8, -1.0), Color(0.2, 0.2, 0.22))
+			_box(root, Vector3(8.0, 4.0, 5.0), Vector3(-4.0, 2.0, 3.0), Color(0.55, 0.3, 0.2) * dim)
+			_roof(root, Vector3(8.4, 1.6, 5.4), Vector3(-4.0, 4.8, 3.0), Color(0.3, 0.3, 0.32))
+			_roof(root, Vector3(5.0, 3.0, 5.0), Vector3(5.0, 1.5, 3.0), Color(0.6, 0.5, 0.35))
 
 
 ## Main street businesses, each with its own building: a wide grocery with a
@@ -1157,6 +1517,7 @@ func _special(root: Node3D, b: Dictionary, btype: String, open: bool, struggling
 			_roof(root, Vector3(9.4, 2.4, 7.4), Vector3(0, 5.2, -1.0), Color(0.2, 0.2, 0.22))
 			_box(root, Vector3(1.4, 4.0, 1.4), Vector3(0, 7.5, 2.0), Color(0.82, 0.8, 0.78))
 			_roof(root, Vector3(1.6, 2.0, 1.6), Vector3(0, 10.5, 2.0), Color(0.2, 0.2, 0.22))
+	_special_outdoors(root, b, btype, open, win, lit)
 	if bool(b.get("unlicensed", false)) and open:
 		var u: Label3D = _sign(root, "no license posted", Vector3(-3.0, 1.0, 3.2), 22, Color(1.0, 0.6, 0.4))
 		u.pixel_size = 0.03
@@ -1283,6 +1644,11 @@ func _refresh_tier() -> void:
 			continue
 		var hl: int = int(w.hh(int(c["household"]))["lot"])
 		var pos: Vector3 = lot_center(hl) if hl >= 0 else Vector3(-20, 0, 0)
+		# someone out at the lake or on the trail is shown there, not at home
+		if _watch_mode and (LTCalendar.is_weekend(w.day) or bool(c["retired"])) and LTChoices.hobby_of(c) != "":
+			var od: Dictionary = _outdoor_plan(c, _last_hour)
+			if not od.is_empty():
+				pos = od["pos"]
 		cand.append([pos.distance_squared_to(target), int(c["id"])])
 	cand.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
 	for e in cand:
@@ -1424,6 +1790,10 @@ func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 	elif kind == "outside":
 		outside = true
 	var weekend: bool = LTCalendar.is_weekend(w.day)
+	if (weekend or bool(c["retired"])) and int(c["sick_days"]) == 0 and age >= 10:
+		var od: Dictionary = _outdoor_plan(c, hour)
+		if not od.is_empty():
+			return od
 	if weekend or int(c["sick_days"]) > 0 or (age < 5) or bool(c["retired"]) or kind == "none":
 		# an afternoon walk to the shops and back, otherwise around home
 		if age >= 5 and int(c["sick_days"]) == 0:
@@ -1487,6 +1857,54 @@ func _path_len(a: Vector3, b: Vector3, from_lot: int, to_lot: int) -> float:
 func _hash01(cid: int, k: int, salt: int) -> float:
 	var v: float = sin(float(cid) * 12.9898 + float(k) * 78.233 + float(salt) * 37.719) * 43758.5453
 	return v - floor(v)
+
+
+var _shores: Dictionary = {}
+var _trail_pts: Array = []
+
+
+## Free time outdoors, in two hour stretches: fishing from the lake shore, hiking
+## the trail up the mountain and back down, or in season, hunting at the forest edge.
+func _outdoor_plan(c: Dictionary, hour: float) -> Dictionary:
+	var tt: Dictionary = LTTerrain.t(w)
+	if tt.is_empty() or hour < 9.0 or hour > 17.0:
+		return {}
+	var cid: int = int(c["id"])
+	var block: int = int(hour / 2.0)
+	if _hash01(cid, block + w.day * 13, 21) > 0.45:
+		return {}
+	match LTChoices.hobby_of(c):
+		"fishing":
+			if tt["lakes"].is_empty():
+				return {}
+			var li: int = cid % tt["lakes"].size()
+			if not _shores.has(li):
+				_shores[li] = LTTerrain.shore_spots(w, li, 28)
+			var spot: Vector2 = _shores[li][cid % 28]
+			var cen: Vector2 = tt["lakes"][li]["c"]
+			var d: Vector2 = cen - spot
+			return {"pos": Vector3(spot.x, 0, spot.y), "visible": true, "car": false, "moving": false, "face": atan2(d.x, d.y)}
+		"hiking":
+			if _trail_pts.is_empty():
+				_trail_pts = LTTerrain.trail(w)
+			var k: float = fmod(hour, 2.0) / 2.0
+			var up: bool = k < 0.5
+			var tpos: float = (k * 2.0 if up else (1.0 - k) * 2.0) * float(_trail_pts.size() - 1)
+			var i0: int = clampi(int(tpos), 0, _trail_pts.size() - 2)
+			var a: Vector2 = _trail_pts[i0]
+			var b: Vector2 = _trail_pts[i0 + 1]
+			var p: Vector2 = a.lerp(b, tpos - float(i0)) + Vector2(sin(float(cid)) * 1.5, 0)
+			var dirv: Vector2 = (b - a) if up else (a - b)
+			return {"pos": Vector3(p.x, 0, p.y), "visible": true, "car": false, "moving": time_scale > 0.0, "dir": Vector3(dirv.x, 0, dirv.y).normalized()}
+		"hunting":
+			if not LTChoices.hunting_open(w):
+				return {}
+			var f: Dictionary = tt["forest"]
+			var ang: float = _hash01(cid, 3, 7) * TAU
+			var spot2: Vector2 = (f["c"] as Vector2) + Vector2(cos(ang) * float(f["rx"]), sin(ang) * float(f["rz"])) * 0.97
+			var d2: Vector2 = (f["c"] as Vector2) - spot2
+			return {"pos": Vector3(spot2.x, 0, spot2.y), "visible": true, "car": false, "moving": false, "face": atan2(d2.x, d2.y)}
+	return {}
 
 
 ## Where the front of the house sits on its lot (the garage pushes it left).
@@ -1688,6 +2106,8 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 			n.position = p
 		else:
 			n.position = n.position.lerp(p, clampf(delta * 10.0, 0.0, 1.0))
+		# Sims walk on the ground, up the mountain trail too
+		var gy: float = LTTerrain.height(w, n.position.x, n.position.z)
 		if plan.has("dir") and bool(plan["moving"]):
 			var d: Vector3 = plan["dir"]
 			n.rotation.y = atan2(d.x, d.z)
@@ -1696,7 +2116,7 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 		# sitting in a chair or kneeling in the garden: lower the whole Sim a little
 		var pose: String = str(plan.get("pose", ""))
 		var sink: float = 0.45 if pose == "sit" else (0.35 if pose == "kneel" else 0.0)
-		n.position.y = lerpf(n.position.y, -sink, clampf(delta * 8.0, 0.0, 1.0)) if watch else -sink
+		n.position.y = lerpf(n.position.y, gy - sink, clampf(delta * 8.0, 0.0, 1.0)) if watch else gy - sink
 		var body: Node3D = n.get_node("Body")
 		body.rotation.z = sin(Time.get_ticks_msec() / 120.0) * 0.08 if watch and time_scale > 0.0 and bool(plan["moving"]) and not bool(plan["car"]) else 0.0
 	for t in truck_nodes:
@@ -1712,6 +2132,7 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 	if people_root.visible:
 		audio["traffic"] = lerpf(float(audio["traffic"]), clampf(float(cars) / 6.0, 0.0, 1.0), clampf(delta, 0.0, 1.0))
 		audio["crowd"] = lerpf(float(audio["crowd"]), clampf(float(walkers) / 15.0, 0.0, 1.0), clampf(delta, 0.0, 1.0))
+	_move_wildlife(delta)
 	_camera_keys(delta)
 
 

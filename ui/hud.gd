@@ -842,8 +842,8 @@ func show_setup(first: bool = false) -> void:
 	card.anchor_bottom = 0.5
 	card.offset_left = -300
 	card.offset_right = 300
-	card.offset_top = -240
-	card.offset_bottom = 170
+	card.offset_top = -270
+	card.offset_bottom = 200
 	root.add_child(card)
 	var vb: VBoxContainer = VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -890,6 +890,14 @@ func show_setup(first: bool = false) -> void:
 	home.custom_minimum_size = Vector2(130, 0)
 	who.add_child(home)
 	vb.add_child(who)
+	var hbs: HBoxContainer = HBoxContainer.new()
+	hbs.add_child(_lbl("Map seed"))
+	var seed_edit: LineEdit = LineEdit.new()
+	seed_edit.placeholder_text = "blank for a new random map"
+	seed_edit.custom_minimum_size = Vector2(260, 0)
+	seed_edit.tooltip_text = "Every map has a number. Type one you liked to play the same land again."
+	hbs.add_child(seed_edit)
+	vb.add_child(hbs)
 	var hb2: HBoxContainer = HBoxContainer.new()
 	hb2.add_child(_lbl("Town name"))
 	var tname: LineEdit = LineEdit.new()
@@ -911,6 +919,7 @@ func show_setup(first: bool = false) -> void:
 			"lottery": [LTMoney.dollars(250000.0), LTMoney.dollars(1000000.0), LTMoney.dollars(5000000.0)][lotto.selected],
 			"real_calendar": cal.button_pressed,
 			"player_name": pname.text.strip_edges() if pname.text.strip_edges() != "" else "Sam Dakota",
+			"map_seed": int(seed_edit.text.strip_edges()) if seed_edit.text.strip_edges().is_valid_int() else 0,
 			"player_pronouns": ["they", "she", "he"][pron.selected],
 			"player_age": int(age.value),
 			"player_hometown": home.text.strip_edges(),
@@ -1017,6 +1026,10 @@ func _tab_mayor() -> void:
 	var where: String = "the mayor's house" if int(pl.get("home_lot", -1)) >= 0 else "a camper by the county road"
 	box.add_child(_rtl("[b]%s[/b] (%s), %d, from %s. Mayor of %s, living in %s." % [pl["name"], {"they": "they/them", "he": "he/him", "she": "she/her"}.get(str(pl.get("pronouns", "they")), "they/them"), ww.player_age(), pl.get("hometown", "somewhere"), ww.city["name"], where]))
 	box.add_child(_btn("Edit your profile", func(): show_profile(), "Your name, pronouns, age, hometown, color, and the town's name."))
+	var tt: Dictionary = LTTerrain.t(ww)
+	if not tt.is_empty():
+		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
+		box.add_child(_rtl("[color=#9fb0c0]The land:[/color] %s, %s and %s. [color=#9fb0c0]Map seed[/color] [b]%d[/b] (type it in New town to play this map again)." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
 	box.add_child(_sep())
 	box.add_child(_h("Budget"))
 	var last: Dictionary = ww.city["budget_months"][ww.city["budget_months"].size() - 1] if not ww.city["budget_months"].is_empty() else {}

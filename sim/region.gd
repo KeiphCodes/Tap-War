@@ -77,6 +77,8 @@ static func daily(w: LTWorld) -> void:
 static func _month(w: LTWorld) -> void:
 	var r: Dictionary = w.region
 	r["phase_months"] = int(r["phase_months"]) + 1
+	# the gold price wanders, as it does, between about half and double
+	r["gold_price"] = clampf(float(r.get("gold_price", 1.0)) * exp(w.rng.randfn(0.0, 0.05)), 0.5, 2.0)
 	var idx: float = float(r["index"])
 	var phase: String = str(r["phase"])
 	# a slow business cycle: years of steady growth, now and then a downturn

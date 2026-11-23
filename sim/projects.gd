@@ -64,6 +64,22 @@ const ROAD_BLOCK_DAYS: float = 0.5
 ## A new road the player drew: contractors bid on building its planned blocks.
 static func define_road_build(w: LTWorld, street_id: int, segs: Array, draft: bool = false) -> Dictionary:
 	var n: int = segs.size()
+	# bridges, hillsides and trees to clear cost more than open prairie
+	var units: float = 0.0
+	var bridge_m: int = 0
+	var hill_m: int = 0
+	var trees_m: int = 0
+	for sid in segs:
+		var sg: Dictionary = w.roads[int(sid)]
+		var rc: Dictionary = LTTerrain.road_cost(w, LTGeography.node_pos(w, int(sg["a"])), LTGeography.node_pos(w, int(sg["b"])))
+		units += float(rc["factor"]) if bool(rc["ok"]) else 1.0
+		match str(rc["kind"]):
+			"bridge":
+				bridge_m += 10
+			"hill":
+				hill_m += 10
+			"forest":
+				trees_m += 10
 	var p: Dictionary = {
 		"id": w.projects.size(), "ptype": "road_build", "title": "Build %s (%d m)" % [w.streets[street_id]["name"], n * 10], "lot": -1, "street": street_id, "ceiling": 0,
 		"petition_id": -1, "status": "bidding", "created_day": w.day, "bid_close_day": w.day + BID_DAYS,
@@ -71,12 +87,21 @@ static func define_road_build(w: LTWorld, street_id: int, segs: Array, draft: bo
 		"days_promised": 0, "start_day": -1, "progress": 0.0, "stage": "", "quality": 0.0, "quality_target": 0.0,
 		"events": [], "done_day": -1, "warranty_until": -1, "private": false, "developer": {}, "repair_needed_day": -1,
 		"kickback": {}, "payment_late": false, "segments": segs.duplicate(),
-		"base_cost": ROAD_BLOCK_COST * n, "base_days": 15 + int(ROAD_BLOCK_DAYS * float(n)),
-		"raw_cost": ROAD_BLOCK_COST * n, "raw_days": 15 + int(ROAD_BLOCK_DAYS * float(n)), "spec": default_spec("road_build"),
+		"base_cost": int(float(ROAD_BLOCK_COST) * units), "base_days": 15 + int(ROAD_BLOCK_DAYS * units),
+		"raw_cost": int(float(ROAD_BLOCK_COST) * units), "raw_days": 15 + int(ROAD_BLOCK_DAYS * units), "spec": default_spec("road_build"),
 	}
 	_apply_spec(p)
 	w.projects.append(p)
 	_event(w, p, "Drawn by the mayor: %d meters of new %s." % [n * 10, "alley" if str(w.streets[street_id]["kind"]) == "alley" else "road"])
+	var extras: Array = []
+	if bridge_m > 0:
+		extras.append("a %d meter bridge" % bridge_m)
+	if hill_m > 0:
+		extras.append("%d meters of hillside" % hill_m)
+	if trees_m > 0:
+		extras.append("%d meters through trees to clear" % trees_m)
+	if not extras.is_empty():
+		_event(w, p, "It includes %s, so it costs more than a road on open prairie." % ", ".join(extras))
 	if draft:
 		_make_draft(p)
 		return {"ok": true, "message": "\"%s\" is drawn as a draft. Tap it to write the contract, then press Go live to send it out to bid." % p["title"], "project_id": int(p["id"])}
@@ -135,6 +160,9 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		l["use"] = "reserved"
 		l["ref"] = int(p["id"])
 	p["raw_cost"] = cost if cost > 0 else int(BASE_COST[ptype])
+	if int(p["lot"]) >= 0 and bool(w.lot(int(p["lot"])).get("wooded", false)):
+		# trees to clear and stumps to pull before the foundation goes in
+		p["raw_cost"] = int(p["raw_cost"]) + LTTerrain.LOT_CLEARING
 	p["raw_days"] = int(BASE_DAYS.get(ptype, 30))
 	if sqft > 0:
 		# about a month of site work plus a day for every 60 square feet

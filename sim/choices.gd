@@ -24,6 +24,7 @@ static func monthly(w: LTWorld) -> void:
 		_volunteer(w, c)
 		_help_someone(w, c)
 		_care_for_parent(w, c)
+		_outdoors(w, c)
 
 
 ## Daily: classes finish, extra shifts end.
@@ -267,3 +268,71 @@ static func _care_for_parent(w: LTWorld, c: Dictionary) -> void:
 
 static func _count(w: LTWorld, key: String) -> void:
 	w.counters[key] = int(w.counters.get(key, 0)) + 1
+
+
+
+# ---------------------------------------------------------------- the outdoors
+
+## What a Sim likes to do outside, from who they are: the patient and quiet fish,
+## the restless and unsentimental hunt, the driven hike and climb. Some do none.
+static func hobby(c: Dictionary) -> String:
+	if not c.has("hobby"):
+		c["hobby"] = hobby_of(c)
+	return str(c["hobby"])
+
+
+## The same choice without remembering it (for the 3D view, which only looks).
+static func hobby_of(c: Dictionary) -> String:
+	if c.has("hobby"):
+		return str(c["hobby"])
+	var t: Dictionary = c["traits"]
+	var h: String = ""
+	if float(t["risk"]) > 60.0 and float(t["kindness"]) < 55.0:
+		h = "hunting"
+	elif float(t["discipline"]) > 55.0 and float(t["sociability"]) < 55.0:
+		h = "fishing"
+	elif float(t["ambition"]) > 58.0:
+		h = "hiking"
+	elif int(c["id"]) % 4 == 0:
+		h = "fishing"
+	return h
+
+
+static func hunting_open(w: LTWorld) -> bool:
+	# pheasant from October into January, deer in November
+	var m: int = LTCalendar.month_index(w.day)
+	return int(w.city["laws"].get("hunting_season", 1)) == 1 and (m >= 9 or m == 0)
+
+
+static func _outdoors(w: LTWorld, c: Dictionary) -> void:
+	var tt: Dictionary = LTTerrain.t(w)
+	if tt.is_empty() or w.age_years(c) < 10:
+		return
+	var h: String = hobby(c)
+	var can: bool = false
+	match h:
+		"fishing":
+			can = not tt["lakes"].is_empty()
+		"hiking":
+			can = true
+		"hunting":
+			can = hunting_open(w) and w.age_years(c) >= 12
+	if not can:
+		return
+	var n: Dictionary = c["needs"]
+	n["fun"] = float(n["fun"]) + 15.0
+	n["social"] = float(n["social"]) + 4.0
+	var hl: int = int(w.hh(int(c["household"]))["lot"])
+	if w.age_years(c) >= 18 and w.cash(c) > LTMoney.dollars(200.0):
+		# bait, shells, boots and the rest
+		LTServices.spend(w, w.acct_p(c), "outdoor_gear", LTMoney.dollars(w.rng.randf_range(20.0, 60.0)), hl, c)
+		if h == "hunting" and LTCalendar.month_index(w.day) == 9:
+			w.ledger.pay(w.acct_p(c), "outside", LTMoney.dollars(45.0), "hunting_license")
+	if h == "hunting" and LTCalendar.month_index(w.day) == 10 and w.rng.randf() < 0.4:
+		var hh: Dictionary = w.hh(int(c["household"]))
+		hh["pantry"] = float(hh["pantry"]) + 6.0
+		w.log_sim(c, "Got a deer in the %s. The freezer is full for a while." % tt["forest_name"], true)
+	elif h == "fishing" and w.rng.randf() < 0.15:
+		w.log_sim(c, "Caught a good stringer of walleye on %s." % tt["lakes"][int(c["id"]) % tt["lakes"].size()]["name"], false)
+	elif h == "hiking" and w.rng.randf() < 0.1:
+		w.log_sim(c, "Hiked to the top of %s." % tt["park_name"].replace(" State Park", ""), false)

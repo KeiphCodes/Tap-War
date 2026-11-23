@@ -22,6 +22,14 @@ const TYPES: Dictionary = {
 	"mill": {"display": "Mill", "skill": "repair", "zones": ["industrial", "agricultural"], "startup": 2400000, "staff": 1, "wage": 13000, "title": "mill hand", "license": 25000, "category": "", "supply": 0.0, "min_skill": 35},
 	"bakery": {"display": "Bakery", "skill": "cooking", "zones": ["commercial", "mixed"], "startup": 1500000, "staff": 1, "wage": 11000, "title": "baker", "license": 20000, "category": "bakery", "supply": 0.0, "min_skill": 35},
 	"bank": {"display": "State Bank", "skill": "finance", "zones": ["commercial", "mixed"], "startup": 6000000, "staff": 2, "wage": 16000, "title": "teller", "license": 100000, "category": "", "supply": 0.0, "min_skill": 60},
+	# the outdoors: they live off the lakes, the forest and the mountain
+	"outfitter": {"display": "Outfitters", "skill": "retail", "zones": ["commercial", "mixed"], "startup": 1500000, "staff": 1, "wage": 10400, "title": "outfitter clerk", "license": 20000, "category": "outdoor_gear", "supply": 0.55, "min_skill": 25},
+	"marina": {"display": "Marina", "skill": "repair", "zones": ["commercial", "mixed", "park", "residential"], "startup": 2500000, "staff": 1, "wage": 11000, "title": "dock hand", "license": 25000, "category": "boating", "supply": 0.25, "min_skill": 30},
+	"campground": {"display": "Campground", "skill": "management", "zones": ["commercial", "agricultural", "park", "mixed"], "startup": 2000000, "staff": 1, "wage": 10400, "title": "camp host", "license": 20000, "category": "camping", "supply": 0.15, "min_skill": 25},
+	"guide_service": {"display": "Guides", "skill": "farming", "zones": ["commercial", "mixed", "residential"], "startup": 800000, "staff": 0, "wage": 13000, "title": "guide", "license": 15000, "category": "guiding", "supply": 0.1, "min_skill": 45},
+	"sawmill": {"display": "Lumber", "skill": "repair", "zones": ["industrial", "agricultural"], "startup": 9000000, "staff": 3, "wage": 14000, "title": "sawmill worker", "license": 30000, "category": "", "supply": 0.0, "min_skill": 35},
+	"quarry": {"display": "Quarry", "skill": "construction", "zones": ["industrial", "agricultural"], "startup": 9000000, "staff": 3, "wage": 15500, "title": "quarry worker", "license": 40000, "category": "", "supply": 0.0, "min_skill": 35},
+	"gold_mine": {"display": "Mining Co", "skill": "management", "zones": ["industrial", "agricultural"], "startup": 50000000, "staff": 8, "wage": 21000, "title": "miner", "license": 100000, "category": "", "supply": 0.0, "min_skill": 50},
 }
 const SUFFIXES: Dictionary = {
 	"clinic": ["Family Clinic", "Medical", "Health Center"], "pharmacy": ["Pharmacy", "Drug", "Apothecary"],
@@ -31,16 +39,25 @@ const SUFFIXES: Dictionary = {
 	"childcare": ["Child Care", "Little Ones", "Day Care"], "funeral_home": ["Funeral Home", "Memorial Chapel"],
 	"law_office": ["Law Office", "Legal Services"], "real_estate": ["Realty", "Real Estate"], "mill": ["Mill", "Grain and Feed"],
 	"bakery": ["Bakery", "Bread Co"], "bank": ["State Bank", "Savings Bank"],
+	"outfitter": ["Outfitters", "Bait and Tackle", "Sporting Goods"], "marina": ["Marina", "Boat Rentals", "Boat and Dock"],
+	"campground": ["Campground", "Cabins", "RV Park"], "guide_service": ["Guide Service", "Hunting and Fishing Guides"],
+	"sawmill": ["Lumber", "Sawmill", "Timber Co"], "quarry": ["Quarry", "Stone and Gravel", "Aggregate"],
+	"gold_mine": ["Mining Co", "Gold Mine", "Consolidated Mining"],
 }
 ## What the same service costs, and how far, outside town. Some have no outside option.
 const OUTSIDE_OPTION: Dictionary = {
 	"medical": true, "pharmacy": true, "tuition": false, "repairs": true, "storage": false, "freight": true,
 	"lodging": false, "bar": true, "childcare": true, "funeral": true, "legal": true, "real_estate": true, "bakery": false,
+	"outdoor_gear": true, "boating": false, "camping": false, "guiding": false,
 }
 const GOODS_UNIT_FACTORY: int = 1250    # factory sells goods to the general store
 const GOODS_EXPORT: int = 1050
 const FLOUR_UNIT: int = 140              # flour for one person-day of bread
 const BREAD_UNIT: int = 430              # bakery to grocery, one person-day share
+## one worker-day of output: lumber, gravel and stone, and gold ore
+const SAW_UNIT: int = 90000
+const QUARRY_UNIT: int = 80000
+const GOLD_UNIT: int = 220000
 
 
 static func cfg(btype: String) -> Dictionary:
@@ -182,6 +199,19 @@ static func _estimate(w: LTWorld, btype: String) -> Dictionary:
 			gross = float(w.market.get("food_units_day", 50.0)) * 0.15 * 30.0 * float(BREAD_UNIT)
 			why = "the grocery trucks in all its bread from outside"
 			return {"gross": gross / float(count + 1), "margin": 0.5, "why": why, "doubt": "the grocery buys too little bread"}
+		"sawmill":
+			gross = 22.0 * 4.0 * float(SAW_UNIT) * LTRegion.index(w)
+			return {"gross": gross / float(count + 1), "margin": 0.42, "why": "the %s is full of timber that leaves the county uncut" % LTTerrain.t(w).get("forest_name", "forest"), "doubt": "a sawmill costs more than anyone here can raise"}
+		"quarry":
+			if int(w.city["laws"].get("mining", 1)) < 1:
+				return {"gross": 0.0, "margin": 0.0, "why": "", "doubt": "the city has banned mining"}
+			gross = 22.0 * 4.0 * float(QUARRY_UNIT) * LTRegion.index(w)
+			return {"gross": gross / float(count + 1), "margin": 0.45, "why": "there is good granite and gravel in the hills and the county always needs it for roads", "doubt": "a quarry costs more than anyone here can raise"}
+		"gold_mine":
+			if int(w.city["laws"].get("mining", 1)) < 2:
+				return {"gross": 0.0, "margin": 0.0, "why": "", "doubt": "the city does not allow gold mining"}
+			gross = 22.0 * 9.0 * float(GOLD_UNIT) * float(w.region.get("gold_price", 1.0))
+			return {"gross": gross / float(count + 1), "margin": 0.35, "why": "prospectors found gold in the hills, as people did across the Black Hills", "doubt": "a mine takes millions and outside investors"}
 		"bank":
 			if not bool(w.city["laws"].get("bank_charter", 0)):
 				return {"gross": 0.0, "margin": 0.0, "why": "", "doubt": "the city has not chartered a local bank"}
@@ -216,7 +246,7 @@ static func _estimate(w: LTWorld, btype: String) -> Dictionary:
 
 
 static func _cat_words(cat: String) -> String:
-	return {"medical": "doctor visits", "pharmacy": "prescriptions", "tuition": "private schooling", "repairs": "car and home repairs", "storage": "storage for shop deliveries", "freight": "freight", "lodging": "rooms for visiting crews and travelers", "bar": "a night out", "childcare": "child care", "funeral": "funerals", "legal": "lawyers", "real_estate": "help buying and selling houses"}.get(cat, cat)
+	return {"outdoor_gear": "fishing, hunting and hiking gear", "boating": "boat rentals and docking", "camping": "campsites for visitors", "guiding": "hunting and fishing guides", "medical": "doctor visits", "pharmacy": "prescriptions", "tuition": "private schooling", "repairs": "car and home repairs", "storage": "storage for shop deliveries", "freight": "freight", "lodging": "rooms for visiting crews and travelers", "bar": "a night out", "childcare": "child care", "funeral": "funerals", "legal": "lawyers", "real_estate": "help buying and selling houses"}.get(cat, cat)
 
 
 static func _potential_tuition(w: LTWorld) -> int:
@@ -269,6 +299,7 @@ static func _needs_childcare(w: LTWorld, h: Dictionary) -> bool:
 static func daily(w: LTWorld) -> void:
 	_bar_visits(w)
 	_lodging(w)
+	_outdoor_visitors(w)
 	if not LTCalendar.is_weekend(w.day):
 		for b in w.open_businesses("trucking"):
 			if b["staff"].size() > 0:
@@ -286,6 +317,12 @@ static func daily(w: LTWorld) -> void:
 				_mill_day(w, b)
 			"bakery":
 				_bakery_day(w, b)
+			"sawmill":
+				_land_industry_day(w, b, SAW_UNIT, 0.38, "timber from the state forest", 0.0)
+			"quarry":
+				_land_industry_day(w, b, QUARRY_UNIT, 0.3, "fuel and blasting", 0.4)
+			"gold_mine":
+				_land_industry_day(w, b, GOLD_UNIT, 0.5, "fuel, reagents and power", 1.0)
 		if TYPES.has(str(b["type"])) and int(b["owners"][0]) % 7 == w.day % 7:
 			_service_price(w, b)
 
@@ -403,6 +440,38 @@ static func _lodging(w: LTWorld) -> void:
 			spend(w, "outside", "lodging", LTMoney.dollars(85.0), -1)
 
 
+## Visitors who come for the outdoors: summer at the lake and on the trails, fall for
+## hunting, a few ice fishermen in winter. They spend on campsites, gear, guides and
+## boats; with no local business to take it, the demand is noted and goes unmet.
+static func _outdoor_visitors(w: LTWorld) -> void:
+	var tt: Dictionary = LTTerrain.t(w)
+	if tt.is_empty():
+		return
+	var m: int = LTCalendar.month_index(w.day)
+	var season: float = 1.8 if m >= 5 and m <= 7 else (1.3 if m >= 8 and m <= 10 else (0.8 if m >= 2 and m <= 4 else 0.5))
+	if m >= 9 and m <= 11 and int(w.city["laws"].get("hunting_season", 1)) == 0:
+		season *= 0.6
+	var monthly: float = (25.0 * float(tt["lakes"].size()) + 40.0 + 25.0) * season * LTRegion.index(w)
+	var day_n: float = monthly / 30.0
+	var n: int = int(day_n)
+	if w.rng.randf() < day_n - float(n):
+		n += 1
+	for i in n:
+		_visitor_spend(w, "camping", LTMoney.dollars(45.0))
+		_visitor_spend(w, "outdoor_gear", LTMoney.dollars(30.0))
+		if w.rng.randf() < 0.15:
+			_visitor_spend(w, "guiding", LTMoney.dollars(90.0))
+		if w.rng.randf() < 0.3:
+			_visitor_spend(w, "boating", LTMoney.dollars(50.0))
+
+
+static func _visitor_spend(w: LTWorld, cat: String, amount: int) -> void:
+	if provider_type(cat) != "" and not w.open_businesses(provider_type(cat)).is_empty():
+		spend(w, "outside", cat, amount, -1)
+	else:
+		book(w, cat, "latent", amount)
+
+
 # ================================================================ production chains
 
 static func _crew_output(w: LTWorld, b: Dictionary, per_worker: float) -> float:
@@ -475,6 +544,33 @@ static func _mill_day(w: LTWorld, b: Dictionary) -> void:
 		b["stock"] = 100.0
 		b["month_revenue"] = int(b["month_revenue"]) + rev
 		b["lifetime_revenue"] = int(b["lifetime_revenue"]) + rev
+
+
+## Sawmill, quarry and gold mine: crews turn the land into something to sell to the
+## region. A mine's ore runs thinner every year and the gold price swings; dust and
+## runoff follow the pollution rule like a factory's smoke.
+static func _land_industry_day(w: LTWorld, b: Dictionary, unit: int, input_share: float, inputs: String, dirt: float) -> void:
+	if LTCalendar.is_weekend(w.day):
+		return
+	var btype: String = str(b["type"])
+	if btype == "quarry" and int(w.city["laws"].get("mining", 1)) < 1 or btype == "gold_mine" and int(w.city["laws"].get("mining", 1)) < 2:
+		return
+	var units: float = _crew_output(w, b, 1.0)
+	var price: float = LTRegion.index(w)
+	if btype == "gold_mine":
+		var grade: float = float(b.get("ore_grade", 1.0))
+		b["ore_grade"] = maxf(0.1, grade - 0.0004)
+		price = float(w.region.get("gold_price", 1.0)) * grade
+	var rule: float = float(w.city["laws"].get("pollution_rule", 0.5))
+	var input_cost: int = int(units * float(unit) * input_share + units * 4000.0 * rule * dirt)
+	var paid: int = w.ledger.pay(w.acct_b(b), "outside", input_cost, inputs)
+	b["month_costs"] = int(b["month_costs"]) + paid
+	var rev: int = int(units * float(unit) * price)
+	if rev > 0:
+		w.ledger.pay("outside", w.acct_b(b), rev, "exports")
+		b["month_revenue"] = int(b["month_revenue"]) + rev
+		b["lifetime_revenue"] = int(b["lifetime_revenue"]) + rev
+	b["pollution"] = maxf(0.0, (1.0 - rule) * units * 0.01 * dirt)
 
 
 static func _bakery_day(w: LTWorld, b: Dictionary) -> void:

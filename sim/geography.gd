@@ -107,6 +107,8 @@ static func build(w: LTWorld) -> void:
 		if r == by - 1:
 			continue   # farm blocks have no alley
 		_road(w, "Alley", "alley", ox, oy + r * BLOCK + BLOCK / 2, ox + bx * BLOCK, oy + r * BLOCK + BLOCK / 2)
+	# the land around the town: forest, mountain and lakes from the map seed
+	LTTerrain.setup(w, int(w.config["map_seed"]), Rect2(float(ox) * GRID, float(oy) * GRID, float(bx * BLOCK) * GRID, float(by * BLOCK) * GRID))
 	for s in w.roads:
 		s["condition"] = w.rng.randf_range(45.0, 85.0)
 		s["quality"] = w.rng.randf_range(0.45, 0.7)
@@ -172,14 +174,17 @@ static func _add_lot(w: LTWorld, x0: float, z0: float, x1: float, z1: float, zon
 	var access: int = int(sg["a"]) if pa.distance_to(Vector2(cx, cz)) <= pb.distance_to(Vector2(cx, cz)) else int(sg["b"])
 	var id: int = w.lots.size()
 	var area: float = (x1 - x0) * (z1 - z0)
+	var land: Dictionary = LTTerrain.survey(w, Rect2(x0, z0, x1 - x0, z1 - z0))
+	var worth: float = 1.0 + (0.6 if bool(land.get("lakefront", false)) else 0.0) + (0.2 if bool(land.get("view", false)) else 0.0) + (0.1 if bool(land.get("wooded", false)) else 0.0)
 	w.lots.append({
 		"id": id, "x0": x0, "z0": z0, "x1": x1, "z1": z1, "front": front,
 		"col": int(cx / 18.0), "row": int(cz / 18.0), "zone": zone,
 		"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
 		"owner_kind": "city", "owner_id": -1,
-		"value": land_value(zone, area), "condition": 80.0,
+		"value": int(float(land_value(zone, area)) * worth), "condition": 80.0,
 		"building": "", "built_day": 0, "name": "", "street": int(sg["street"]), "district": district,
 		"access_node": access, "price_pct": 100, "hold": false, "plot_group": 0,
+		"wooded": bool(land.get("wooded", false)), "lakefront": bool(land.get("lakefront", false)), "view": bool(land.get("view", false)),
 	})
 	return id
 
@@ -634,6 +639,8 @@ static func build_open(w: LTWorld) -> void:
 	_road(w, "County Road 12", "highway", 0, jm, MAP_COLS, jm)
 	w.config["exit_node"] = find_node(w, 0, jm)
 	w.config["exit_nodes"] = [find_node(w, 0, jm), find_node(w, MAP_COLS, jm)]
+	# keep the middle of the county road open prairie for the first streets
+	LTTerrain.setup(w, int(w.config["map_seed"]), Rect2(float(MAP_COLS) * GRID * 0.5 - 300.0, float(MAP_ROWS) * GRID * 0.5 - 180.0, 600.0, 360.0))
 	for s in w.roads:
 		s["condition"] = 75.0
 		s["quality"] = 0.6
@@ -716,6 +723,13 @@ static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false, kind: Str
 	if _rect_hits_lots(w, probe):
 		return {"ok": false, "message": "A plotted lot is in the way. Remove the lot or draw the road elsewhere."}
 	var new_segs: Array = []
+	var steps0: int = maxi(absi(bx - ax), absi(by - ay))
+	for k in steps0:
+		var pa: Vector2 = Vector2(float(ax + signi(bx - ax) * k), float(ay + signi(by - ay) * k)) * GRID
+		var pb: Vector2 = Vector2(float(ax + signi(bx - ax) * (k + 1)), float(ay + signi(by - ay) * (k + 1))) * GRID
+		var rc: Dictionary = LTTerrain.road_cost(w, pa, pb)
+		if not bool(rc["ok"]):
+			return {"ok": false, "message": "Can't build that road: %s." % rc["why"]}
 	var steps: int = maxi(absi(bx - ax), absi(by - ay))
 	var dx: int = signi(bx - ax)
 	var dy: int = signi(by - ay)
@@ -813,9 +827,15 @@ static func plot_lots(w: LTWorld, x0: float, z0: float, x1: float, z1: float, zo
 	var group: int = int(w.config.get("plot_group_i", 0)) + 1
 	var made: int = 0
 	var blocked: int = 0
+	var land_why: String = ""
 	for pc in pieces:
 		var pr: Rect2 = pc
 		if _rect_hits_roads(w, pr) or _rect_hits_lots(w, pr):
+			blocked += 1
+			continue
+		var land: Dictionary = LTTerrain.survey(w, pr)
+		if not bool(land["ok"]):
+			land_why = str(land["why"])
 			blocked += 1
 			continue
 		var f: String = _front_side(w, pr)
@@ -829,6 +849,8 @@ static func plot_lots(w: LTWorld, x0: float, z0: float, x1: float, z1: float, zo
 		w.lots[id]["plot_group"] = group
 		made += 1
 	if made == 0:
+		if land_why != "":
+			return {"ok": false, "message": "No lots plotted: %s." % land_why}
 		return {"ok": false, "message": "No lots plotted: they would cover a road or another lot, or nothing touches a road."}
 	w.config["plot_group_i"] = group
 	var msg: String = "Plotted %d %s lot%s. Tap one to set its price and details." % [made, zone, "" if made == 1 else "s"]

@@ -151,6 +151,8 @@ func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -
 	config = default_config()
 	for k in p_config:
 		config[k] = p_config[k]
+	# the land has its own seed, so a map can be kept while everything else changes
+	config["map_seed"] = int(mode.get("map_seed", 0)) if int(mode.get("map_seed", 0)) > 0 else (p_seed * 7919 + 17) % 1000000 + 1
 	LTCalendar.apply(config["calendar"])
 	ledger = LTLedger.new()
 	citizens.clear()

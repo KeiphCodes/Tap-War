@@ -4,7 +4,7 @@ extends RefCounted
 ## same needs and scoring as everything else. Nothing here is graphic: it shows up
 ## in lives, money, panels and outcomes.
 
-const RISKY_JOBS: Dictionary = {"construction worker": 3.0, "construction laborer": 3.0, "farm hand": 2.0, "factory worker": 2.5, "truck driver": 2.0, "mill hand": 2.0, "warehouse worker": 1.5, "mechanic": 1.5}
+const RISKY_JOBS: Dictionary = {"construction worker": 3.0, "construction laborer": 3.0, "farm hand": 2.0, "factory worker": 2.5, "truck driver": 2.0, "mill hand": 2.0, "warehouse worker": 1.5, "mechanic": 1.5, "miner": 3.5, "quarry worker": 3.0, "sawmill worker": 3.0, "guide": 1.5, "dock hand": 1.2}
 
 
 static func daily(w: LTWorld) -> void:
