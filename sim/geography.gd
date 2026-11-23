@@ -283,7 +283,7 @@ static func travel_minutes(w: LTWorld, from_lot: int, to_lot: int) -> float:
 		for ex in exit_nodes(w):
 			if int(ex) == a:
 				best = 0.0
-			best = minf(best, float(dist0.get(int(ex), 1e9)))
+			best = minf(best, dist_to(w, dist0, a, int(ex)))
 		if best >= 1e8:
 			return 999.0
 		return best * weather_factor(w) + 2.0 + extra
@@ -292,9 +292,10 @@ static func travel_minutes(w: LTWorld, from_lot: int, to_lot: int) -> float:
 	if src == dst:
 		return 2.0
 	var dist: Dictionary = node_distances(w, src)
-	if not dist.has(dst):
+	var d: float = dist_to(w, dist, src, dst)
+	if d >= 1e8:
 		return 999.0
-	return float(dist[dst]) * weather_factor(w) + 2.0
+	return d * weather_factor(w) + 2.0
 
 
 ## Is the lot connected to the outside world by built road?
@@ -302,40 +303,113 @@ static func connected(w: LTWorld, lot_id: int) -> bool:
 	return travel_minutes(w, lot_id, -1) < 500.0
 
 
+## The road graph has a node every 10 meters, but almost all of them sit in the
+## middle of a straight run with one road in and one out. Paths are found on the
+## junctions only (crossings, corners, dead ends, exits); a node in the middle of a
+## run is reached from the junctions at either end of it. Rebuilt whenever the
+## distance cache is cleared (weekly, or when a road opens or wears).
+static func _junction_graph(w: LTWorld) -> Dictionary:
+	if w.dist_cache.has("_g"):
+		return w.dist_cache["_g"]
+	var exits: Dictionary = {}
+	for ex in exit_nodes(w):
+		exits[int(ex)] = true
+	var is_j: Dictionary = {}
+	for nd in w.road_nodes:
+		var deg: int = nd["edges"].size()
+		if deg > 0 and (deg != 2 or exits.has(int(nd["id"]))):
+			is_j[int(nd["id"])] = true
+	var adj: Dictionary = {}
+	var chain: Dictionary = {}
+	for j in is_j:
+		adj[j] = []
+	for j in is_j:
+		for sid in w.road_nodes[j]["edges"]:
+			# walk the run of road until the next junction
+			var prev: int = j
+			var cur_s: int = int(sid)
+			var acc: float = 0.0
+			var mids: Array = []
+			var guard: int = 0
+			while guard < 100000:
+				guard += 1
+				var sg: Dictionary = w.roads[cur_s]
+				acc += SEGMENT_MINUTES * (1.0 + (100.0 - float(sg["condition"])) / 100.0 * 0.9)
+				var nxt: int = int(sg["b"]) if int(sg["a"]) == prev else int(sg["a"])
+				if is_j.has(nxt):
+					adj[j].append([nxt, acc])
+					for m in mids:
+						# each middle node remembers both ends of its run and how far each is
+						if not chain.has(int(m[0])):
+							chain[int(m[0])] = [j, float(m[1]), nxt, acc - float(m[1])]
+					break
+				mids.append([nxt, acc])
+				var es: Array = w.road_nodes[nxt]["edges"]
+				var other_s: int = int(es[0]) if int(es[0]) != cur_s else int(es[1])
+				prev = nxt
+				cur_s = other_s
+	var g: Dictionary = {"adj": adj, "chain": chain, "j": is_j}
+	w.dist_cache["_g"] = g
+	return g
+
+
+## Shortest times from a node to every junction (cached per source node).
 static func node_distances(w: LTWorld, src: int) -> Dictionary:
 	var cache: Dictionary = w.dist_cache
 	if cache.has(src):
 		return cache[src]
-	var n_nodes: int = w.road_nodes.size()
-	var dist: Array = []
-	dist.resize(n_nodes)
-	dist.fill(1e18)
-	var done: PackedByteArray = PackedByteArray()
-	done.resize(n_nodes)
-	dist[src] = 0.0
-	var heap: Array = [[0.0, src]]
+	var g: Dictionary = _junction_graph(w)
+	var adj: Dictionary = g["adj"]
+	var dist: Dictionary = {}
+	var heap: Array = []
+	if g["j"].has(src):
+		dist[src] = 0.0
+		heap.append([0.0, src])
+	elif g["chain"].has(src):
+		var ch: Array = g["chain"][src]
+		dist[int(ch[0])] = float(ch[1])
+		_heap_push(heap, [float(ch[1]), int(ch[0])])
+		if float(ch[3]) < float(dist.get(int(ch[2]), 1e18)):
+			dist[int(ch[2])] = float(ch[3])
+			_heap_push(heap, [float(ch[3]), int(ch[2])])
+	var done: Dictionary = {}
 	while not heap.is_empty():
 		var top: Array = _heap_pop(heap)
 		var n: int = int(top[1])
-		if done[n] == 1:
+		if done.has(n):
 			continue
-		done[n] = 1
-		for sid in w.road_nodes[n]["edges"]:
-			var s: Dictionary = w.roads[int(sid)]
-			var other: int = int(s["b"]) if int(s["a"]) == n else int(s["a"])
-			if done[other] == 1:
+		done[n] = true
+		for e in adj.get(n, []):
+			var other: int = int(e[0])
+			if done.has(other):
 				continue
-			var cond: float = float(s["condition"])
-			var nd: float = float(dist[n]) + SEGMENT_MINUTES * (1.0 + (100.0 - cond) / 100.0 * 0.9)
-			if nd < float(dist[other]):
+			var nd: float = float(dist[n]) + float(e[1])
+			if nd < float(dist.get(other, 1e18)):
 				dist[other] = nd
 				_heap_push(heap, [nd, other])
-	var out: Dictionary = {}
-	for i in n_nodes:
-		if float(dist[i]) < 1e17:
-			out[i] = dist[i]
-	cache[src] = out
-	return out
+	cache[src] = dist
+	return dist
+
+
+## The time from `src` to node `t`, given src's junction distances.
+static func dist_to(w: LTWorld, dist: Dictionary, src: int, t: int) -> float:
+	if t == src:
+		return 0.0
+	var g: Dictionary = _junction_graph(w)
+	if g["j"].has(t):
+		return float(dist.get(t, 1e9))
+	if not g["chain"].has(t):
+		return 1e9
+	var ct: Array = g["chain"][t]
+	var best: float = minf(float(dist.get(int(ct[0]), 1e9)) + float(ct[1]), float(dist.get(int(ct[2]), 1e9)) + float(ct[3]))
+	# both on the same run of road: straight along it
+	if g["chain"].has(src):
+		var cs: Array = g["chain"][src]
+		if int(cs[0]) == int(ct[0]) and int(cs[2]) == int(ct[2]):
+			best = minf(best, absf(float(cs[1]) - float(ct[1])))
+		elif int(cs[0]) == int(ct[2]) and int(cs[2]) == int(ct[0]):
+			best = minf(best, absf(float(cs[1]) - float(ct[3])))
+	return best
 
 
 static func _heap_push(h: Array, item: Array) -> void:
@@ -670,15 +744,23 @@ static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false, kind: Str
 
 
 static func _next_road_name(w: LTWorld) -> String:
-	var i: int = int(w.config.get("road_name_i", 0))
-	w.config["road_name_i"] = i + 1
-	var base: String = ROAD_NAMES[i % ROAD_NAMES.size()]
-	if i >= ROAD_NAMES.size():
-		base = "%s %d" % [base, i / ROAD_NAMES.size() + 1]
-	return base
+	# the next name on the list that no street in town already has
+	var used: Dictionary = {}
+	for st in w.streets:
+		used[str(st["name"])] = true
+	var guard: int = 0
+	while guard < 500:
+		guard += 1
+		var i: int = int(w.config.get("road_name_i", 0))
+		w.config["road_name_i"] = i + 1
+		var base: String = ROAD_NAMES[i % ROAD_NAMES.size()]
+		if i >= ROAD_NAMES.size():
+			base = "%s %d" % [base, i / ROAD_NAMES.size() + 1]
+		if not used.has(base):
+			return base
+	return "New Street %d" % w.streets.size()
 
 
-## Builds the planned pieces of a road when a contractor finishes the job.
 static func open_segment(w: LTWorld, sid: int, quality: float) -> void:
 	var sg: Dictionary = w.roads[sid]
 	if not bool(sg.get("planned", false)):

@@ -26,6 +26,7 @@ const LAWS: Dictionary = {
 	"bank_charter": {"label": "Charter a local bank (0 no, 1 yes, needs 120 people)", "min": 0.0, "max": 1.0, "step": 1.0},
 	"transfer_tax": {"label": "Tax on every property sale, paid by the seller", "min": 0.0, "max": 0.03, "step": 0.005, "pct": true},
 }
+const DEFAULT_LAWS: Dictionary = {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005}
 const DENY_REASONS: Array = ["no money in the budget this year", "this is not the city's job", "the need is not as big as the petition says", "maybe next year"]
 const PETITION_KINDS: Dictionary = {
 	"grocery": {"title": "We need a grocery store in town", "civic": false},
@@ -41,7 +42,7 @@ const PETITION_KINDS: Dictionary = {
 static func setup_city(w: LTWorld) -> void:
 	w.city = {
 		"name": "Prairie Hollow",
-		"laws": {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005},
+		"laws": DEFAULT_LAWS.duplicate(),
 		"elections": false,
 		"term_years": 4,
 		"next_election_day": 365 * 4 - 60,

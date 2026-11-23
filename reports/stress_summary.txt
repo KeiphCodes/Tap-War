@@ -1,4 +1,4 @@
 STRESS RUN
-Generated 931 Sims in 331 households on 168 lots in 543 ms.
-90 days: average tick 135 ms, worst tick 300 ms. Population now 938. Ledger balanced.
-Businesses opened 11, bankruptcies 1, petitions 4.
+Generated 704 Sims in 331 households on 525 lots in 1804 ms.
+90 days: average tick 137 ms, worst tick 297 ms. Population now 701. Ledger balanced.
+Businesses opened 5, bankruptcies 1, petitions 5.

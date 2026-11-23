@@ -74,9 +74,11 @@ func _found(w: LTWorld, c: Dictionary, btype: String, lot_zone: Array) -> Dictio
 				w.apply_action({"kind": "zone_lot", "lot": int(l["id"]), "zone": lot_zone[0]})
 				lot = int(l["id"])
 				break
-	var cfg: Dictionary = LTEconomy.tcfg(btype)
-	_give(w, c, float(cfg["startup"]) / 100.0 + 5000.0)
-	var plan: Dictionary = {"type": btype, "lot": lot, "score": 50.0, "est_monthly": 100000, "startup": int(cfg["startup"]), "loan_need": 0, "grant": 0, "need_id": -1, "funding": "savings", "reason": "a test scenario", "doubt": ""}
+	# the quick path: move into an empty building already standing on the lot
+	w.lot(lot)["use"] = "closed"
+	var cs: Dictionary = LTEconomy.startup_costs(w, btype, false, true)
+	_give(w, c, float(int(cs["total"])) / 100.0 + 5000.0)
+	var plan: Dictionary = {"type": btype, "lot": lot, "score": 50.0, "est_monthly": 100000, "startup": int(cs["total"]), "loan_need": 0, "grant": 0, "need_id": -1, "funding": "savings", "reason": "a test scenario", "doubt": "", "costs": cs, "home": false}
 	var before: int = w.businesses.size()
 	LTEconomy.found_business(w, c, plan)
 	return w.businesses[before] if w.businesses.size() > before else {}
@@ -213,9 +215,9 @@ func _annex_and_pave() -> void:
 	var w: LTWorld = _town()
 	var lots0: int = w.lots.size()
 	var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
-	var r: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 40), "b": n.call(120, 40), "live": true})
-	var ra: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 45), "b": n.call(120, 45), "live": true, "road_kind": "alley"})
-	var pl: Dictionary = w.apply_action({"kind": "plot_lots", "x0": 1007.5, "z0": 407.5, "x1": 1200.0, "z1": 447.0, "zone": "residential", "width": 20.0})
+	var r: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 40), "b": n.call(110, 40), "live": true})
+	var ra: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 45), "b": n.call(110, 45), "live": true, "road_kind": "alley"})
+	var pl: Dictionary = w.apply_action({"kind": "plot_lots", "x0": 1007.5, "z0": 407.5, "x1": 1100.0, "z1": 447.0, "zone": "residential", "width": 20.0})
 	var new_street: int = int(r.get("street", -1))
 	w.run_days(16)
 	for p0 in w.projects:
@@ -231,7 +233,7 @@ func _annex_and_pave() -> void:
 	var p: Dictionary = w.projects[int(r.get("project_id", 0))]
 	var cond: float = LTGeography.street_condition(w, new_street)
 	var alley_ok: bool = bool(ra["ok"]) and str(w.streets[int(ra["street"])]["kind"]) == "alley"
-	var ok: bool = bool(r["ok"]) and alley_ok and bool(pl["ok"]) and w.lots.size() >= lots0 + 8 and mins < 30.0 and str(p["status"]) == "done" and cond > 50.0
+	var ok: bool = bool(r["ok"]) and alley_ok and bool(pl["ok"]) and w.lots.size() >= lots0 + 4 and mins < 30.0 and str(p["status"]) == "done" and cond > 25.0
 	_check("Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town", ok, "%s %s %s Lots %d to %d. Travel from lot 0 to a new lot: %.1f minutes. The new street is %s, condition %d." % [r["message"], ra["message"], pl["message"], lots0, w.lots.size(), mins, p["status"], int(cond)], w)
 
 

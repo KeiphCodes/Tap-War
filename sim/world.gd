@@ -666,6 +666,10 @@ func from_save(data: Dictionary, _version: int) -> Error:
 	debts = data["finance"]["debts"]
 	bank = data["finance"]["bank"]
 	city = data["city"]["city"]
+	# a law added since the save was made starts at its usual setting
+	for k in LTCivic.DEFAULT_LAWS:
+		if not city["laws"].has(k):
+			city["laws"][k] = LTCivic.DEFAULT_LAWS[k]
 	petitions = data["city"]["petitions"]
 	city_needs = data["city"]["city_needs"]
 	projects = data["city"]["projects"]

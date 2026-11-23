@@ -155,7 +155,7 @@ static func startup_costs(w: LTWorld, btype: String, home_based: bool, existing:
 	var sqft: int = 0
 	var equipment: int = LTMoney.dollars(float(sheet["equipment"]))
 	var stock: int = LTMoney.dollars(float(sheet["stock"]))
-	var scale: float = clampf(float(w.alive_count()) / 1000.0, 0.35, 1.5)
+	var scale: float = clampf(float(_town_size(w)) / 1000.0, 0.35, 1.5)
 	if home_based and HOME_OK.has(btype):
 		equipment = LTMoney.dollars(float(HOME_OK[btype]["equipment"]))
 		stock = LTMoney.dollars(float(HOME_OK[btype]["stock"]))
@@ -229,12 +229,27 @@ static func recent_failures(w: LTWorld, btype: String) -> int:
 	return n
 
 
+## People in town, counted once a day (founders ask often).
+static func _town_size(w: LTWorld) -> int:
+	if int(w.market.get("pop_day", -1)) != w.day:
+		w.market["pop_day"] = w.day
+		w.market["pop"] = w.alive_count()
+	return int(w.market["pop"])
+
+
 ## The nearest empty building (a business that closed) in one of the zones.
 static func _vacant_building(w: LTWorld, zones: Array, near_lot: int) -> int:
+	if int(w.market.get("closed_day", -1)) != w.day:
+		var closed: Array = []
+		for l0 in w.lots:
+			if str(l0["use"]) == "closed" and not bool(l0.get("hold", false)):
+				closed.append(l0)
+		w.market["closed_day"] = w.day
+		w.market["closed_lots"] = closed
 	var best: int = -1
 	var best_d: float = 1e9
-	for l in w.lots:
-		if str(l["use"]) != "closed" or not zones.has(str(l["zone"])) or bool(l.get("hold", false)):
+	for l in w.market["closed_lots"]:
+		if str(l["use"]) != "closed" or not zones.has(str(l["zone"])):
 			continue
 		var d: float = 0.0
 		if near_lot >= 0:
@@ -291,7 +306,7 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	if HOME_OK.has(btype) and hh_lot >= 0 and str(w.lot(hh_lot)["use"]) == "house" and _home_free(w, hh_lot):
 		var full: Dictionary = startup_costs(w, btype, false)
 		# most small town businesses of these kinds start at home
-		if lot_id < 0 or w.alive_count() < 400 or (not existing and w.cash(c) < int(float(full["total"]) * 0.15)):
+		if lot_id < 0 or _town_size(w) < 400 or (not existing and w.cash(c) < int(float(full["total"]) * 0.15)):
 			home_based = true
 			existing = false
 			lot_id = hh_lot

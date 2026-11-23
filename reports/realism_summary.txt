@@ -1,41 +1,41 @@
 LIVING TOWN REALISM CHECK
-Generated 2026-11-22T05:21:03 by tests/realism.gd.
+Generated 2026-11-23T01:42:44 by tests/realism.gd.
 
 Weather, 200 simulated years:
-[PASS] Thunderstorm days a year: 38.74  (allowed 30.00 to 50.00; real: about 40 in Sioux Falls)
-[PASS] Days with snow a year: 29.88  (allowed 25.00 to 45.00; real: about 34)
-[PASS] Days with rain, thunder or snow a year: 101.59  (allowed 85.00 to 120.00; real: about 100)
-[PASS] Thunderstorm days in Dec to Feb a year: 0.12  (allowed 0.00 to 0.50; real: almost none)
-[PASS] Severe thunderstorms hitting town a year: 1.56  (allowed 1.00 to 2.00; real: 1 to 2)
-[PASS] Blizzards a year: 1.44  (allowed 1.00 to 2.00; real: 1 to 2 in eastern South Dakota)
-[PASS] Tornadoes hitting town per century: 0.00  (allowed 0.00 to 1.00; real: well under 1)
+[PASS] Thunderstorm days a year: 39.15  (allowed 30.00 to 50.00; real: about 40 in Sioux Falls)
+[PASS] Days with snow a year: 30.32  (allowed 25.00 to 45.00; real: about 34)
+[PASS] Days with rain, thunder or snow a year: 101.81  (allowed 85.00 to 120.00; real: about 100)
+[PASS] Thunderstorm days in Dec to Feb a year: 0.08  (allowed 0.00 to 0.50; real: almost none)
+[PASS] Severe thunderstorms hitting town a year: 1.50  (allowed 1.00 to 2.00; real: 1 to 2)
+[PASS] Blizzards a year: 1.45  (allowed 1.00 to 2.00; real: 1 to 2 in eastern South Dakota)
+[PASS] Tornadoes hitting town per century: 1.00  (allowed 0.00 to 1.00; real: well under 1)
 
 County economy, 100 simulated years:
-[PASS] Major county employers that close, per employer per year (%): 1.17  (allowed 0.50 to 4.00; real: about 1 to 3% of large plants a year)
+[PASS] Major county employers that close, per employer per year (%): 1.00  (allowed 0.50 to 4.00; real: about 1 to 3% of large plants a year)
 
-A town of about 664 people (539 adults, 393 workers, 320 homes, 287 renting, 33 businesses), 3 simulated years:
-Starting population: 667 people.
-[PASS] Share of people under 10 (%): 11.09  (allowed 9.00 to 16.00; real: about 13 in rural South Dakota)
-[PASS] Share of people 60 and over (%): 23.84  (allowed 17.00 to 32.00; real: about 25 in rural South Dakota)
-[INFO] Births per 1,000 people a year: 16.05  (people: 12.4 in South Dakota)
-[INFO] Deaths per 1,000 people a year: 13.55  (people: 9.5 in South Dakota)
-[INFO] Marriages per 1,000 people a year: 5.02  (people: 6.1)
-[INFO] Divorces per 1,000 people a year: 1.00  (people: 2.4)
-[INFO] Property crimes per 1,000 people a year: 1.00  (people: about 18 in South Dakota, less in small towns)
-[INFO] Burglaries per 1,000 people a year: 0.00  (people: about 3)
-[INFO] Assaults with injury per 1,000 people a year: 0.00  (people: about 2 to 4)
-[PASS] Work injuries per 100 workers a year: 2.79  (allowed 1.00 to 5.00; real: 2.7 (BLS))
-[INFO] New depression cases per 100 adults a year: 2.97  (people: about 3)
-[INFO] Bankruptcies per 1,000 adults a year: 1.85  (people: about 1 in South Dakota)
-[INFO] Foreclosures per 1,000 homes a year: 0.00  (people: about 2 to 3)
-[INFO] Evictions per 100 renting households a year: 1.28  (people: about 3 to 4 filings)
-[PASS] Building fires per 1,000 homes a year: 2.08  (allowed 0.50 to 6.00; real: about 2.5 home fires plus some businesses)
-[INFO] Layoffs per 100 workers a year: 17.36  (people: about 13 (all layoffs and discharges, JOLTS))
-[INFO] Sims taking extra work when money is tight, per 1,000 adults a year: 8.65  (people: about 50 to 80 take a second job)
-[INFO] Sims starting night classes, per 1,000 adults a year: 36.47  (people: about 20 to 40 adult learners)
-[INFO] Sims joining a volunteer group, per 1,000 adults a year: 58.72  (people: about a quarter of adults volunteer)
-[INFO] Sims helping family or friends with money, per 1,000 adults a year: 3.09  (people: common)
+A town of about 708 people (553 adults, 387 workers, 328 homes, 127 renting, 43 businesses), 3 simulated years:
+Starting population: 704 people.
+[PASS] Share of people under 10 (%): 15.20  (allowed 9.00 to 16.00; real: about 13 in rural South Dakota)
+[PASS] Share of people 60 and over (%): 25.99  (allowed 17.00 to 32.00; real: about 25 in rural South Dakota)
+[INFO] Births per 1,000 people a year: 11.29  (people: 12.4 in South Dakota)
+[INFO] Deaths per 1,000 people a year: 16.47  (people: 9.5 in South Dakota)
+[INFO] Marriages per 1,000 people a year: 5.65  (people: 6.1)
+[INFO] Divorces per 1,000 people a year: 2.82  (people: 2.4)
+[INFO] Property crimes per 1,000 people a year: 3.29  (people: about 18 in South Dakota, less in small towns)
+[INFO] Burglaries per 1,000 people a year: 0.94  (people: about 3)
+[INFO] Assaults with injury per 1,000 people a year: 0.94  (people: about 2 to 4)
+[PASS] Work injuries per 100 workers a year: 2.23  (allowed 1.00 to 5.00; real: 2.7 (BLS))
+[INFO] New depression cases per 100 adults a year: 3.49  (people: about 3)
+[INFO] Bankruptcies per 1,000 adults a year: 5.42  (people: about 1 in South Dakota)
+[INFO] Foreclosures per 1,000 homes a year: 21.30  (people: about 2 to 3)
+[INFO] Evictions per 100 renting households a year: 3.93  (people: about 3 to 4 filings)
+[PASS] Building fires per 1,000 homes a year: 5.07  (allowed 0.50 to 6.00; real: about 2.5 home fires plus some businesses)
+[INFO] Layoffs per 100 workers a year: 10.91  (people: about 13 (all layoffs and discharges, JOLTS))
+[INFO] Sims taking extra work when money is tight, per 1,000 adults a year: 27.11  (people: about 50 to 80 take a second job)
+[INFO] Sims starting night classes, per 1,000 adults a year: 51.81  (people: about 20 to 40 adult learners)
+[INFO] Sims joining a volunteer group, per 1,000 adults a year: 51.21  (people: about a quarter of adults volunteer)
+[INFO] Sims helping family or friends with money, per 1,000 adults a year: 13.25  (people: common)
 [INFO] Sims who start caring for an aging parent, per 1,000 adults a year: 0.00  (people: about 10 to 20)
-[INFO] Business closures per 100 businesses a year: 22.08  (people: about 8 to 10)
+[INFO] Business closures per 100 businesses a year: 18.35  (people: about 8 to 10)
 
 RESULT: ALL RATES REALISTIC
