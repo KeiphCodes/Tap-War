@@ -251,6 +251,21 @@ static func road_cost(w: LTWorld, a: Vector2, b: Vector2) -> Dictionary:
 ## The empty lot in these zones nearest a land feature ("lake", "forest",
 ## "mountain"), within `reach` meters, or -1.
 static func site_near(w: LTWorld, zones: Array, feature: String, reach: float, lakefront: bool = false) -> int:
+	# founders ask this often; the answer only changes when lots change, so once a day
+	var key: String = "%s|%s|%d|%s" % [str(zones), feature, int(reach), lakefront]
+	if int(w.market.get("near_day", -1)) != w.day:
+		w.market["near_day"] = w.day
+		w.market["near_cache"] = {}
+	if w.market["near_cache"].has(key):
+		var cached: int = int(w.market["near_cache"][key])
+		if cached < 0 or str(w.lot(cached)["use"]) == "empty":
+			return cached
+	var r: int = _site_near(w, zones, feature, reach, lakefront)
+	w.market["near_cache"][key] = r
+	return r
+
+
+static func _site_near(w: LTWorld, zones: Array, feature: String, reach: float, lakefront: bool) -> int:
 	var best: int = -1
 	var best_d: float = reach
 	for l in w.lots:

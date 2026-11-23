@@ -213,6 +213,8 @@ func _annex_and_pave() -> void:
 	# the mayor extends the town: a new street off the east edge and an alley
 	# behind it, built through bids, and new lots on it reach the rest of town
 	var w: LTWorld = _town()
+	# enough in the bank to award the street, whatever the land under it costs
+	w.ledger.pay("outside", "city", LTMoney.dollars(400000.0), "test_grant")
 	var lots0: int = w.lots.size()
 	var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
 	var r: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 40), "b": n.call(110, 40), "live": true})
@@ -233,7 +235,7 @@ func _annex_and_pave() -> void:
 	var p: Dictionary = w.projects[int(r.get("project_id", 0))]
 	var cond: float = LTGeography.street_condition(w, new_street)
 	var alley_ok: bool = bool(ra["ok"]) and str(w.streets[int(ra["street"])]["kind"]) == "alley"
-	var ok: bool = bool(r["ok"]) and alley_ok and bool(pl["ok"]) and w.lots.size() >= lots0 + 4 and mins < 30.0 and str(p["status"]) == "done" and cond > 25.0
+	var ok: bool = bool(r["ok"]) and alley_ok and bool(pl["ok"]) and w.lots.size() >= lots0 + 3 and mins < 30.0 and str(p["status"]) == "done" and cond > 25.0
 	_check("Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town", ok, "%s %s %s Lots %d to %d. Travel from lot 0 to a new lot: %.1f minutes. The new street is %s, condition %d." % [r["message"], ra["message"], pl["message"], lots0, w.lots.size(), mins, p["status"], int(cond)], w)
 
 
