@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-23T02:53:47 by tests/scenarios.gd.
+Generated 2026-11-23T03:01:24 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Diane Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 91 days in the county jail. Job before: line cook, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 91 days in the county jail.
@@ -51,5 +51,8 @@ Generated 2026-11-23T02:53:47 by tests/scenarios.gd.
 
 [PASS] Contracts and lot details: drawn roads are drafts until the mayor presses Go live; the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome
   Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $60,000, concrete avenue with sidewalks and lights $139,799, gravel lane $24,000. Built: concrete avenue quality 35, 0.1 minutes a block; gravel lane quality 22, 0.2 minutes a block. Deadline 30 days: bids promised [21, 22, 24] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $87,000. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
+
+[PASS] Sim mayor: a seeded Sim founds the town, lays roads, awards contracts and logs each reason, and the player can take over
+  Tina Martin (content, cautious, kind, greedy, outgoing) made 8 decisions in 300 days. Streets 3, projects under way or done 11, residents 13. Take over: You are the mayor now. Every decision is yours until you hand it back.
 
 RESULT: ALL SCENARIOS PASS
