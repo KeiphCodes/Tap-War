@@ -21,6 +21,8 @@ The game saves itself as you play (and when you close it) and opens where you le
 
 For now the player is a permanent resident with no needs of their own: the only goal is running the town well. Set your name, pronouns, age, hometown and color when you start, and change them (or rename the town) any time with **Edit your profile** on the Mayor tab.
 
+Every map comes from a **map seed**: a forest, a Black Hills style mountain and lakes in different places each time, or type a seed you liked on the setup screen to play the same land again. The deep forest and the mountaintop are protected state land; lakefront and view lots are worth more; Sims fish, hike and hunt in season, visitors come for the outdoors, and outfitters, marinas, campgrounds, guides, sawmills, quarries and gold mines open where the land allows.
+
 Odds are realistic: weather follows the eastern South Dakota climate month by month, damaging storms reach town once or twice a year and mostly hurt run down or cheaply built buildings, house fires and accidents happen at real US rates, and owners carry insurance. The Sims themselves are not people, so their choices come from their own traits and needs rather than human statistics. `tests/realism.gd` checks the world's rates against real figures.
 
 ## Play it
