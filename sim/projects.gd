@@ -55,26 +55,28 @@ static func is_road(ptype: String) -> bool:
 	return ptype == "road_repair" or ptype == "road_patch" or ptype == "road_build"
 
 
-const ROAD_BLOCK_COST: int = 2200000
-const ROAD_BLOCK_DAYS: int = 9
+## A paved two lane town street costs about $1,000 a meter, $10,000 for each 10
+## meter survey step (about $100,000 a block); a crew lays about 20 meters a day.
+const ROAD_BLOCK_COST: int = 1000000
+const ROAD_BLOCK_DAYS: float = 0.5
 
 
 ## A new road the player drew: contractors bid on building its planned blocks.
 static func define_road_build(w: LTWorld, street_id: int, segs: Array, draft: bool = false) -> Dictionary:
 	var n: int = segs.size()
 	var p: Dictionary = {
-		"id": w.projects.size(), "ptype": "road_build", "title": "Build %s (%d %s)" % [w.streets[street_id]["name"], n, "block" if n == 1 else "blocks"], "lot": -1, "street": street_id, "ceiling": 0,
+		"id": w.projects.size(), "ptype": "road_build", "title": "Build %s (%d m)" % [w.streets[street_id]["name"], n * 10], "lot": -1, "street": street_id, "ceiling": 0,
 		"petition_id": -1, "status": "bidding", "created_day": w.day, "bid_close_day": w.day + BID_DAYS,
 		"bids": [], "winner": {}, "winner_name": "", "price": 0, "change_orders": 0, "paid": 0,
 		"days_promised": 0, "start_day": -1, "progress": 0.0, "stage": "", "quality": 0.0, "quality_target": 0.0,
 		"events": [], "done_day": -1, "warranty_until": -1, "private": false, "developer": {}, "repair_needed_day": -1,
 		"kickback": {}, "payment_late": false, "segments": segs.duplicate(),
-		"base_cost": ROAD_BLOCK_COST * n, "base_days": 15 + ROAD_BLOCK_DAYS * n,
-		"raw_cost": ROAD_BLOCK_COST * n, "raw_days": 15 + ROAD_BLOCK_DAYS * n, "spec": default_spec("road_build"),
+		"base_cost": ROAD_BLOCK_COST * n, "base_days": 15 + int(ROAD_BLOCK_DAYS * float(n)),
+		"raw_cost": ROAD_BLOCK_COST * n, "raw_days": 15 + int(ROAD_BLOCK_DAYS * float(n)), "spec": default_spec("road_build"),
 	}
 	_apply_spec(p)
 	w.projects.append(p)
-	_event(w, p, "Drawn by the mayor: %d new %s." % [n, "block" if n == 1 else "blocks"])
+	_event(w, p, "Drawn by the mayor: %d meters of new %s." % [n * 10, "alley" if str(w.streets[street_id]["kind"]) == "alley" else "road"])
 	if draft:
 		_make_draft(p)
 		return {"ok": true, "message": "\"%s\" is drawn as a draft. Tap it to write the contract, then press Go live to send it out to bid." % p["title"], "project_id": int(p["id"])}
@@ -198,6 +200,7 @@ const WIDTHS: Dictionary = {
 	"lane": {"label": "Narrow lane", "cost": 0.8, "speed": 1.12, "draw": 0.75},
 	"street": {"label": "Two lane street", "cost": 1.0, "speed": 1.0, "draw": 1.0},
 	"avenue": {"label": "Wide avenue", "cost": 1.4, "speed": 0.82, "draw": 1.45},
+	"alley": {"label": "Alley", "cost": 0.4, "speed": 1.4, "draw": 0.55},
 }
 const GRADES: Dictionary = {
 	"budget": {"label": "Budget materials", "cost": 0.8, "quality": -0.12},
@@ -280,7 +283,7 @@ static func edit(w: LTWorld, pid: int, changes: Dictionary) -> Dictionary:
 		if nm != "" and nm != str(w.streets[int(p["street"])]["name"]):
 			w.streets[int(p["street"])]["name"] = nm
 			var n: int = p.get("segments", []).size()
-			p["title"] = "Build %s (%d %s)" % [nm, n, "block" if n == 1 else "blocks"]
+			p["title"] = "Build %s (%d m)" % [nm, n * 10]
 			_event(w, p, "The mayor named the road %s." % nm)
 		changes.erase("name")
 	if changes.is_empty():
@@ -758,7 +761,12 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		l2["condition"] = 60.0 + q * 40.0
 		l2["built_day"] = w.day
 		l2["value"] = int(p["price"]) + int(p["change_orders"]) + int(l2["value"])
-		LTFounder.settler_moves_in(w, p, l2)
+		if p.has("home"):
+			l2["home"] = p["home"]
+		if str(p["developer"].get("kind", "")) == "spec":
+			LTDevelopers.list_spec_house(w, p, l2)
+		else:
+			LTFounder.settler_moves_in(w, p, l2)
 	elif ptype == "shop":
 		var sb: Dictionary = w.biz(int(p.get("business_id", -1)))
 		if not sb.is_empty() and str(sb["status"]) == "building":

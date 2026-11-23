@@ -3,8 +3,11 @@ extends Node3D
 ## Sims near the camera or on the watch list (Tier 1) walk and drive their day.
 ## Everyone else is still fully simulated, just not drawn.
 
-const CELL: float = 18.0
-const ROAD_W: float = 4.2
+## The survey step in meters (roads snap to it) and a town street's paved width.
+const CELL: float = 10.0
+const ROAD_W: float = 9.0
+## A building sits this far back from the front of its lot (its front yard).
+const KIT_BACK: float = 8.5
 const MAX_SIMS: int = 45
 ## Zoomed in closer than this, the town is at street level: Sims appear and the
 ## weather and town sounds fade in. Farther out it is a quiet planning map.
@@ -148,9 +151,20 @@ func rebuild(keep_camera: bool = false) -> void:
 	highlight.visible = false
 	extra_root.add_child(highlight)
 	if not keep_camera:
+		# start over the town (or the middle of the county road on open land)
 		var ms: Vector2 = map_size()
 		target = Vector3(ms.x * 0.5, 0.0, ms.y * 0.5)
-		dist = maxf(ms.x, ms.y) * (0.75 if bool(w.config.get("open_land", false)) else 1.05)
+		dist = 320.0
+		var lo: Vector2 = Vector2(1e9, 1e9)
+		var hi: Vector2 = Vector2(-1e9, -1e9)
+		for l in w.lots:
+			if bool(l.get("removed", false)):
+				continue
+			lo = Vector2(minf(lo.x, float(l["x0"])), minf(lo.y, float(l["z0"])))
+			hi = Vector2(maxf(hi.x, float(l["x1"])), maxf(hi.y, float(l["z1"])))
+		if hi.x > lo.x:
+			target = Vector3((lo.x + hi.x) * 0.5, 0.0, (lo.y + hi.y) * 0.5)
+			dist = clampf(maxf(hi.x - lo.x, hi.y - lo.y) * 0.95, 150.0, 1200.0)
 		g_target = target
 		g_dist = dist
 		g_yaw = yaw
@@ -223,7 +237,15 @@ func _batch_end(parent: Node3D) -> MeshInstance3D:
 	return mi
 
 
+## Where batched parts land: the building's place on its lot (set while a lot is built).
+var _bxf: Transform3D = Transform3D.IDENTITY
+## The lot being built: its frontage (local x) and depth (local z), in meters.
+var _lw: float = 20.0
+var _ld: float = 40.0
+
+
 func _batch_add(pm: PrimitiveMesh, key: String, xf: Transform3D, c: Color, glow: bool) -> void:
+	xf = _bxf * xf
 	if not _prim_cache.has(key):
 		_prim_cache[key] = pm.get_mesh_arrays()
 	var arrs: Array = _prim_cache[key]
@@ -399,8 +421,8 @@ func _build_ground() -> void:
 		var x: float = float(en["x"]) * CELL
 		var z: float = float(en["y"]) * CELL
 		var west: bool = x < ms.x * 0.5
-		_box(ground_root, Vector3(400.0, 0.08, ROAD_W + 1.0), Vector3(x - 200.0 if west else x + 200.0, 0.02, z), Color(0.25, 0.25, 0.27))
-		var sgn: Label3D = _sign(ground_root, names[k % 2], Vector3(x - 30.0 if west else x + 30.0, 3.0, z - 4.0), 64)
+		_box(ground_root, Vector3(700.0, 0.08, ROAD_W), Vector3(x - 350.0 if west else x + 350.0, 0.02, z), Color(0.25, 0.25, 0.27))
+		var sgn: Label3D = _sign(ground_root, names[k % 2], Vector3(x - 30.0 if west else x + 30.0, 4.0, z - 8.0), 160)
 		sgn.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		k += 1
 
@@ -417,11 +439,15 @@ func _road_labels() -> void:
 	for st in w.streets:
 		if str(st["kind"]) == "avenue" or st["segments"].is_empty():
 			continue
+		if str(st["kind"]) == "alley":
+			continue
 		var s0: Dictionary = {}
+		var live: Array = []
 		for sid in st["segments"]:
 			if not bool(w.roads[int(sid)].get("removed", false)):
-				s0 = w.roads[int(sid)]
-				break
+				live.append(int(sid))
+		if not live.is_empty():
+			s0 = w.roads[int(live[live.size() / 2])]
 		if s0.is_empty():
 			continue
 		var a2: Dictionary = w.road_nodes[int(s0["a"])]
@@ -433,7 +459,7 @@ func _road_labels() -> void:
 			for p in w.projects:
 				if int(p["street"]) == int(st["id"]) and str(p["ptype"]) == "road_build" and str(p["status"]) == "draft":
 					tag = " (draft)"
-		var l: Label3D = _sign(road_labels, str(st["name"]) + tag, mid, 40, Color(0.95, 0.95, 0.8))
+		var l: Label3D = _sign(road_labels, str(st["name"]) + tag, mid, 90, Color(0.95, 0.95, 0.8))
 		l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		l.rotation = Vector3(-PI / 2.0, 0.0 if int(a2["y"]) == int(b2["y"]) else PI / 2.0, 0.0)
 
@@ -495,8 +521,8 @@ func _build_trees() -> void:
 	var leaf: Color = _leaf_color()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = w.seed_value
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
+	var cols: int = int(w.config["map_cols"])
+	var rows: int = int(w.config["map_rows"])
 	var exit_z: float = float(w.road_nodes[LTGeography.exit_node(w)]["y"]) * CELL
 	_batch_begin()
 	for i in 90:
@@ -609,7 +635,6 @@ func _rebuild_overlay() -> void:
 		return
 	var st: SurfaceTool = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var half: float = (CELL - ROAD_W) * 0.5
 	var any: bool = false
 	for l in w.lots:
 		if bool(l.get("removed", false)):
@@ -622,11 +647,10 @@ func _rebuild_overlay() -> void:
 		if overlay == "sale" and bool(l.get("hold", false)):
 			c = Color(0.3, 0.5, 0.95)
 		c.a = 0.55
-		var p: Vector3 = lot_center(int(l["id"])) + Vector3(0, 0.35, 0)
-		var a: Vector3 = p + Vector3(-half, 0, -half)
-		var b: Vector3 = p + Vector3(half, 0, -half)
-		var d: Vector3 = p + Vector3(half, 0, half)
-		var e: Vector3 = p + Vector3(-half, 0, half)
+		var a: Vector3 = Vector3(float(l["x0"]) + 0.4, 0.35, float(l["z0"]) + 0.4)
+		var b: Vector3 = Vector3(float(l["x1"]) - 0.4, 0.35, float(l["z0"]) + 0.4)
+		var d: Vector3 = Vector3(float(l["x1"]) - 0.4, 0.35, float(l["z1"]) - 0.4)
+		var e: Vector3 = Vector3(float(l["x0"]) + 0.4, 0.35, float(l["z1"]) - 0.4)
 		for q in [a, b, d, a, d, e]:
 			st.set_color(c)
 			st.set_normal(Vector3.UP)
@@ -670,7 +694,42 @@ func _apply_season() -> void:
 
 func lot_center(lot_id: int) -> Vector3:
 	var l: Dictionary = w.lot(lot_id)
-	return Vector3((float(l["col"]) + 0.5) * CELL, 0.0, (float(l["row"]) + 0.5) * CELL)
+	if l.is_empty():
+		return Vector3.ZERO
+	return Vector3((float(l["x0"]) + float(l["x1"])) * 0.5, 0.0, (float(l["z0"]) + float(l["z1"])) * 0.5)
+
+
+## A lot faces its road: its local +z points at the street.
+func lot_rot(l: Dictionary) -> float:
+	match str(l.get("front", "s")):
+		"n":
+			return PI
+		"e":
+			return PI * 0.5
+		"w":
+			return -PI * 0.5
+	return 0.0
+
+
+func lot_xform(lot_id: int) -> Transform3D:
+	var l: Dictionary = w.lot(lot_id)
+	return Transform3D(Basis(Vector3.UP, lot_rot(l)), lot_center(lot_id))
+
+
+## Where the building stands on its lot: near the front, behind a front yard,
+## narrowed to fit a lot thinner than the building.
+func kit_local(l: Dictionary) -> Transform3D:
+	var fw: float = LTGeography.lot_frontage(l)
+	var dp: float = LTGeography.lot_depth(l)
+	var sx: float = 1.0
+	if str(l["use"]) != "house":
+		sx = clampf((fw - 0.8) / 13.2, 0.4, 1.0)
+	var z: float = maxf(0.0, dp * 0.5 - KIT_BACK)
+	return Transform3D(Basis.IDENTITY.scaled(Vector3(sx, 1.0, 1.0)), Vector3(0, 0, z))
+
+
+func kit_xform(lot_id: int) -> Transform3D:
+	return lot_xform(lot_id) * kit_local(w.lot(lot_id))
 
 
 func _lot_sig(l: Dictionary) -> String:
@@ -724,43 +783,56 @@ func _build_lot(l: Dictionary) -> void:
 	if lot_nodes.has(id):
 		(lot_nodes[id] as Node3D).queue_free()
 	var root: Node3D = Node3D.new()
-	root.position = lot_center(id)
+	root.transform = lot_xform(id)
 	lot_root.add_child(root)
 	lot_nodes[id] = root
+	_lw = LTGeography.lot_frontage(l)
+	_ld = LTGeography.lot_depth(l)
+	_bxf = Transform3D.IDENTITY
 	_batch_begin()
-	var inner: float = CELL - ROAD_W - 0.6
 	var pad_col: Color = _zone_color(str(l["zone"]))
 	if _snow:
 		pad_col = pad_col.lerp(Color(0.9, 0.92, 0.95), 0.3)
-	_box(root, Vector3(inner, 0.1, inner), Vector3(0, 0.0, 0), pad_col)
+	_box(root, Vector3(_lw - 0.6, 0.1, _ld - 0.6), Vector3(0, 0.0, 0), pad_col)
 	var use: String = str(l["use"])
 	var cond: float = float(l["condition"]) / 100.0
+	# buildings stand near the front of the lot; fields and parks use all of it
+	var kit: Node3D = Node3D.new()
+	var farm: bool = use == "business" and str(w.biz(int(l["ref"])).get("type", "")) == "farm"
+	if use != "empty" and not farm:
+		kit.transform = kit_local(l)
+		_bxf = kit.transform
+	root.add_child(kit)
 	match use:
 		"house":
-			_house(root, l, cond)
+			_house(kit, l, cond)
 		"apartment":
-			_apartment(root, l, cond)
+			_apartment(kit, l, cond)
 		"business", "closed":
-			_business(root, l)
+			_business(kit, l)
 		"civic":
-			_civic(root, l)
+			_civic(kit, l)
 		"mayor_house":
-			_mayor_house(root, l)
+			_mayor_house(kit, l)
 		"site", "reserved":
-			_site(root, l)
+			_site(kit, l)
 		"empty":
 			if str(l["zone"]) == "commercial" or str(l["zone"]) == "mixed":
-				_box(root, Vector3(0.15, 1.6, 0.15), Vector3(-inner * 0.35, 0.8, -inner * 0.35), Color(0.4, 0.3, 0.2))
-				var s: Label3D = _sign(root, "Lot %d for lease" % id, Vector3(-inner * 0.35, 2.0, -inner * 0.35), 32)
+				var sp: Vector3 = Vector3(-_lw * 0.3, 0, _ld * 0.5 - 2.0)
+				_box(root, Vector3(0.15, 1.6, 0.15), sp + Vector3(0, 0.8, 0), Color(0.4, 0.3, 0.2))
+				var s: Label3D = _sign(root, "Lot %d for lease" % id, sp + Vector3(0, 2.0, 0), 32)
 				s.pixel_size = 0.04
 			elif str(l["zone"]) == "agricultural":
-				for i in 5:
-					_box(root, Vector3(inner * 0.9, 0.08, 0.6), Vector3(0, 0.08, -inner * 0.4 + i * inner * 0.2), Color(0.5, 0.42, 0.3))
+				var rows_n: int = clampi(int(_ld / 6.0), 3, 30)
+				for i in rows_n:
+					_box(root, Vector3(_lw * 0.9, 0.08, 0.6), Vector3(0, 0.08, -_ld * 0.45 + float(i) * _ld * 0.9 / float(rows_n)), Color(0.5, 0.42, 0.3))
 			elif str(l["zone"]) == "park":
-				for i in 3:
-					var tp: Vector3 = Vector3(-4.0 + i * 4.0, 0, 2.0 - i)
+				var trees_n: int = clampi(int(_lw * _ld / 120.0), 3, 24)
+				for i in trees_n:
+					var tp: Vector3 = Vector3(fmod(float(i) * 7.3, _lw - 3.0) - (_lw - 3.0) * 0.5, 0, fmod(float(i) * 11.9, _ld - 3.0) - (_ld - 3.0) * 0.5)
 					_cyl(root, 0.2, 2.0, tp + Vector3(0, 1.0, 0), Color(0.35, 0.25, 0.15))
 					_ball(root, 1.4, tp + Vector3(0, 2.6, 0), _leaf_color())
+	_bxf = Transform3D.IDENTITY
 	_batch_end(root)
 
 
@@ -785,12 +857,17 @@ func _house(root: Node3D, l: Dictionary, cond: float) -> void:
 	var rc: Color = _hash_color(int(l["id"]) + 3, roofs)
 	var spec: Dictionary = l.get("home", {"beds": 3, "baths": 2.0, "stories": 1, "garage": 1, "basement": false})
 	var beds: int = int(spec["beds"])
-	var hw: float = clampf(5.6 + float(beds) * 0.85, 6.0, 10.0)
+	var dims: Array = _house_dims(l)
+	var hw: float = float(dims[0])
 	var floors: int = int(spec["stories"])
 	var wall_h: float = 3.2 if floors == 1 else 6.0
 	var stalls: int = int(spec["garage"])
-	var gw: float = minf(float(stalls) * 2.8, 12.6 - hw)
-	var hx: float = -gw * 0.5
+	var gw: float = float(dims[1])
+	if gw < 2.6:
+		stalls = 0
+	else:
+		stalls = mini(stalls, int(gw / 2.6))
+	var hx: float = float(dims[2])
 	_box(root, Vector3(hw, wall_h, 6.0), Vector3(hx, wall_h * 0.5, -0.5), wc)
 	_roof(root, Vector3(hw + 0.6, 2.2, 6.6), Vector3(hx, wall_h + 1.1, -0.5), rc)
 	var occupied: bool = int(l["units"][0]) >= 0
@@ -1086,7 +1163,7 @@ func _special(root: Node3D, b: Dictionary, btype: String, open: bool, struggling
 
 
 func _farm(root: Node3D, b: Dictionary, open: bool) -> void:
-	var inner: float = CELL - ROAD_W - 1.0
+	var inner: float = minf(_lw, _ld) - 1.0
 	var crop: Color
 	match _season:
 		"Spring":
@@ -1162,7 +1239,7 @@ func _site(root: Node3D, l: Dictionary) -> void:
 	if p.is_empty():
 		return
 	var prog: float = float(p["progress"]) if str(p["status"]) == "building" else 0.0
-	var inner: float = CELL - ROAD_W - 1.0
+	var inner: float = 13.2
 	# fence
 	for i in 4:
 		var horiz: bool = i < 2
@@ -1315,7 +1392,7 @@ func _update_sim_look(n: Node3D, c: Dictionary) -> void:
 func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 	var hh: Dictionary = w.hh(int(c["household"]))
 	var home: int = int(hh["lot"])
-	var home_p: Vector3 = lot_center(home) + Vector3(0, 0, 5.0) if home >= 0 else _rough_spot(c)
+	var home_p: Vector3 = kit_xform(home) * Vector3(0, 0, 5.0) if home >= 0 else _rough_spot(c)
 	var age: int = w.age_years(c)
 	var job: Dictionary = c["job"]
 	var j: float = float(int(c["id"]) % 7) * 0.12
@@ -1327,23 +1404,23 @@ func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 		var sch: Dictionary = LTCivic.service(w, "school")
 		if not sch.is_empty():
 			dest_lot = int(sch["lot"])
-			dest = lot_center(dest_lot) + Vector3(-3.0 + j * 6.0, 0, 5.0)
+			dest = kit_xform(dest_lot) * Vector3(-3.0 + j * 6.0, 0, 5.0)
 		else:
 			outside = true
 	elif kind == "business" or kind == "owner":
 		var b: Dictionary = w.biz(int(job["employer"]))
 		if not b.is_empty():
 			dest_lot = int(b["lot"])
-			dest = lot_center(dest_lot) + Vector3(-3.0 + j * 6.0, 0, 4.5)
+			dest = kit_xform(dest_lot) * Vector3(-3.0 + j * 6.0, 0, 4.5)
 	elif kind == "city":
 		var jobrec: Dictionary = w.city["jobs"][int(job["employer"])]
 		var svc: Dictionary = LTCivic.service(w, str(jobrec["service"]))
 		if not svc.is_empty():
 			dest_lot = int(svc["lot"])
-			dest = lot_center(dest_lot) + Vector3(2.0, 0, 5.0)
+			dest = kit_xform(dest_lot) * Vector3(2.0, 0, 5.0)
 		else:
 			dest_lot = 0
-			dest = lot_center(0) + Vector3(0, 0, 5.0)
+			dest = kit_xform(0) * Vector3(0, 0, 5.0)
 	elif kind == "outside":
 		outside = true
 	var weekend: bool = LTCalendar.is_weekend(w.day)
@@ -1353,7 +1430,7 @@ func sim_plan(c: Dictionary, hour: float) -> Dictionary:
 			var shop: Array = w.open_businesses("grocery") + w.open_businesses("cafe")
 			if not shop.is_empty():
 				var sb: Dictionary = shop[int(c["id"]) % shop.size()]
-				var sp: Vector3 = lot_center(int(sb["lot"])) + Vector3(j * 4.0, 0, 5.0)
+				var sp: Vector3 = kit_xform(int(sb["lot"])) * Vector3(j * 4.0, 0, 5.0)
 				var go: float = 13.0 + j
 				var d: float = _trip_hours(home_p, sp, home, int(sb["lot"]), false)
 				var stay_until: float = go + d + 0.75
@@ -1414,10 +1491,17 @@ func _hash01(cid: int, k: int, salt: int) -> float:
 
 ## Where the front of the house sits on its lot (the garage pushes it left).
 func _house_hx(l: Dictionary) -> float:
+	return float(_house_dims(l)[2])
+
+
+## [house width, garage width, house x] for a house on its lot: it keeps about
+## 1.5 meters from each side line, so a narrow lot gets a narrower house.
+func _house_dims(l: Dictionary) -> Array:
 	var spec: Dictionary = l.get("home", {"beds": 3, "garage": 1})
-	var hw: float = clampf(5.6 + float(int(spec["beds"])) * 0.85, 6.0, 10.0)
-	var gw: float = minf(float(int(spec.get("garage", 1))) * 2.8, 12.6 - hw)
-	return -gw * 0.5
+	var avail: float = maxf(6.0, LTGeography.lot_frontage(l) - 3.0)
+	var hw: float = clampf(5.6 + float(int(spec["beds"])) * 0.85, 6.0, minf(11.0, avail))
+	var gw: float = clampf(float(int(spec.get("garage", 1))) * 2.8, 0.0, maxf(0.0, avail - hw))
+	return [hw, gw, -gw * 0.5]
 
 
 ## Free time at home. Most of it is spent indoors, out of sight, as real people
@@ -1436,11 +1520,12 @@ func _at_home(c: Dictionary, home: int, home_p: Vector3, hour: float, window: bo
 	var k: int = int(floor(minute / block_min))
 	var roll: float = _hash01(cid, k, 5)
 	var age: int = w.age_years(c)
-	var lc: Vector3 = lot_center(home)
+	var kx: Transform3D = kit_xform(home)
+	var face0: float = lot_rot(w.lot(home))
 	if age < 13:
 		if roll < 0.55:
 			# playing: quicker and wider than an adult's pottering
-			var pl: Dictionary = _potter(c, lc + Vector3(-2.0, 0, 4.6), hour * 2.5, true)
+			var pl: Dictionary = _potter(c, kx * Vector3(-2.0, 0, 4.6), hour * 2.5, true)
 			pl["visible"] = true
 			return pl
 		return inside
@@ -1448,15 +1533,15 @@ func _at_home(c: Dictionary, home: int, home_p: Vector3, hour: float, window: bo
 	if roll < sit_p:
 		var hh: Dictionary = w.hh(int(c["household"]))
 		var idx: int = maxi(0, hh["members"].find(cid)) % CHAIRS.size()
-		return {"pos": lc + (CHAIRS[idx] as Vector3) + Vector3(0, 0, 0.1), "visible": true, "car": false, "moving": false, "pose": "sit", "face": 0.0}
+		return {"pos": kx * ((CHAIRS[idx] as Vector3) + Vector3(0, 0, 0.1)), "visible": true, "car": false, "moving": false, "pose": "sit", "face": face0}
 	if roll < sit_p + 0.12 and _season != "Winter":
-		return {"pos": lc + Vector3(_house_hx(w.lot(home)) + FLOWER_X, 0, 3.75), "visible": true, "car": false, "moving": false, "pose": "kneel", "face": PI}
+		return {"pos": kx * Vector3(_house_hx(w.lot(home)) + FLOWER_X, 0, 3.75), "visible": true, "car": false, "moving": false, "pose": "kneel", "face": face0 + PI}
 	if roll < sit_p + 0.25:
 		# a walk down the sidewalk and back
 		var walk_t: float = fmod(minute, block_min) / block_min
 		var side: float = -1.0 if _hash01(cid, k, 6) < 0.5 else 1.0
-		var gate: Vector3 = lc + Vector3(0, 0, 7.6)
-		var far: Vector3 = gate + Vector3(side * CELL * 1.5, 0, 0)
+		var gate: Vector3 = kx * Vector3(0, 0, KIT_BACK + 2.5)
+		var far: Vector3 = gate + lot_xform(home).basis.x * side * 40.0
 		var pos: Vector3
 		var dir: Vector3
 		if walk_t < 0.1:
@@ -1617,7 +1702,7 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 	for t in truck_nodes:
 		var tn: Node3D = t["node"]
 		var tt: float = (hour - float(t["start"])) / 1.5 if watch else 0.5
-		var plan2: Dictionary = _between(_exit_pos() + Vector3(-60, 0, 0), lot_center(int(t["lot"])) + Vector3(5.0, 0, 5.0), tt, true, -1, int(t["lot"]))
+		var plan2: Dictionary = _between(_exit_pos() + Vector3(-60, 0, 0), kit_xform(int(t["lot"])) * Vector3(5.0, 0, 9.0), tt, true, -1, int(t["lot"]))
 		tn.visible = watch and tt > 0.0 and tt < 1.0
 		if tn.visible and tn.position.distance_to(target) < dist * 1.2:
 			cars += 2
@@ -1753,7 +1838,7 @@ func _typing() -> bool:
 
 
 func map_size() -> Vector2:
-	return Vector2(float(w.config.get("map_cols", w.config["lot_cols"])) * CELL, float(w.config.get("map_rows", w.config["lot_rows"])) * CELL)
+	return Vector2(float(w.config["map_cols"]) * CELL, float(w.config["map_rows"]) * CELL)
 
 
 func _clamp_goals() -> void:
@@ -1852,14 +1937,19 @@ func _ground_point(screen: Vector2) -> Vector3:
 	return from + dir * t
 
 
+## The survey corner nearest a ground point (roads snap to the 10 meter grid).
 func _nearest_node(g: Vector3) -> Vector2i:
-	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
-	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
+	var cols: int = int(w.config["map_cols"])
+	var rows: int = int(w.config["map_rows"])
 	return Vector2i(clampi(int(round(g.x / CELL)), 0, cols), clampi(int(round(g.z / CELL)), 0, rows))
 
 
-func _cell_at(g: Vector3) -> Vector2i:
-	return Vector2i(int(floor(g.x / CELL)), int(floor(g.z / CELL)))
+## What the road tool lays: "street" or "alley". Lot width when plotting: 0 means
+## one lot exactly as dragged, otherwise the strip is cut into lots that wide.
+var road_kind: String = "street"
+var plot_width: float = 0.0
+var _ta: Vector3 = Vector3.ZERO
+var _tb: Vector3 = Vector3.ZERO
 
 
 func _tool_start(screen: Vector2) -> void:
@@ -1867,11 +1957,8 @@ func _tool_start(screen: Vector2) -> void:
 	if g.x < -1e5:
 		return
 	_tool_drag_on = true
-	if tool == "road":
-		_tool_a = _nearest_node(g)
-	else:
-		_tool_a = _cell_at(g)
-	_tool_b = _tool_a
+	_ta = g
+	_tb = g
 	_show_preview()
 
 
@@ -1881,17 +1968,47 @@ func _tool_drag(screen: Vector2) -> void:
 	var g: Vector3 = _ground_point(screen)
 	if g.x < -1e5:
 		return
-	if tool == "road":
-		var n: Vector2i = _nearest_node(g)
-		# straight roads only: follow the longer direction
-		if absi(n.x - _tool_a.x) >= absi(n.y - _tool_a.y):
-			n.y = _tool_a.y
-		else:
-			n.x = _tool_a.x
-		_tool_b = n
-	else:
-		_tool_b = _cell_at(g)
+	_tb = g
 	_show_preview()
+
+
+## The two survey corners of the road being drawn, kept straight.
+func _road_ends() -> Array:
+	var a: Vector2i = _nearest_node(_ta)
+	var b: Vector2i = _nearest_node(_tb)
+	if absi(b.x - a.x) >= absi(b.y - a.y):
+		b.y = a.y
+	else:
+		b.x = a.x
+	return [a, b]
+
+
+## The lot rectangle being dragged, in whole meters, with each side pulled onto a
+## nearby road's edge so lots line up with the street like real property lines.
+func _plot_rect() -> Rect2:
+	var r: Rect2 = Rect2(Vector2(roundf(minf(_ta.x, _tb.x)), roundf(minf(_ta.z, _tb.z))), Vector2.ZERO).expand(Vector2(roundf(maxf(_ta.x, _tb.x)), roundf(maxf(_ta.z, _tb.z))))
+	var x0: float = r.position.x
+	var z0: float = r.position.y
+	var x1: float = r.end.x
+	var z1: float = r.end.y
+	var near: Rect2 = r.grow(6.0)
+	for sg in w.roads:
+		if bool(sg.get("removed", false)):
+			continue
+		var rr: Rect2 = LTGeography.seg_rect(w, sg)
+		if not near.intersects(rr):
+			continue
+		var over_x: bool = rr.position.x < x1 and rr.end.x > x0
+		var over_z: bool = rr.position.y < z1 and rr.end.y > z0
+		if over_x and absf(rr.end.y - z0) < 5.0:
+			z0 = rr.end.y
+		if over_x and absf(rr.position.y - z1) < 5.0:
+			z1 = rr.position.y
+		if over_z and absf(rr.end.x - x0) < 5.0:
+			x0 = rr.end.x
+		if over_z and absf(rr.position.x - x1) < 5.0:
+			x1 = rr.position.x
+	return Rect2(Vector2(x0, z0), Vector2(maxf(0.0, x1 - x0), maxf(0.0, z1 - z0)))
 
 
 func _tool_end(screen: Vector2) -> void:
@@ -1900,20 +2017,27 @@ func _tool_end(screen: Vector2) -> void:
 	_tool_drag(screen)
 	_tool_drag_on = false
 	preview_mi.visible = false
+	var g0: Vector3 = _ground_point(screen)
 	if tool != "unplot" and _press_pos.distance_to(screen) < 8.0:
 		# a tap with a build tool opens the road or lot under it to edit its details
-		var g: Vector3 = _ground_point(screen)
-		if tool == "road" and _road_at(g) >= 0 or tool == "plot" and LTGeography.lot_at(w, _cell_at(g).x, _cell_at(g).y) >= 0:
+		if tool == "road" and _road_at(g0) >= 0 or tool == "plot" and LTGeography.lot_at(w, g0.x, g0.z) >= 0:
 			_pick(screen)
-			return
+		return
 	var r: Dictionary = {}
 	match tool:
 		"road":
-			r = main.act({"kind": "plan_road", "a": LTGeography.node_id(w, _tool_a.x, _tool_a.y), "b": LTGeography.node_id(w, _tool_b.x, _tool_b.y)})
+			var ends: Array = _road_ends()
+			var a: Vector2i = ends[0]
+			var b: Vector2i = ends[1]
+			if a == b:
+				r = {"message": "Drag farther to draw a road."}
+			else:
+				r = main.act({"kind": "plan_road", "a": LTGeography.node_id(w, a.x, a.y), "b": LTGeography.node_id(w, b.x, b.y), "road_kind": road_kind})
 		"plot":
-			r = main.act({"kind": "plot_lots", "c0": _tool_a.x, "r0": _tool_a.y, "c1": _tool_b.x, "r1": _tool_b.y, "zone": plot_zone})
+			var pr: Rect2 = _plot_rect()
+			r = main.act({"kind": "plot_lots", "x0": pr.position.x, "z0": pr.position.y, "x1": pr.end.x, "z1": pr.end.y, "zone": plot_zone, "width": plot_width})
 		"unplot":
-			var lid: int = LTGeography.lot_at(w, _tool_a.x, _tool_a.y)
+			var lid: int = LTGeography.lot_at(w, _ta.x, _ta.z)
 			r = main.act({"kind": "unplot", "lot": lid}) if lid >= 0 else {"message": "There is no lot there."}
 	if not r.is_empty():
 		var msg: String = str(r.get("message", ""))
@@ -1929,21 +2053,33 @@ func _show_preview() -> void:
 	preview_mi.visible = true
 	var mat: StandardMaterial3D = preview_mi.material_override
 	if tool == "road":
-		var pa: Vector3 = Vector3(float(_tool_a.x) * CELL, 0.2, float(_tool_a.y) * CELL)
-		var pb: Vector3 = Vector3(float(_tool_b.x) * CELL, 0.2, float(_tool_b.y) * CELL)
-		var horiz: bool = _tool_a.y == _tool_b.y
-		var length: float = pa.distance_to(pb) + ROAD_W
-		(preview_mi.mesh as BoxMesh).size = Vector3(length, 0.2, ROAD_W) if horiz else Vector3(ROAD_W, 0.2, length)
+		var ends: Array = _road_ends()
+		var a: Vector2i = ends[0]
+		var b: Vector2i = ends[1]
+		var pa: Vector3 = Vector3(float(a.x) * CELL, 0.3, float(a.y) * CELL)
+		var pb: Vector3 = Vector3(float(b.x) * CELL, 0.3, float(b.y) * CELL)
+		var horiz: bool = a.y == b.y
+		var rw: float = ROAD_W * (float(LTProjects.WIDTHS["alley"]["draw"]) if road_kind == "alley" else 1.0)
+		var length: float = pa.distance_to(pb) + rw
+		(preview_mi.mesh as BoxMesh).size = Vector3(length, 0.2, rw) if horiz else Vector3(rw, 0.2, length)
 		preview_mi.position = (pa + pb) * 0.5
-		mat.albedo_color = Color(1.0, 0.85, 0.2, 0.55)
+		mat.albedo_color = Color(1.0, 0.85, 0.2, 0.55) if road_kind != "alley" else Color(0.85, 0.75, 0.55, 0.6)
 	else:
-		var c0: int = mini(_tool_a.x, _tool_b.x)
-		var c1: int = maxi(_tool_a.x, _tool_b.x)
-		var r0: int = mini(_tool_a.y, _tool_b.y)
-		var r1: int = maxi(_tool_a.y, _tool_b.y)
-		(preview_mi.mesh as BoxMesh).size = Vector3(float(c1 - c0 + 1) * CELL - ROAD_W, 0.2, float(r1 - r0 + 1) * CELL - ROAD_W)
-		preview_mi.position = Vector3((float(c0 + c1) * 0.5 + 0.5) * CELL, 0.2, (float(r0 + r1) * 0.5 + 0.5) * CELL)
+		var r: Rect2 = _plot_rect() if tool == "plot" else Rect2(_ta.x - 1.0, _ta.z - 1.0, 2.0, 2.0)
+		(preview_mi.mesh as BoxMesh).size = Vector3(maxf(0.5, r.size.x), 0.2, maxf(0.5, r.size.y))
+		preview_mi.position = Vector3(r.get_center().x, 0.3, r.get_center().y)
 		mat.albedo_color = (_zone_color(plot_zone) if tool == "plot" else Color(0.9, 0.3, 0.25)) * Color(1, 1, 1, 0.6)
+		if tool == "plot":
+			main.hud.show_toast(_plot_note(r))
+
+
+## Size of the lot being dragged, in meters and feet, and how many lots it makes.
+func _plot_note(r: Rect2) -> String:
+	var t: String = "%d x %d m (%d x %d ft)" % [int(r.size.x), int(r.size.y), int(r.size.x * 3.28), int(r.size.y * 3.28)]
+	if plot_width >= 6.0:
+		var span: float = maxf(r.size.x, r.size.y)
+		t += ", about %d lots %d m wide" % [maxi(1, int(floor(span / plot_width + 0.25))), int(plot_width)]
+	return t
 
 
 func _build_tool_meshes() -> void:
@@ -1955,15 +2091,18 @@ func _build_tool_meshes() -> void:
 	preview_mi.material_override = pm
 	preview_mi.visible = false
 	extra_root.add_child(preview_mi)
-	# the survey grid: where roads can go, shown only while a build tool is in hand
-	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
-	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
+	# the survey grid: where roads can go (every 10 m), with a brighter line every
+	# 100 m, a standard town block; shown only while a build tool is in hand
+	var cols: int = int(w.config["map_cols"])
+	var rows: int = int(w.config["map_rows"])
 	var im: ImmediateMesh = ImmediateMesh.new()
 	im.surface_begin(Mesh.PRIMITIVE_LINES)
 	for i in cols + 1:
+		im.surface_set_color(Color(1, 1, 1, 0.45) if i % 10 == 0 else Color(1, 1, 1, 0.12))
 		im.surface_add_vertex(Vector3(float(i) * CELL, 0.12, 0.0))
 		im.surface_add_vertex(Vector3(float(i) * CELL, 0.12, float(rows) * CELL))
 	for j in rows + 1:
+		im.surface_set_color(Color(1, 1, 1, 0.45) if j % 10 == 0 else Color(1, 1, 1, 0.12))
 		im.surface_add_vertex(Vector3(0.0, 0.12, float(j) * CELL))
 		im.surface_add_vertex(Vector3(float(cols) * CELL, 0.12, float(j) * CELL))
 	im.surface_end()
@@ -1972,7 +2111,7 @@ func _build_tool_meshes() -> void:
 	var gm: StandardMaterial3D = StandardMaterial3D.new()
 	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	gm.albedo_color = Color(1.0, 1.0, 1.0, 0.25)
+	gm.vertex_color_use_as_albedo = true
 	grid_mi.material_override = gm
 	grid_mi.visible = tool != "look"
 	extra_root.add_child(grid_mi)
@@ -2005,15 +2144,13 @@ func _pick(screen: Vector2) -> void:
 	if t < 0.0:
 		return
 	var g: Vector3 = from + dir * t
-	var col: int = int(floor(g.x / CELL))
-	var row: int = int(floor(g.z / CELL))
 	var road: int = _road_at(g)
 	if road >= 0:
 		select_lot(-1)
 		select_road(road)
 		main.hud.inspect("road", road)
 		return
-	var lid: int = LTGeography.lot_at(w, col, row)
+	var lid: int = LTGeography.lot_at(w, g.x, g.z)
 	if lid >= 0:
 		select_road(-1)
 		select_lot(lid)
@@ -2022,28 +2159,21 @@ func _pick(screen: Vector2) -> void:
 
 ## The street under a ground point, built or planned, or -1.
 func _road_at(g: Vector3) -> int:
-	var fx: float = g.x / CELL
-	var fz: float = g.z / CELL
-	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
-	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
-	var dz: float = absf(fz - roundf(fz)) * CELL
-	var dx: float = absf(fx - roundf(fx)) * CELL
-	var reach: float = ROAD_W * 0.9
-	var tries: Array = []
-	if dz < reach:
-		tries.append([dz, Vector2i(int(floor(fx)), int(roundf(fz))), Vector2i(int(floor(fx)) + 1, int(roundf(fz)))])
-	if dx < reach:
-		tries.append([dx, Vector2i(int(roundf(fx)), int(floor(fz))), Vector2i(int(roundf(fx)), int(floor(fz)) + 1)])
-	tries.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
-	for t in tries:
-		var a: Vector2i = t[1]
-		var b: Vector2i = t[2]
-		if a.x < 0 or a.y < 0 or b.x > cols or b.y > rows:
+	var p: Vector2 = Vector2(g.x, g.z)
+	var best: int = -1
+	var best_d: float = 1e9
+	for sg in w.roads:
+		if bool(sg.get("removed", false)):
 			continue
-		var sid: int = LTGeography.seg_between(w, LTGeography.node_id(w, a.x, a.y), LTGeography.node_id(w, b.x, b.y))
-		if sid >= 0 and not bool(w.roads[sid].get("removed", false)):
-			return int(w.roads[sid]["street"])
-	return -1
+		if not LTGeography.seg_rect(w, sg).has_point(p):
+			continue
+		var a: Vector2 = LTGeography.node_pos(w, int(sg["a"]))
+		var b: Vector2 = LTGeography.node_pos(w, int(sg["b"]))
+		var d: float = Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p)
+		if d < best_d:
+			best_d = d
+			best = int(sg["street"])
+	return best
 
 
 ## Outlines the blocks of one street so the mayor can see what they picked.
@@ -2093,6 +2223,8 @@ func _road_width(street_id: int) -> float:
 		for p in w.projects:
 			if str(p["ptype"]) == "road_build" and int(p["street"]) == street_id and p.has("spec"):
 				wd = str(p["spec"]["width"])
+	if wd == "" and str(st["kind"]) == "alley":
+		wd = "alley"
 	if wd == "" or not LTProjects.WIDTHS.has(wd):
 		return ROAD_W
 	return ROAD_W * float(LTProjects.WIDTHS[wd]["draw"])
@@ -2104,6 +2236,8 @@ func select_lot(lid: int) -> void:
 		highlight.visible = false
 		return
 	highlight.visible = true
+	var hl: Dictionary = w.lot(lid)
+	(highlight.mesh as BoxMesh).size = Vector3(float(hl["x1"]) - float(hl["x0"]), 0.15, float(hl["z1"]) - float(hl["z0"]))
 	highlight.position = lot_center(lid) + Vector3(0, 0.12, 0)
 
 

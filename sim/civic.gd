@@ -24,6 +24,7 @@ const LAWS: Dictionary = {
 	"late_fee_cap": {"label": "Most a lender may charge as a late fee", "min": 1000, "max": 3500, "step": 500, "money": true},
 	"bus_service": {"label": "Bus to the county seat (0 none, 1 weekdays)", "min": 0.0, "max": 1.0, "step": 1.0},
 	"bank_charter": {"label": "Charter a local bank (0 no, 1 yes, needs 120 people)", "min": 0.0, "max": 1.0, "step": 1.0},
+	"transfer_tax": {"label": "Tax on every property sale, paid by the seller", "min": 0.0, "max": 0.03, "step": 0.005, "pct": true},
 }
 const DENY_REASONS: Array = ["no money in the budget this year", "this is not the city's job", "the need is not as big as the petition says", "maybe next year"]
 const PETITION_KINDS: Dictionary = {
@@ -40,7 +41,7 @@ const PETITION_KINDS: Dictionary = {
 static func setup_city(w: LTWorld) -> void:
 	w.city = {
 		"name": "Prairie Hollow",
-		"laws": {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0},
+		"laws": {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005},
 		"elections": false,
 		"term_years": 4,
 		"next_election_day": 365 * 4 - 60,
@@ -272,6 +273,7 @@ static func _month_budget(w: LTWorld) -> void:
 	w.city["budget_months"].append(m)
 	if w.city["budget_months"].size() > 120:
 		w.city["budget_months"].remove_at(0)
+	w.city["sales_12m"] = int(float(w.city.get("sales_12m", 0)) * 0.92)
 	w.city["income_12m"] = 0
 	w.city["spend_12m"] = 0
 	var n: int = mini(12, w.city["budget_months"].size())
@@ -1109,7 +1111,47 @@ static func law_estimate(w: LTWorld, key: String, value: float) -> Dictionary:
 			hits = "Commuters and households without a car. Riders pay a small fare to the city instead of gas money to the outside. Cost about %s a year." % LTMoney.fmt(-yearly)
 		"bank_charter":
 			hits = "A Sim with finance skill may start a local bank. Its loans keep interest in town, and its losses fall on a local owner."
+		"transfer_tax":
+			var sold: int = int(w.city.get("sales_12m", 0))
+			yearly = int(float(sold) * (value - old))
+			hits = "Everyone who sells land or a house, investors and builders most of all. A higher tax brings in more each sale but makes flipping less worth it. About %s of sales in the last year, so this changes city income by about %s a year." % [LTMoney.fmt(sold), LTMoney.fmt(yearly)]
 	return {"hits": hits, "yearly": yearly}
+
+
+## A sale between owners: the buyer pays the seller, then the seller pays the
+## city's transfer tax. A sale by the city itself pays no tax to itself.
+static func property_sale(w: LTWorld, buyer_acct: String, seller_acct: String, price: int, lot_id: int) -> int:
+	var paid: int = w.ledger.pay(buyer_acct, seller_acct, price, "property_sales")
+	return transfer_tax(w, seller_acct, paid, lot_id)
+
+
+## The seller's share to the city on a sale that already changed hands.
+static func transfer_tax(w: LTWorld, seller_acct: String, paid: int, lot_id: int) -> int:
+	w.city["sales_12m"] = int(w.city.get("sales_12m", 0)) + paid
+	var tax: int = 0
+	if seller_acct != "city":
+		var rate: float = float(w.city["laws"].get("transfer_tax", 0.005))
+		tax = w.ledger.pay(seller_acct, "city", int(float(paid) * rate), "transfer_tax")
+	var l: Dictionary = w.lot(lot_id)
+	if not l.is_empty():
+		l["last_sale"] = paid
+		l["last_sale_day"] = w.day
+		l.erase("for_sale")
+	return tax
+
+
+## The account of whoever owns a lot right now.
+static func owner_acct(w: LTWorld, l: Dictionary) -> String:
+	match str(l["owner_kind"]):
+		"city":
+			return "city"
+		"sim":
+			var o: Dictionary = w.cit(int(l["owner_id"]))
+			return w.acct_p(o) if not o.is_empty() else "outside"
+		"business":
+			var b: Dictionary = w.biz(int(l["owner_id"]))
+			return w.acct_b(b) if not b.is_empty() else "outside"
+	return "outside"
 
 
 static func set_law(w: LTWorld, key: String, value) -> Dictionary:

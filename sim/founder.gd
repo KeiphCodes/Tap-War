@@ -80,25 +80,41 @@ static func settler_pull(w: LTWorld) -> float:
 
 
 static func _settlers(w: LTWorld) -> void:
+	var p: float = clampf(settler_pull(w) / 100.0, 0.05, 0.9)
+	# a finished house for sale is the quickest way in: a family may buy one outright
+	for hl in w.lots:
+		if str(hl["use"]) == "house" and hl.has("for_sale") and int(hl["units"][0]) == -1 and w.rng.randf() < p * 0.6:
+			_settler_buys_house(w, hl)
 	var lots: Array = []
 	for l in w.lots:
-		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and not bool(l.get("hold", false)) and ["residential", "mixed"].has(str(l["zone"])) and LTGeography.connected(w, int(l["id"])):
+		if str(l["use"]) != "empty" or bool(l.get("hold", false)) or not ["residential", "mixed"].has(str(l["zone"])) or not LTGeography.connected(w, int(l["id"])):
+			continue
+		# from the city, or from an investor who listed it
+		if str(l["owner_kind"]) == "city" or l.has("for_sale"):
 			lots.append(l)
 	# families look at the cheapest lots first
-	lots.sort_custom(func(a, b): return int(a.get("price_pct", 100)) < int(b.get("price_pct", 100)) or (int(a.get("price_pct", 100)) == int(b.get("price_pct", 100)) and int(a["id"]) < int(b["id"])))
+	lots.sort_custom(func(a, b): return _lot_price(w, a) < _lot_price(w, b) or (_lot_price(w, a) == _lot_price(w, b) and int(a["id"]) < int(b["id"])))
 	if lots.is_empty():
 		return
-	var p: float = clampf(settler_pull(w) / 100.0, 0.05, 0.9)
 	var bought: int = 0
 	while bought < 3 and not lots.is_empty() and w.rng.randf() < p:
 		var l: Dictionary = lots.pop_front()
-		var price: int = LTGeography.asking_price(w, int(l["id"]))
-		var pct: int = int(l.get("price_pct", 100))
+		var price: int = _lot_price(w, l)
+		var pct: int = int(float(price) / float(maxi(1, int(l["value"]))) * 100.0)
 		if pct > 100 and w.rng.randf() < clampf(float(pct - 100) / 200.0, 0.0, 0.9):
 			# too dear: this family keeps looking
 			p *= 0.8
 			continue
-		w.ledger.pay("outside", "city", price, "lot sales")
+		var seller: String = LTCivic.owner_acct(w, l)
+		var sold_by: String = "the city" if seller == "city" else ("%s, who bought it to sell" % w.full_name(w.cit(int(l["owner_id"]))) if str(l["owner_kind"]) == "sim" else "its owner")
+		LTCivic.property_sale(w, "outside", seller, price, int(l["id"]))
+		if seller != "city" and str(l["owner_kind"]) == "sim":
+			var inv: Dictionary = w.cit(int(l["owner_id"]))
+			if w.is_present(inv):
+				var gain: int = price - int(l.get("bought_for", price))
+				w.log_sim(inv, "Sold %s for %s, %s %s on what it cost." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), "a gain of" if gain >= 0 else "a loss of", LTMoney.fmt(absi(gain))], true)
+		l.erase("bought_for")
+		w.chronicle_add("A settler family bought %s from %s for %s." % [LTGeography.lot_label(w, int(l["id"])), sold_by, LTMoney.fmt(price)], "housing", false, [])
 		l["owner_kind"] = "outside"
 		var family: String = LTPeople.LAST_NAMES[w.rng.randi_range(0, LTPeople.LAST_NAMES.size() - 1)]
 		# who is coming: mostly young couples and families
@@ -123,6 +139,42 @@ static func _settlers(w: LTWorld) -> void:
 		w.chronicle_add("The %s family bought %s for %s and hired a builder for a %s house (%s). They will move in when it is done." % [family, LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(cost), LTGeography.home_text(spec)], "move", true, [])
 		bought += 1
 		p *= 0.6
+
+
+static func _lot_price(w: LTWorld, l: Dictionary) -> int:
+	return int(l["for_sale"]) if l.has("for_sale") else LTGeography.asking_price(w, int(l["id"]))
+
+
+## A settler family buys a finished house for sale and moves straight in, with a
+## bank mortgage for most of it.
+static func _settler_buys_house(w: LTWorld, l: Dictionary) -> void:
+	var price: int = int(l["for_sale"])
+	var seller: String = LTCivic.owner_acct(w, l)
+	var roll: float = w.rng.randf()
+	var adults: int = 2 if roll < 0.78 else 1
+	var kids: int = [0, 1, 2, 2, 3][w.rng.randi_range(0, 4)] if adults == 2 else w.rng.randi_range(0, 2)
+	var h: Dictionary = LTPeople.make_family(w, adults, kids)
+	var head: Dictionary = w.household_adults(h)[0]
+	var down: int = int(float(price) * 0.1)
+	w.ledger.pay("outside", seller, down, "house_purchases")
+	var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", price - down, 0.064, 360, "house", int(l["id"]), [])
+	LTFinance.fund_loan(w, d, seller, price - down)
+	LTCivic.transfer_tax(w, seller, price, int(l["id"]))
+	var b: Dictionary = w.biz(int(l["owner_id"])) if str(l["owner_kind"]) == "business" else {}
+	if not b.is_empty():
+		w.log_biz(b, "Sold the house on %s for %s, %s over what it cost to build." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(price - int(l.get("bought_for", price)))])
+	l.erase("bought_for")
+	LTPeople.move_household_into(w, h, int(l["id"]), 0)
+	h["tenure"] = "own"
+	h["rent"] = 0
+	h["mortgage"] = int(d["id"])
+	l["owner_kind"] = "sim"
+	l["owner_id"] = int(head["id"])
+	for m in w.household_members(h):
+		m["moved_in"] = w.day
+		w.counters["moved_in"] = int(w.counters["moved_in"]) + 1
+		w.log_sim(m, "Moved to %s into a newly built house on %s, bought for %s." % [w.city["name"], LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price)], true)
+	w.chronicle_add("The %s family bought the new house on %s and moved in. %s now has %d residents." % [head["last_name"], LTGeography.lot_street(w, int(l["id"]))["name"], w.city["name"], w.residents()], "move", true, h["members"].duplicate())
 
 
 ## Called when a settler's house is finished: the family arrives and owns it.
@@ -226,10 +278,10 @@ static func next_steps(w: LTWorld) -> Array:
 				homes = true
 				break
 		var steps: Array = [
-			["Draw your first road off the county road (Draw road, bottom right)", drawn],
+			["Draw your first road off the county road (Draw road, right side)", drawn],
 			["Tap the road, write its contract, and press Go live", live],
 			["When bids arrive, award one on the Projects tab", awarded],
-			["Plot residential lots beside your road (Plot lots)", homes],
+			["Plot house lots beside your road (Plot lots; pick a lot width to cut a strip into several)", homes],
 			["Draft the mayor's house on the Projects tab and send it live", house_live or int(w.player.get("home_lot", -1)) >= 0],
 			["Wait for a contractor to finish your first road", built_road],
 			["Welcome your first settler family", w.alive_count() > 0],

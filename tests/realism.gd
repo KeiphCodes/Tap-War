@@ -100,7 +100,7 @@ func _county() -> void:
 
 func _town() -> void:
 	var w: LTWorld = LTWorld.new()
-	w.new_town(77, {"lot_cols": 14, "lot_rows": 12, "target_households": 330, "target_population": 1000, "house_lots": 34, "apartment_lots": 50, "apartment_units": 6, "city_start_cash": LTMoney.dollars(1500000.0)})
+	w.new_town(77, {"town_blocks_x": 9, "town_blocks_y": 8, "target_households": 330, "target_population": 1000, "house_lots": 200, "apartment_lots": 22, "apartment_units": 6, "city_start_cash": LTMoney.dollars(1500000.0)})
 	var ages: Array = [0, 0, 0]
 	for cz in w.citizens:
 		if w.is_present(cz):

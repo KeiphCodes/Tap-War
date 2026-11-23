@@ -9,6 +9,8 @@ const LEFT_W: int = 480
 const RIGHT_W: int = 440
 const TOP_H: int = 64
 const TOOL_H: int = 66
+## The build tools stand in a column down the right edge.
+const TOOL_COL_W: int = 176
 
 var main: Node
 var root: Control
@@ -519,7 +521,7 @@ func _build_left() -> void:
 	left.anchor_top = 0.0
 	left.anchor_bottom = 1.0
 	left.offset_top = TOP_H + 6
-	left.offset_bottom = -TOOL_H - 14
+	left.offset_bottom = -8
 	left.offset_left = 8
 	left.offset_right = 8 + LEFT_W
 	root.add_child(left)
@@ -565,10 +567,10 @@ func _build_right() -> void:
 	right.anchor_right = 1.0
 	right.anchor_top = 0.0
 	right.anchor_bottom = 1.0
-	right.offset_left = -RIGHT_W - 8
-	right.offset_right = -8
+	right.offset_left = -RIGHT_W - TOOL_COL_W - 16
+	right.offset_right = -TOOL_COL_W - 16
 	right.offset_top = TOP_H + 6
-	right.offset_bottom = -TOOL_H - 14
+	right.offset_bottom = -8
 	root.add_child(right)
 	var vb: VBoxContainer = VBoxContainer.new()
 	right.add_child(vb)
@@ -607,21 +609,46 @@ func _build_tools() -> void:
 	tool_bar = PanelContainer.new()
 	tool_bar.anchor_left = 1.0
 	tool_bar.anchor_right = 1.0
-	tool_bar.anchor_top = 1.0
+	tool_bar.anchor_top = 0.0
 	tool_bar.anchor_bottom = 1.0
-	tool_bar.offset_left = -1040
+	tool_bar.offset_left = -TOOL_COL_W - 8
 	tool_bar.offset_right = -8
-	tool_bar.offset_top = -TOOL_H - 8
+	tool_bar.offset_top = TOP_H + 6
 	tool_bar.offset_bottom = -8
-	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	root.add_child(tool_bar)
-	var hb: HBoxContainer = HBoxContainer.new()
-	tool_bar.add_child(hb)
-	for t in [["look", "Look", "Click lots and people to inspect them. Drag with right mouse to turn."], ["road", "Draw road", "Drag along the survey grid to draw a straight road. It starts as a draft contract: set its terms, press Go live, and contractors bid to build it."], ["plot", "Plot lots", "Drag over open land beside a road to mark lots in the chosen zone."], ["unplot", "Remove lot", "Click an empty lot the city still owns to return it to prairie."]]:
-		var b: Button = _big(_btn(t[1], func(): _set_tool(t[0]), t[2]), 120)
+	var sc: ScrollContainer = ScrollContainer.new()
+	_make_scroll(sc)
+	tool_bar.add_child(sc)
+	var hb: VBoxContainer = VBoxContainer.new()
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_theme_constant_override("separation", 8)
+	sc.add_child(hb)
+	var tips: Dictionary = {
+		"look": "Tap lots, roads and people to see them. Drag to move the map.",
+		"road": "Drag along the survey grid to draw a straight street or alley. It starts as a draft contract: set its terms, press Go live, and contractors bid to build it.",
+		"plot": "Drag a rectangle beside a road to plot land of any size. Pick a lot width to cut a long strip into several lots.",
+		"unplot": "Tap an empty lot the city still owns to return it to prairie.",
+	}
+	for t in [["look", "Look"], ["road", "Draw road"], ["plot", "Plot lots"], ["unplot", "Remove lot"]]:
+		var b: Button = _big(_btn(t[1], func(): _set_tool(t[0]), tips[t[0]]), 0)
 		b.toggle_mode = true
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tool_btns[t[0]] = b
 		hb.add_child(b)
+		if t[0] == "road":
+			road_opt = _tool_opt(["Street", "Alley"], func(i): main.view.road_kind = "alley" if i == 1 else "street")
+			hb.add_child(road_opt)
+		elif t[0] == "plot":
+			zone_opt = OptionButton.new()
+			for z in LTGeography.ZONES:
+				if z != "none":
+					zone_opt.add_item(z)
+			zone_opt.item_selected.connect(func(i): main.view.plot_zone = zone_opt.get_item_text(i))
+			_style_tool_opt(zone_opt)
+			hb.add_child(zone_opt)
+			width_opt = _tool_opt(PLOT_WIDTHS.map(func(e): return str(e[1])), func(i): main.view.plot_width = float(PLOT_WIDTHS[i][0]))
+			hb.add_child(width_opt)
+	hb.add_child(_sep())
 	map_opt = OptionButton.new()
 	for k in main.view.OVERLAYS:
 		map_opt.add_item("Map: normal" if k == "" else str({"value": "Map: value", "condition": "Map: condition", "happiness": "Map: happiness", "safety": "Map: safety", "sale": "Map: for sale"}[k]))
@@ -631,27 +658,39 @@ func _build_tools() -> void:
 		main.view.set_overlay(k)
 		if k != "":
 			show_toast("%s. Red is low, yellow middling, green high.%s Lots left plain have nothing to show." % [main.view.OVERLAYS[k], " Blue lots are held for the city." if k == "sale" else ""]))
-	map_opt.focus_mode = Control.FOCUS_NONE
 	map_opt.tooltip_text = "Color the map to see problems at a glance."
-	_big(map_opt, 150)
-	map_opt.get_popup().add_theme_font_size_override("font_size", 20)
-	map_opt.get_popup().add_theme_constant_override("v_separation", 16)
+	_style_tool_opt(map_opt)
 	hb.add_child(map_opt)
 	undo_btn = _big(_btn("Undo", func():
 		show_toast(main.undo())
-		refresh_undo(), "Take back your last change. Works until the next day begins."), 90)
+		refresh_undo(), "Take back your last change. Works until the next day begins."), 0)
+	undo_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(undo_btn)
-	zone_opt = OptionButton.new()
-	for z in LTGeography.ZONES:
-		if z != "none":
-			zone_opt.add_item(z)
-	zone_opt.item_selected.connect(func(i): main.view.plot_zone = zone_opt.get_item_text(i))
-	zone_opt.focus_mode = Control.FOCUS_NONE
-	_big(zone_opt, 150)
-	zone_opt.get_popup().add_theme_font_size_override("font_size", 20)
-	zone_opt.get_popup().add_theme_constant_override("v_separation", 16)
-	hb.add_child(zone_opt)
 	_set_tool("look")
+
+
+## Lot widths for the plot tool: one lot as dragged, or cut into lots this wide.
+const PLOT_WIDTHS: Array = [[0.0, "One lot as drawn"], [12.0, "12 m storefronts"], [15.0, "15 m (50 ft)"], [20.0, "20 m (66 ft)"], [25.0, "25 m (80 ft)"], [30.0, "30 m (100 ft)"], [45.0, "45 m (150 ft)"]]
+var road_opt: OptionButton
+var width_opt: OptionButton
+
+
+func _tool_opt(items: Array, cb: Callable) -> OptionButton:
+	var o: OptionButton = OptionButton.new()
+	for it in items:
+		o.add_item(str(it))
+	o.item_selected.connect(cb)
+	_style_tool_opt(o)
+	return o
+
+
+func _style_tool_opt(o: OptionButton) -> void:
+	o.focus_mode = Control.FOCUS_NONE
+	o.clip_text = true
+	o.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_big(o, 0)
+	o.get_popup().add_theme_font_size_override("font_size", 20)
+	o.get_popup().add_theme_constant_override("v_separation", 16)
 
 
 func _set_tool(t: String) -> void:
@@ -660,8 +699,10 @@ func _set_tool(t: String) -> void:
 	for k in tool_btns:
 		(tool_btns[k] as Button).button_pressed = k == t
 	zone_opt.visible = t == "plot"
+	width_opt.visible = t == "plot"
+	road_opt.visible = t == "road"
 	if t != "look":
-		show_toast({"road": "Drag to draw a straight road.", "plot": "Drag over open land beside a road.", "unplot": "Click an empty city lot to take it back."}[t])
+		show_toast({"road": "Drag to draw a straight street or alley on the survey grid.", "plot": "Drag a rectangle up against a road. Its sides snap to the road's edge.", "unplot": "Tap an empty city lot to take it back."}[t])
 
 
 func _build_feed() -> void:
@@ -742,7 +783,7 @@ func _process(delta: float) -> void:
 		toast.modulate.a = clampf(_toast_t, 0.0, 1.0)
 	# keep panels usable on narrow screens
 	var vw: float = root.size.x
-	if vw < LEFT_W + RIGHT_W + 200 and right.visible and left.visible:
+	if vw < LEFT_W + RIGHT_W + TOOL_COL_W + 200 and right.visible and left.visible:
 		left.visible = false
 	if steps_card != null:
 		# the welcome and event cards sit in the same spot; the steps wait behind them
@@ -882,7 +923,7 @@ func show_setup(first: bool = false) -> void:
 
 func _welcome() -> void:
 	if str(w().mode.get("start", "classic")) == "founder":
-		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nUse [b]Draw road[/b] (bottom right) to lay out streets off the county road. Each one is a draft contract: set the terms, press [b]Go live[/b], and contractors bid to build it. Then [b]Plot lots[/b] beside your roads and pick a zone. Settlers will come, buy residential lots, and build their own homes. Draft the mayor's house on the Projects tab and send it live. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
+		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nUse [b]Draw road[/b] (right side) to lay out streets off the county road. Each one is a draft contract: set the terms, press [b]Go live[/b], and contractors bid to build it. Then [b]Plot lots[/b] beside your roads and pick a zone. Settlers will come, buy residential lots, and build their own homes. Draft the mayor's house on the Projects tab and send it live. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
 		notice.visible = true
 		return
 	notice_text.text = "[b]Welcome, Mayor of %s.[/b]\nAbout %d people live here. Most drive to the next town to work and shop. There is no grocery, no school, no clinic.\nYou cannot build any of that yourself. Zone land, set laws, answer petitions, and put public projects out to bid. The people decide the rest, and every big decision they make is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Watch[/b] to see a single day up close. The Help tab has the controls.%s" % [w().city["name"], w().alive_count(), "\nThis town holds elections. Keep the people's trust to stay mayor." if bool(w().mode.get("elections", false)) else ""]
@@ -1012,16 +1053,7 @@ func _tab_mayor() -> void:
 	borrow.add_child(_btn("Borrow from the bank", func(): show_toast(str(main.act({"kind": "city_borrow", "amount": int(amt.value) * 100, "purpose": "city needs"})["message"]))))
 	box.add_child(borrow)
 	box.add_child(_sep())
-	box.add_child(_h("Land, bonds and elections"))
-	var cols_n: int = int(ww.config["lot_cols"])
-	var land: HBoxContainer = HBoxContainer.new()
-	land.visible = not bool(ww.config.get("open_land", false))
-	land.add_child(_btn("Plot new land (%d lots, %s)" % [cols_n, _money(cols_n * LTMoney.dollars(9000.0))], func():
-		var r: Dictionary = main.act({"kind": "annex"})
-		if bool(r["ok"]):
-			main.view.rebuild()
-		show_toast(str(r["message"])), "Buy a row of farmland from the county. It arrives unzoned, with a gravel road to pave."))
-	box.add_child(land)
+	box.add_child(_h("Bonds and elections"))
 	var bond: HBoxContainer = HBoxContainer.new()
 	var bamt: SpinBox = SpinBox.new()
 	bamt.min_value = 50000
@@ -1660,7 +1692,7 @@ func _tab_help() -> void:
 	box.add_child(_rtl("""You are the mayor of [b]%s[/b]. You do not build the town. The people do.
 
 [b]What you can do[/b]
-Zone empty lots (click a lot). In a founded town, draw roads and plot lots anywhere with the tools at the bottom right. Pass laws and set taxes on the Mayor tab. Publish a city need with incentives. Answer petitions on the Requests tab. Put public projects out to bid and award them on the Projects tab. Borrow money for the city. Watch anyone.
+Zone empty lots (click a lot). In a founded town, draw streets and alleys and plot lots of any size anywhere with the tools down the right side. Pass laws and set taxes on the Mayor tab. Publish a city need with incentives. Answer petitions on the Requests tab. Put public projects out to bid and award them on the Projects tab. Borrow money for the city. Watch anyone.
 
 [b]What you cannot do[/b]
 Place a business, hire or fire anyone, set a shop price, or force anyone to stay. Sims decide all of that, and every big decision is written in their history with the reason.

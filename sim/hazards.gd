@@ -172,16 +172,25 @@ static func tornado(w: LTWorld) -> void:
 	_count(w, "tornadoes")
 	severe_storm(w)
 	# a narrow path across town: everything within a block of it is hit hard
-	var cols: int = int(w.config.get("map_cols", w.config["lot_cols"]))
-	var rows: int = int(w.config.get("map_rows", w.config["lot_rows"]))
+	# its path is a straight line across the map, in meters; within 15 meters is the
+	# core, within 50 meters the edge of the storm
 	var along_rows: bool = w.rng.randf() < 0.5
-	var line: int = w.rng.randi_range(0, (rows if along_rows else cols) - 1)
+	var built: Array = []
+	for l0 in w.lots:
+		if _building(l0):
+			built.append(l0)
+	if built.is_empty():
+		return
+	var aim: Dictionary = built[w.rng.randi_range(0, built.size() - 1)]
+	var line: float = (float(aim["z0"]) + float(aim["z1"])) * 0.5 if along_rows else (float(aim["x0"]) + float(aim["x1"])) * 0.5
+	line += w.rng.randf_range(-60.0, 60.0)
 	var hit: int = 0
 	var people: Array = []
 	for l in w.lots:
 		if not _building(l):
 			continue
-		var d: int = absi((int(l["row"]) if along_rows else int(l["col"])) - line)
+		var c: float = (float(l["z0"]) + float(l["z1"])) * 0.5 if along_rows else (float(l["x0"]) + float(l["x1"])) * 0.5
+		var d: int = 0 if absf(c - line) < 15.0 else (1 if absf(c - line) < 50.0 else 2)
 		if d > 1:
 			continue
 		var dmg: float = w.rng.randf_range(40.0, 95.0) if d == 0 else w.rng.randf_range(10.0, 40.0)

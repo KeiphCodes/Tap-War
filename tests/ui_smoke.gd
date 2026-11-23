@@ -13,13 +13,13 @@ func _init() -> void:
 	main.new_town(20261120, {"start": "founder", "elections": true, "real_calendar": true})
 	await process_frame
 	var n: Callable = func(i, j): return LTGeography.node_id(main.world, i, j)
-	print("road: ", main.act({"kind": "plan_road", "a": n.call(8, 12), "b": n.call(8, 6)})["message"])
-	print("plot: ", main.act({"kind": "plot_lots", "c0": 8, "r0": 6, "c1": 8, "r1": 11, "zone": "residential"})["message"])
+	print("road: ", main.act({"kind": "plan_road", "a": n.call(70, 60), "b": n.call(70, 54)})["message"])
+	print("plot: ", main.act({"kind": "plot_lots", "x0": 707.5, "z0": 552.0, "x1": 787.5, "z1": 592.0, "zone": "residential", "width": 20.0})["message"])
 	main.act({"kind": "define_project", "ptype": "mayor_house", "target": 0})
 	for t in ["road", "plot", "unplot", "look"]:
 		main.hud._set_tool(t)
-		main.view._tool_a = Vector2i(3, 3)
-		main.view._tool_b = Vector2i(6, 3)
+		main.view._ta = Vector3(700.0, 0, 560.0)
+		main.view._tb = Vector3(790.0, 0, 590.0)
 		main.view._show_preview()
 	main.hud.inspect("lot", 0)
 	main.hud.inspect("road", 1)
@@ -33,7 +33,7 @@ func _init() -> void:
 	# undo: a drawn road comes back off the map the same day
 	var streets_before: int = main.world.streets.size()
 	var roads_before: int = main.world.projects.size()
-	main.act({"kind": "plan_road", "a": n.call(3, 12), "b": n.call(3, 8)})
+	main.act({"kind": "plan_road", "a": n.call(30, 60), "b": n.call(30, 50)})
 	var drew: bool = main.world.streets.size() == streets_before + 1
 	print("undo: ", main.undo(), " drew ", drew, " back to ", main.world.streets.size() == streets_before and main.world.projects.size() == roads_before)
 	if not drew or main.world.streets.size() != streets_before:

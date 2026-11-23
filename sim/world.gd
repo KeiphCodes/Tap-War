@@ -4,7 +4,9 @@ extends RefCounted
 ## these records. Nothing here is a scene node, so the town can run headless and
 ## grow past the starting size without changing any system.
 
-const SAVE_VERSION: int = 4
+## Version 5 is the real scale map (meters, 100 meter blocks, lots of any size);
+## older saves were on the old tiny grid and are not loaded.
+const SAVE_VERSION: int = 5
 
 var seed_value: int = 0
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -48,12 +50,12 @@ var debt_index_dirty: bool = true
 
 static func default_config() -> Dictionary:
 	return {
-		"lot_cols": 6,
-		"lot_rows": 4,
+		"town_blocks_x": 4,
+		"town_blocks_y": 3,
 		"target_households": 30,
 		"target_population": 100,
-		"house_lots": 6,
-		"apartment_lots": 6,
+		"house_lots": 22,
+		"apartment_lots": 2,
 		"apartment_units": 4,
 		"next_town_minutes": 25,
 		"city_start_cash": LTMoney.dollars(150000.0),
@@ -241,6 +243,8 @@ func tick_day() -> void:
 	LTChoices.daily(self)
 	if LTCalendar.day_of_month(day) == 18:
 		LTChoices.monthly(self)
+	if LTCalendar.day_of_month(day) == 22:
+		LTDevelopers.monthly(self)
 	LTProjects.daily(self)
 	LTPeople.life_events(self)
 	if LTCalendar.day_of_month(day) == 25:
@@ -301,9 +305,9 @@ func apply_action(a: Dictionary) -> Dictionary:
 			else:
 				result = LTGeography.annex_row(self)
 		"plan_road":
-			result = LTGeography.plan_road(self, int(act["a"]), int(act["b"]), not bool(act.get("live", false)))
+			result = LTGeography.plan_road(self, int(act["a"]), int(act["b"]), not bool(act.get("live", false)), str(act.get("road_kind", "street")))
 		"plot_lots":
-			result = LTGeography.plot_lots(self, int(act["c0"]), int(act["r0"]), int(act["c1"]), int(act["r1"]), str(act.get("zone", "residential")))
+			result = LTGeography.plot_lots(self, float(act["x0"]), float(act["z0"]), float(act["x1"]), float(act["z1"]), str(act.get("zone", "residential")), float(act.get("width", 0.0)))
 		"unplot":
 			result = LTGeography.unplot(self, int(act["lot"]))
 		"elections":
@@ -613,7 +617,7 @@ func load_from_file(path: String) -> Error:
 	if f.get_buffer(10).get_string_from_ascii() != "LIVINGTOWN":
 		return ERR_FILE_UNRECOGNIZED
 	var version: int = f.get_32()
-	if version < 2 or version > SAVE_VERSION:
+	if version < 5 or version > SAVE_VERSION:
 		return ERR_FILE_UNRECOGNIZED
 	var n: int = f.get_32()
 	var data: Dictionary = {}

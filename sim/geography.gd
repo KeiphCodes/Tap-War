@@ -5,58 +5,199 @@ extends RefCounted
 const ZONES: Array = ["residential", "commercial", "industrial", "agricultural", "civic", "park", "mixed", "none"]
 const STREET_NAMES: Array = ["Prairie Street", "Main Street", "Elm Street", "Mill Street", "River Road", "Oak Street", "Depot Street", "Lake Street"]
 const AVENUE_NAMES: Array = ["1st Avenue", "2nd Avenue", "3rd Avenue", "4th Avenue", "5th Avenue", "6th Avenue", "7th Avenue", "8th Avenue", "9th Avenue", "10th Avenue"]
-const SEGMENT_MINUTES: float = 1.5
+## One road segment is one survey step (10 meters). Driving about 40 km/h with
+## stops, or walking for part of the trip, comes to about 0.1 minutes per step.
+const SEGMENT_MINUTES: float = 0.1
+
+# ---------------------------------------------------------------- the survey
+## Everything is in meters. Roads run on a 10 meter survey grid; nodes exist
+## only where a road touches the grid. A town block is about 100 meters between
+## street centerlines, as in a real Midwest town. Lots are rectangles of any
+## size, fronting one road.
+const GRID: float = 10.0
+const MAP_COLS: int = 160
+const MAP_ROWS: int = 120
+const BLOCK: int = 10
+## half of a road's right of way: paved lanes plus the sidewalk or shoulder
+const ROW_HALF: Dictionary = {"street": 7.5, "avenue": 7.5, "alley": 3.0, "highway": 8.0, "lane": 6.0}
+## land price per square meter by zone (about $20,000 for a 20 by 40 meter house lot)
+const LAND_PER_M2: Dictionary = {"residential": 25.0, "commercial": 55.0, "mixed": 45.0, "industrial": 15.0, "agricultural": 1.6, "civic": 10.0, "park": 8.0, "none": 2.0}
 
 
-static func build(w: LTWorld) -> void:
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
-	w.config["map_cols"] = cols
-	w.config["map_rows"] = rows
-	w.config["lot_at"] = {}
-	# road nodes on the corners of lots
-	for j in rows + 1:
-		for i in cols + 1:
-			w.road_nodes.append({"id": w.road_nodes.size(), "x": i, "y": j, "edges": []})
-	for j in rows + 1:
-		var street: Dictionary = {"id": w.streets.size(), "name": STREET_NAMES[j % STREET_NAMES.size()], "segments": [], "kind": "street"}
-		for i in cols:
-			street["segments"].append(_add_segment(w, j * (cols + 1) + i, j * (cols + 1) + i + 1, street["id"]))
-		w.streets.append(street)
-	w.config["row_streets"] = range(rows + 1)
-	w.config["avenue_base"] = w.streets.size()
-	w.config["exit_node"] = (rows / 2) * (cols + 1)
-	w.config["districts"] = [{"name": "Old Town", "rows": [0, rows - 1]}]
-	for i in cols + 1:
-		var ave: Dictionary = {"id": w.streets.size(), "name": AVENUE_NAMES[i % AVENUE_NAMES.size()], "segments": [], "kind": "avenue"}
-		for j in rows:
-			ave["segments"].append(_add_segment(w, j * (cols + 1) + i, (j + 1) * (cols + 1) + i, ave["id"]))
-		w.streets.append(ave)
-	# starting roads are old county roads in mixed shape
-	for s in w.roads:
-		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
+static func node_key(i: int, j: int) -> int:
+	return j * (MAP_COLS + 1) + i
+
+
+## The road node at survey corner (i, j), created if it is not there yet.
+static func node_id(w: LTWorld, i: int, j: int) -> int:
+	var k: int = node_key(i, j)
+	var at: Dictionary = w.config["node_at"]
+	if at.has(k):
+		return int(at[k])
+	var id: int = w.road_nodes.size()
+	w.road_nodes.append({"id": id, "x": i, "y": j, "edges": [], "planned": []})
+	at[k] = id
+	return id
+
+
+static func find_node(w: LTWorld, i: int, j: int) -> int:
+	return int(w.config["node_at"].get(node_key(i, j), -1))
+
+
+static func node_pos(w: LTWorld, n: int) -> Vector2:
+	var nd: Dictionary = w.road_nodes[n]
+	return Vector2(float(nd["x"]) * GRID, float(nd["y"]) * GRID)
+
+
+static func _init_survey(w: LTWorld) -> void:
+	w.config["map_cols"] = MAP_COLS
+	w.config["map_rows"] = MAP_ROWS
+	w.config["lot_cols"] = MAP_COLS
+	w.config["lot_rows"] = MAP_ROWS
+	w.config["node_at"] = {}
+	w.config["districts"] = [{"name": "Town", "rows": [0, MAP_ROWS]}]
+	w.config["road_name_i"] = 0
+
+
+static func _road(w: LTWorld, name: String, kind: String, i0: int, j0: int, i1: int, j1: int) -> Dictionary:
+	var st: Dictionary = {"id": w.streets.size(), "name": name, "segments": [], "kind": kind}
+	w.streets.append(st)
+	var steps: int = maxi(absi(i1 - i0), absi(j1 - j0))
+	var di: int = signi(i1 - i0)
+	var dj: int = signi(j1 - j0)
+	for k in steps:
+		var a: int = node_id(w, i0 + di * k, j0 + dj * k)
+		var b: int = node_id(w, i0 + di * (k + 1), j0 + dj * (k + 1))
+		if seg_between(w, a, b) >= 0:
 			continue
+		st["segments"].append(_add_segment(w, a, b, int(st["id"])))
+	if kind == "alley":
+		st["width"] = "alley"
+		st["surface"] = "gravel"
+	return st
+
+
+## Prairie Hollow at real scale: a grid of 100 meter blocks with an alley down
+## the middle of each, homes on the north side, Main Street through the middle
+## lined with narrow storefront lots, civic land and a park, and farmland on the
+## south edge. The county road comes in from both ends of Main Street.
+static func build(w: LTWorld) -> void:
+	_init_survey(w)
+	var bx: int = int(w.config.get("town_blocks_x", 4))
+	var by: int = int(w.config.get("town_blocks_y", 3))
+	var ox: int = (MAP_COLS - bx * BLOCK) / 2 / BLOCK * BLOCK
+	var oy: int = (MAP_ROWS - by * BLOCK) / 2 / BLOCK * BLOCK
+	var main_row: int = by / 2
+	var jm: int = oy + main_row * BLOCK
+	# the county road, edge to edge along Main Street's line
+	_road(w, "County Road 12", "highway", 0, jm, ox, jm)
+	_road(w, "County Road 12", "highway", ox + bx * BLOCK, jm, MAP_COLS, jm)
+	w.config["exit_node"] = find_node(w, 0, jm)
+	w.config["exit_nodes"] = [find_node(w, 0, jm), find_node(w, MAP_COLS, jm)]
+	# streets east to west, avenues north to south, alleys through each block
+	var street_ids: Array = []
+	for r in by + 1:
+		var nm: String = "Main Street" if r == main_row else STREET_NAMES[(r + (0 if r < main_row else 1)) % STREET_NAMES.size()]
+		if nm == "Main Street" and r != main_row:
+			nm = "Prairie Street"
+		street_ids.append(int(_road(w, nm, "street", ox, oy + r * BLOCK, ox + bx * BLOCK, oy + r * BLOCK)["id"]))
+	for c in bx + 1:
+		_road(w, AVENUE_NAMES[c % AVENUE_NAMES.size()], "avenue", ox + c * BLOCK, oy, ox + c * BLOCK, oy + by * BLOCK)
+	for r in by:
+		if r == by - 1:
+			continue   # farm blocks have no alley
+		_road(w, "Alley", "alley", ox, oy + r * BLOCK + BLOCK / 2, ox + bx * BLOCK, oy + r * BLOCK + BLOCK / 2)
+	for s in w.roads:
 		s["condition"] = w.rng.randf_range(45.0, 85.0)
 		s["quality"] = w.rng.randf_range(0.45, 0.7)
-	# Main Street is the worst, the county never fixed it
-	for sid in w.streets[1]["segments"]:
+	for sid in w.streets[street_ids[main_row]]["segments"]:
 		w.roads[int(sid)]["condition"] = w.rng.randf_range(38.0, 52.0)
 		w.roads[int(sid)]["quality"] = 0.45
 	# lots
-	var layout: Array = _starting_layout(cols, rows)
-	for r in rows:
-		for c in cols:
-			var id: int = w.lots.size()
-			var zone: String = layout[r * cols + c]
-			w.lots.append({
-				"id": id, "col": c, "row": r, "zone": zone,
-				"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
-				"owner_kind": "city", "owner_id": -1,
-				"value": land_value(zone), "condition": 80.0,
-				"building": "", "built_day": 0, "name": "", "street": r, "district": "Old Town",
-				"access_node": r * (cols + 1) + c,
-			})
-			w.config["lot_at"][cell_key(c, r)] = id
+	for r in by:
+		for c in bx:
+			var x0: float = float(ox + c * BLOCK) * GRID + ROW_HALF["avenue"]
+			var x1: float = float(ox + (c + 1) * BLOCK) * GRID - ROW_HALF["avenue"]
+			var zt: float = float(oy + r * BLOCK) * GRID + ROW_HALF["street"]
+			var zb: float = float(oy + (r + 1) * BLOCK) * GRID - ROW_HALF["street"]
+			var za: float = float(oy + r * BLOCK + BLOCK / 2) * GRID
+			var zone: String = "residential"
+			var width: float = 21.25
+			if r == by - 1:
+				zone = "agricultural" if c < bx / 2 else ("park" if c == bx / 2 else "civic")
+				width = 42.5
+			if r == by - 1 and zone == "agricultural":
+				_make_lots(w, x0, zt, x1, zb, zone, x1 - x0, "n")
+				continue
+			if r == by - 1:
+				_make_lots(w, x0, zt, x1, zb, zone, x1 - x0, "n")
+				continue
+			# north half fronts the street above, south half the street below;
+			# both sides of Main Street are narrow storefront lots
+			var downtown: bool = c >= bx / 2 - 1 and c <= bx / 2
+			var north_zone: String = "commercial" if r == main_row and downtown else zone
+			var south_zone: String = "commercial" if r == main_row - 1 and downtown else zone
+			_make_lots(w, x0, zt, x1, za - ROW_HALF["alley"], north_zone, 12.1 if north_zone == "commercial" else width, "n")
+			_make_lots(w, x0, za + ROW_HALF["alley"], x1, zb, south_zone, 12.1 if south_zone == "commercial" else width, "s")
+
+
+## Cuts a strip of land into lots of a given width along its front.
+static func _make_lots(w: LTWorld, x0: float, z0: float, x1: float, z1: float, zone: String, width: float, front: String) -> void:
+	var n: int = maxi(1, int(floor((x1 - x0) / width + 0.01)))
+	var wd: float = (x1 - x0) / float(n)
+	for k in n:
+		_add_lot(w, x0 + wd * float(k), z0, x0 + wd * float(k + 1), z1, zone, front, "Town")
+
+
+static func _add_lot(w: LTWorld, x0: float, z0: float, x1: float, z1: float, zone: String, front: String, district: String) -> int:
+	var cx: float = (x0 + x1) * 0.5
+	var cz: float = (z0 + z1) * 0.5
+	var fx: float = cx
+	var fz: float = cz
+	match front:
+		"n":
+			fz = z0 - 1.0
+		"s":
+			fz = z1 + 1.0
+		"w":
+			fx = x0 - 1.0
+		"e":
+			fx = x1 + 1.0
+	var seg: int = _nearest_segment(w, Vector2(fx, fz))
+	if seg < 0:
+		return -1
+	var sg: Dictionary = w.roads[seg]
+	var pa: Vector2 = node_pos(w, int(sg["a"]))
+	var pb: Vector2 = node_pos(w, int(sg["b"]))
+	var access: int = int(sg["a"]) if pa.distance_to(Vector2(cx, cz)) <= pb.distance_to(Vector2(cx, cz)) else int(sg["b"])
+	var id: int = w.lots.size()
+	var area: float = (x1 - x0) * (z1 - z0)
+	w.lots.append({
+		"id": id, "x0": x0, "z0": z0, "x1": x1, "z1": z1, "front": front,
+		"col": int(cx / 18.0), "row": int(cz / 18.0), "zone": zone,
+		"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
+		"owner_kind": "city", "owner_id": -1,
+		"value": land_value(zone, area), "condition": 80.0,
+		"building": "", "built_day": 0, "name": "", "street": int(sg["street"]), "district": district,
+		"access_node": access, "price_pct": 100, "hold": false, "plot_group": 0,
+	})
+	return id
+
+
+## The road segment closest to a point (any kind, built or planned), or -1.
+static func _nearest_segment(w: LTWorld, p: Vector2) -> int:
+	var best: int = -1
+	var best_d: float = 1e9
+	for sg in w.roads:
+		if bool(sg.get("removed", false)):
+			continue
+		var a: Vector2 = node_pos(w, int(sg["a"]))
+		var b: Vector2 = node_pos(w, int(sg["b"]))
+		var d: float = Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p)
+		if d < best_d:
+			best_d = d
+			best = int(sg["id"])
+	return best
 
 
 static func _add_segment(w: LTWorld, a: int, b: int, street_id: int) -> int:
@@ -67,46 +208,26 @@ static func _add_segment(w: LTWorld, a: int, b: int, street_id: int) -> int:
 	return id
 
 
-static func _starting_layout(cols: int, rows: int) -> Array:
-	# scales with the map: the top half is homes, then shops and civic land, farmland at the edge
-	var res_rows: int = maxi(2, rows / 2)
-	var ag_n: int = maxi(1, cols / 2)
-	var out: Array = []
-	for r in rows:
-		for c in cols:
-			var z: String = "residential"
-			if r >= res_rows:
-				if r == rows - 1 and c < ag_n:
-					z = "agricultural"
-				elif r == res_rows and c >= cols - 2:
-					z = "civic"
-				elif r == rows - 1 and c == ag_n:
-					z = "park"
-				else:
-					z = "commercial"
-			out.append(z)
-	return out
+## What a lot of this size and zone is worth as bare land.
+static func land_value(zone: String, area: float = 800.0) -> int:
+	return LTMoney.dollars(maxf(1000.0, area * float(LAND_PER_M2.get(zone, 2.0))))
 
 
-static func land_value(zone: String) -> int:
-	match zone:
-		"commercial", "mixed":
-			return LTMoney.dollars(45000.0)
-		"agricultural":
-			return LTMoney.dollars(60000.0)
-		"industrial":
-			return LTMoney.dollars(35000.0)
-		"residential":
-			return LTMoney.dollars(30000.0)
-	return LTMoney.dollars(20000.0)
+static func lot_area(l: Dictionary) -> float:
+	return (float(l["x1"]) - float(l["x0"])) * (float(l["z1"]) - float(l["z0"]))
+
+
+## Street frontage in meters (the side that faces the road).
+static func lot_frontage(l: Dictionary) -> float:
+	return (float(l["x1"]) - float(l["x0"])) if ["n", "s"].has(str(l["front"])) else (float(l["z1"]) - float(l["z0"]))
+
+
+static func lot_depth(l: Dictionary) -> float:
+	return (float(l["z1"]) - float(l["z0"])) if ["n", "s"].has(str(l["front"])) else (float(l["x1"]) - float(l["x0"]))
 
 
 static func lot_access_node(w: LTWorld, lot_id: int) -> int:
-	var l: Dictionary = w.lot(lot_id)
-	var cols: int = int(w.config["lot_cols"])
-	if l.has("access_node"):
-		return int(l["access_node"])
-	return int(l["row"]) * (cols + 1) + int(l["col"])
+	return int(w.lot(lot_id)["access_node"])
 
 
 static func exit_node(w: LTWorld) -> int:
@@ -256,10 +377,12 @@ static func _heap_pop(h: Array) -> Array:
 
 
 static func lot_front_segments(w: LTWorld, lot_id: int) -> Array:
-	var l: Dictionary = w.lot(lot_id)
-	var cols: int = int(w.config["lot_cols"])
-	var street: Dictionary = w.streets[int(l["street"])]
-	return [street["segments"][int(l["col"])]] if int(l["col"]) < cols else []
+	var n: int = lot_access_node(w, lot_id)
+	var out: Array = []
+	for sid in w.road_nodes[n]["edges"]:
+		if int(w.roads[int(sid)]["street"]) == int(w.lot(lot_id)["street"]):
+			out.append(int(sid))
+	return out
 
 
 static func lot_street(w: LTWorld, lot_id: int) -> Dictionary:
@@ -270,54 +393,9 @@ static func district(w: LTWorld, lot_id: int) -> String:
 	return str(w.lot(lot_id).get("district", "Old Town"))
 
 
-## The mayor plots new land: the city buys a row of farmland from the county, the
-## road graph grows, and the new street is gravel until a contractor paves it.
+## Annexing is no longer needed: the whole survey is open for roads and lots.
 static func annex_row(w: LTWorld) -> Dictionary:
-	var cols: int = int(w.config["lot_cols"])
-	var rows: int = int(w.config["lot_rows"])
-	var cost: int = cols * LTMoney.dollars(9000.0)
-	if w.ledger.bal("city") < cost:
-		return {"ok": false, "message": "Buying a new row of %d lots from the county costs %s. The city has %s." % [cols, LTMoney.fmt(cost), LTMoney.fmt(w.ledger.bal("city"))]}
-	w.ledger.pay("city", "outside", cost, "land_purchase")
-	var j: int = rows + 1
-	for i in cols + 1:
-		w.road_nodes.append({"id": w.road_nodes.size(), "x": i, "y": j, "edges": []})
-	var sname: String = STREET_NAMES[j % STREET_NAMES.size()]
-	for st in w.streets:
-		if str(st["name"]) == sname:
-			sname = "South " + sname
-	var street: Dictionary = {"id": w.streets.size(), "name": sname, "segments": [], "kind": "street"}
-	for i in cols:
-		var sid: int = _add_segment(w, j * (cols + 1) + i, j * (cols + 1) + i + 1, street["id"])
-		street["segments"].append(sid)
-		w.roads[sid]["condition"] = 18.0
-		w.roads[sid]["quality"] = 0.2
-	w.streets.append(street)
-	for i in cols + 1:
-		var ave: Dictionary = w.streets[int(w.config["avenue_base"]) + i]
-		var sid2: int = _add_segment(w, (j - 1) * (cols + 1) + i, j * (cols + 1) + i, ave["id"])
-		ave["segments"].append(sid2)
-		w.roads[sid2]["condition"] = 18.0
-		w.roads[sid2]["quality"] = 0.2
-	w.config["row_streets"].append(int(street["id"]))
-	var dname: String = "South Addition" if w.config["districts"].size() == 1 else "South Addition %d" % w.config["districts"].size()
-	w.config["districts"].append({"name": dname, "rows": [rows, rows]})
-	var top_street: int = int(w.config["row_streets"][rows])
-	for c in cols:
-		w.lots.append({
-			"id": w.lots.size(), "col": c, "row": rows, "zone": "none",
-			"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
-			"owner_kind": "city", "owner_id": -1,
-			"value": land_value("none"), "condition": 80.0,
-			"building": "", "built_day": 0, "name": "", "street": top_street, "district": dname,
-			"access_node": rows * (cols + 1) + c,
-		})
-		w.config["lot_at"][cell_key(c, rows)] = w.lots.size() - 1
-	w.config["lot_rows"] = rows + 1
-	w.config["map_rows"] = rows + 1
-	w.dist_cache.clear()
-	w.chronicle_add("The city bought %d lots of farmland from the county for %s. The %s has a gravel road, %s, until a contractor paves it. Zone the lots to open them up." % [cols, LTMoney.fmt(cost), dname, sname], "city", true, [])
-	return {"ok": true, "message": "Annexed %s: %d new lots. Zone them, and put %s out to bid to pave it." % [dname, cols, sname]}
+	return {"ok": false, "message": "The whole survey is open: draw roads and plot lots wherever you like."}
 
 
 static func lot_label(w: LTWorld, lot_id: int) -> String:
@@ -467,57 +545,66 @@ static func _best_site(w: LTWorld, zones: Array, near_lots: Array) -> int:
 
 
 # ================================================================ open land (found a town)
-## A founded town starts as open prairie on a survey grid: every grid corner is a
-## possible road node, but only the county road exists. The player draws roads
-## (which go out to bid and are built by contractors) and plots lots beside them.
+## A founded town starts as open prairie: only the county road crosses it. The
+## player draws streets and alleys on the survey grid (each a contract that goes
+## out to bid) and plots lots of any size beside them.
 
-const OPEN_COLS: int = 32
-const OPEN_ROWS: int = 24
 const ROAD_NAMES: Array = ["Main Street", "Elm Street", "Oak Street", "Prairie Avenue", "Mill Road", "Church Street", "School Street", "Park Avenue", "Maple Street", "Depot Road", "Cedar Street", "Lake Road", "Hill Street", "Bluff Road", "Sunset Drive", "Ash Street", "Willow Lane", "Union Street", "Grant Avenue", "Lincoln Street"]
 
 
-static func cell_key(c: int, r: int) -> int:
-	return r * 10000 + c
-
-
-static func node_id(w: LTWorld, i: int, j: int) -> int:
-	return j * (int(w.config["map_cols"]) + 1) + i
-
-
-static func lot_at(w: LTWorld, c: int, r: int) -> int:
-	return int(w.config.get("lot_at", {}).get(cell_key(c, r), -1))
-
-
 static func build_open(w: LTWorld) -> void:
-	var cols: int = OPEN_COLS
-	var rows: int = OPEN_ROWS
-	w.config["lot_cols"] = cols
-	w.config["lot_rows"] = rows
-	w.config["map_cols"] = cols
-	w.config["map_rows"] = rows
-	w.config["lot_at"] = {}
+	_init_survey(w)
 	w.config["open_land"] = true
-	w.config["districts"] = [{"name": "Founders' Plat", "rows": [0, rows - 1]}]
-	w.config["row_streets"] = []
-	w.config["avenue_base"] = 0
-	w.config["road_name_i"] = 0
-	for j in rows + 1:
-		for i in cols + 1:
-			w.road_nodes.append({"id": w.road_nodes.size(), "x": i, "y": j, "edges": [], "planned": []})
-	# the county road crosses the land edge to edge
-	var jm: int = rows / 2
-	var hw: Dictionary = {"id": w.streets.size(), "name": "County Road 12", "segments": [], "kind": "highway"}
-	w.streets.append(hw)
-	for i in cols:
-		var sid: int = _add_segment(w, node_id(w, i, jm), node_id(w, i + 1, jm), int(hw["id"]))
-		w.roads[sid]["condition"] = w.rng.randf_range(62.0, 75.0)
-		w.roads[sid]["quality"] = 0.6
-		hw["segments"].append(sid)
-	w.config["exit_node"] = node_id(w, 0, jm)
-	w.config["exit_nodes"] = [node_id(w, 0, jm), node_id(w, cols, jm)]
+	w.config["districts"] = [{"name": "Founders' Plat", "rows": [0, MAP_ROWS]}]
+	var jm: int = MAP_ROWS / 2
+	_road(w, "County Road 12", "highway", 0, jm, MAP_COLS, jm)
+	w.config["exit_node"] = find_node(w, 0, jm)
+	w.config["exit_nodes"] = [find_node(w, 0, jm), find_node(w, MAP_COLS, jm)]
+	for s in w.roads:
+		s["condition"] = 75.0
+		s["quality"] = 0.6
 
 
-## The segment between two neighboring nodes, built or planned, or -1.
+## A lot this point falls in, or -1. Points are in meters.
+static func lot_at(w: LTWorld, x: float, z: float) -> int:
+	for l in w.lots:
+		if bool(l.get("removed", false)):
+			continue
+		if x >= float(l["x0"]) and x <= float(l["x1"]) and z >= float(l["z0"]) and z <= float(l["z1"]):
+			return int(l["id"])
+	return -1
+
+
+## The ground a road segment takes up: its lanes plus sidewalk or shoulder.
+static func seg_rect(w: LTWorld, sg: Dictionary) -> Rect2:
+	var a: Vector2 = node_pos(w, int(sg["a"]))
+	var b: Vector2 = node_pos(w, int(sg["b"]))
+	var st: Dictionary = w.streets[int(sg["street"])]
+	var hw: float = float(ROW_HALF.get(str(st.get("width", st["kind"])), ROW_HALF.get(str(st["kind"]), 7.5)))
+	var r: Rect2 = Rect2(a, Vector2.ZERO).expand(b)
+	return r.grow(hw)
+
+
+static func _rect_hits_roads(w: LTWorld, r: Rect2) -> bool:
+	var inner: Rect2 = r.grow(-0.05)
+	for sg in w.roads:
+		if bool(sg.get("removed", false)):
+			continue
+		if inner.intersects(seg_rect(w, sg)):
+			return true
+	return false
+
+
+static func _rect_hits_lots(w: LTWorld, r: Rect2) -> bool:
+	var inner: Rect2 = r.grow(-0.05)
+	for l in w.lots:
+		if bool(l.get("removed", false)):
+			continue
+		if inner.intersects(Rect2(float(l["x0"]), float(l["z0"]), float(l["x1"]) - float(l["x0"]), float(l["z1"]) - float(l["z0"]))):
+			return true
+	return false
+
+
 static func seg_between(w: LTWorld, a: int, b: int) -> int:
 	for key in ["edges", "planned"]:
 		for sid in w.road_nodes[a].get(key, []):
@@ -529,7 +616,8 @@ static func seg_between(w: LTWorld, a: int, b: int) -> int:
 
 ## Lays out a straight road between two grid corners. New pieces are planned, not
 ## built: they become a project for contractors to bid on.
-static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false) -> Dictionary:
+## Lays out a straight road (or an alley) between two survey corners.
+static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false, kind: String = "street") -> Dictionary:
 	var na: Dictionary = w.road_nodes[a]
 	var nb: Dictionary = w.road_nodes[b]
 	var ax: int = int(na["x"])
@@ -544,7 +632,15 @@ static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false) -> Dictio
 			bx = ax
 	if ax == bx and ay == by:
 		return {"ok": false, "message": "Drag farther to draw a road."}
-	var street: Dictionary = {"id": w.streets.size(), "name": _next_road_name(w), "segments": [], "kind": "street"}
+	if kind == "alley":
+		w.config["alley_i"] = int(w.config.get("alley_i", 0)) + 1
+	var street: Dictionary = {"id": w.streets.size(), "name": _next_road_name(w) if kind != "alley" else "Alley %d" % int(w.config["alley_i"]), "segments": [], "kind": "alley" if kind == "alley" else "street"}
+	if kind == "alley":
+		street["width"] = "alley"
+	# nothing may run through a lot
+	var probe: Rect2 = Rect2(Vector2(float(ax), float(ay)) * GRID, Vector2.ZERO).expand(Vector2(float(bx), float(by)) * GRID).grow(float(ROW_HALF["alley" if kind == "alley" else "street"]))
+	if _rect_hits_lots(w, probe):
+		return {"ok": false, "message": "A plotted lot is in the way. Remove the lot or draw the road elsewhere."}
 	var new_segs: Array = []
 	var steps: int = maxi(absi(bx - ax), absi(by - ay))
 	var dx: int = signi(bx - ax)
@@ -564,6 +660,11 @@ static func plan_road(w: LTWorld, a: int, b: int, draft: bool = false) -> Dictio
 		return {"ok": false, "message": "There is already a road there."}
 	w.streets.append(street)
 	var r: Dictionary = LTProjects.define_road_build(w, int(street["id"]), new_segs, draft)
+	if kind == "alley" and int(r.get("project_id", -1)) >= 0:
+		var pr: Dictionary = w.projects[int(r["project_id"])]
+		pr["spec"]["width"] = "alley"
+		pr["spec"]["surface"] = "gravel"
+		LTProjects._apply_spec(pr)
 	r["street"] = int(street["id"])
 	return r
 
@@ -601,51 +702,90 @@ static func cancel_planned(w: LTWorld, street_id: int) -> void:
 			sg["removed"] = true
 
 
-## Marks lots on open land. Each lot must touch a road, built or planned.
-static func plot_lots(w: LTWorld, c0: int, r0: int, c1: int, r1: int, zone: String) -> Dictionary:
+## Plots lots of any size on open land. The rectangle (in meters) must sit beside
+## a road, built or planned, and may not cover a road or another lot. With a
+## `width`, the strip is cut into lots of about that frontage along the road.
+static func plot_lots(w: LTWorld, x0: float, z0: float, x1: float, z1: float, zone: String, width: float = 0.0) -> Dictionary:
 	if not ZONES.has(zone):
 		return {"ok": false, "message": "Unknown zone."}
-	var cols: int = int(w.config["map_cols"])
-	var rows: int = int(w.config["map_rows"])
-	var made: int = 0
-	var no_road: int = 0
+	# the plot tool already snaps sides onto road edges (which sit on half meters)
+	var r: Rect2 = Rect2(Vector2(minf(x0, x1), minf(z0, z1)), Vector2.ZERO).expand(Vector2(maxf(x0, x1), maxf(z0, z1)))
+	r = r.intersection(Rect2(0, 0, float(MAP_COLS) * GRID, float(MAP_ROWS) * GRID))
+	if r.size.x < 6.0 or r.size.y < 6.0:
+		return {"ok": false, "message": "Drag out a bigger lot: at least 6 by 6 meters."}
+	var front: String = _front_side(w, r)
+	if front == "":
+		return {"ok": false, "message": "A lot has to sit right beside a road, built or planned. Drag it up to the edge of one."}
+	var pieces: Array = [r]
+	if width >= 6.0:
+		pieces = []
+		var along_x: bool = front == "n" or front == "s"
+		var span: float = r.size.x if along_x else r.size.y
+		var n: int = maxi(1, int(floor(span / width + 0.25)))
+		var each: float = span / float(n)
+		for k in n:
+			if along_x:
+				pieces.append(Rect2(r.position.x + each * float(k), r.position.y, each, r.size.y))
+			else:
+				pieces.append(Rect2(r.position.x, r.position.y + each * float(k), r.size.x, each))
 	var group: int = int(w.config.get("plot_group_i", 0)) + 1
-	for r in range(mini(r0, r1), maxi(r0, r1) + 1):
-		for c in range(mini(c0, c1), maxi(c0, c1) + 1):
-			if c < 0 or r < 0 or c >= cols or r >= rows or lot_at(w, c, r) >= 0:
-				continue
-			# a road along any side of the cell gives the lot its driveway
-			var sides: Array = [[node_id(w, c, r), node_id(w, c + 1, r)], [node_id(w, c, r + 1), node_id(w, c + 1, r + 1)], [node_id(w, c, r), node_id(w, c, r + 1)], [node_id(w, c + 1, r), node_id(w, c + 1, r + 1)]]
-			var seg: int = -1
-			for sd in sides:
-				var sid: int = seg_between(w, int(sd[0]), int(sd[1]))
-				if sid >= 0 and (seg < 0 or not bool(w.roads[sid].get("planned", false))):
-					seg = sid
-			if seg < 0:
-				no_road += 1
-				continue
-			var id: int = w.lots.size()
-			w.lots.append({
-				"id": id, "col": c, "row": r, "zone": zone,
-				"use": "empty", "ref": -1, "units": [], "unit_rent": 0,
-				"owner_kind": "city", "owner_id": -1,
-				"value": land_value(zone), "condition": 80.0,
-				"building": "", "built_day": 0, "name": "", "street": int(w.roads[seg]["street"]),
-				"district": str(w.config["districts"][0]["name"]), "access_node": int(w.roads[seg]["a"]),
-				"plot_group": group, "price_pct": 100, "hold": false,
-			})
-			w.config["lot_at"][cell_key(c, r)] = id
-			made += 1
+	var made: int = 0
+	var blocked: int = 0
+	for pc in pieces:
+		var pr: Rect2 = pc
+		if _rect_hits_roads(w, pr) or _rect_hits_lots(w, pr):
+			blocked += 1
+			continue
+		var f: String = _front_side(w, pr)
+		if f == "":
+			blocked += 1
+			continue
+		var id: int = _add_lot(w, pr.position.x, pr.position.y, pr.end.x, pr.end.y, zone, f, str(w.config["districts"][0]["name"]))
+		if id < 0:
+			blocked += 1
+			continue
+		w.lots[id]["plot_group"] = group
+		made += 1
 	if made == 0:
-		return {"ok": false, "message": "No lots plotted. Lots must touch a road, built or planned." if no_road > 0 else "Nothing to plot there."}
+		return {"ok": false, "message": "No lots plotted: they would cover a road or another lot, or nothing touches a road."}
 	w.config["plot_group_i"] = group
 	var msg: String = "Plotted %d %s lot%s. Tap one to set its price and details." % [made, zone, "" if made == 1 else "s"]
-	if no_road > 0:
-		msg += " %d spots were skipped because no road touches them." % no_road
+	if blocked > 0:
+		msg += " %d %s skipped because a road or another lot was in the way." % [blocked, "was" if blocked == 1 else "were"]
 	return {"ok": true, "message": msg, "plot_group": group}
 
 
-## The lots plotted in the same stroke, so they can be edited together.
+## Which side of a rectangle sits against a road's edge: n, s, w, e, or "".
+## A built road wins over a planned one, and a street over an alley.
+static func _front_side(w: LTWorld, r: Rect2) -> String:
+	# add up how much of each side runs along road, built streets counting most;
+	# the side with the most is the lot's front, as with real lots
+	var touch: Dictionary = {"n": 0.0, "s": 0.0, "w": 0.0, "e": 0.0}
+	for sg in w.roads:
+		if bool(sg.get("removed", false)):
+			continue
+		var rr: Rect2 = seg_rect(w, sg)
+		var st: Dictionary = w.streets[int(sg["street"])]
+		var weight: float = (1.5 if not bool(sg.get("planned", false)) else 1.0) * (0.5 if str(st["kind"]) == "alley" else 1.0)
+		var ox: float = minf(rr.end.x, r.end.x) - maxf(rr.position.x, r.position.x)
+		var oz: float = minf(rr.end.y, r.end.y) - maxf(rr.position.y, r.position.y)
+		if ox > 0.0 and absf(rr.end.y - r.position.y) < 2.0:
+			touch["n"] += ox * weight
+		if ox > 0.0 and absf(rr.position.y - r.end.y) < 2.0:
+			touch["s"] += ox * weight
+		if oz > 0.0 and absf(rr.end.x - r.position.x) < 2.0:
+			touch["w"] += oz * weight
+		if oz > 0.0 and absf(rr.position.x - r.end.x) < 2.0:
+			touch["e"] += oz * weight
+	var best: String = ""
+	var best_t: float = 0.5
+	for k in ["n", "s", "w", "e"]:
+		if float(touch[k]) > best_t:
+			best_t = float(touch[k])
+			best = k
+	return best
+
+
 static func plot_group_lots(w: LTWorld, group: int) -> Array:
 	var out: Array = []
 	if group <= 0:
@@ -704,7 +844,6 @@ static func unplot(w: LTWorld, lot_id: int) -> Dictionary:
 			return {"ok": false, "message": "A published need is waiting on that lot."}
 	l["removed"] = true
 	l["use"] = "removed"
-	w.config["lot_at"].erase(cell_key(int(l["col"]), int(l["row"])))
 	return {"ok": true, "message": "Lot %d is open prairie again." % lot_id}
 
 

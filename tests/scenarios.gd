@@ -208,27 +208,31 @@ func _local_bank() -> void:
 
 
 func _annex_and_pave() -> void:
+	# the mayor extends the town: a new street off the east edge and an alley
+	# behind it, built through bids, and new lots on it reach the rest of town
 	var w: LTWorld = _town()
 	var lots0: int = w.lots.size()
-	var r: Dictionary = w.apply_action({"kind": "annex"})
+	var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
+	var r: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 40), "b": n.call(120, 40), "live": true})
+	var ra: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(100, 45), "b": n.call(120, 45), "live": true, "road_kind": "alley"})
+	var pl: Dictionary = w.apply_action({"kind": "plot_lots", "x0": 1007.5, "z0": 407.5, "x1": 1200.0, "z1": 447.0, "zone": "residential", "width": 20.0})
+	var new_street: int = int(r.get("street", -1))
+	w.run_days(16)
+	for p0 in w.projects:
+		if str(p0["status"]) == "review":
+			var pick: int = 0
+			for i in p0["bids"].size():
+				if int(p0["bids"][i]["price"]) < int(p0["bids"][pick]["price"]):
+					pick = i
+			w.apply_action({"kind": "award_bid", "project_id": int(p0["id"]), "bid_index": pick})
+	w.run_days(200)
 	var new_lot: int = lots0
 	var mins: float = w.travel_minutes(0, new_lot)
-	var street: int = int(w.lot(new_lot)["street"])
-	var new_street: int = w.streets.size() - 1
-	w.apply_action({"kind": "zone_lot", "lot": new_lot, "zone": "residential"})
-	var pr: Dictionary = w.apply_action({"kind": "define_project", "ptype": "road_repair", "target": new_street, "live": true})
-	w.run_days(16)
-	var p: Dictionary = w.projects[int(pr.get("project_id", 0))]
-	if str(p["status"]) == "review":
-		var pick: int = 0
-		for i in p["bids"].size():
-			if int(p["bids"][i]["price"]) <= int(p["ceiling"]):
-				pick = i
-		w.apply_action({"kind": "award_bid", "project_id": int(p["id"]), "bid_index": pick})
-	w.run_days(120)
+	var p: Dictionary = w.projects[int(r.get("project_id", 0))]
 	var cond: float = LTGeography.street_condition(w, new_street)
-	var ok: bool = bool(r["ok"]) and w.lots.size() == lots0 + int(w.config["lot_cols"]) and mins < 500.0 and str(w.lot(new_lot)["zone"]) == "residential" and str(p["status"]) == "done" and cond > 50.0
-	_check("Plotting land: the city annexes a row, the road graph grows, the gravel street is paved through bids", ok, "%s Lots %d to %d. Travel from lot 0 to the new lot: %d minutes. %s is now %s, condition %d." % [r["message"], lots0, w.lots.size(), int(mins), w.streets[new_street]["name"], p["status"], int(cond)], w)
+	var alley_ok: bool = bool(ra["ok"]) and str(w.streets[int(ra["street"])]["kind"]) == "alley"
+	var ok: bool = bool(r["ok"]) and alley_ok and bool(pl["ok"]) and w.lots.size() >= lots0 + 8 and mins < 30.0 and str(p["status"]) == "done" and cond > 50.0
+	_check("Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town", ok, "%s %s %s Lots %d to %d. Travel from lot 0 to a new lot: %.1f minutes. The new street is %s, condition %d." % [r["message"], ra["message"], pl["message"], lots0, w.lots.size(), mins, p["status"], int(cond)], w)
 
 
 func _bonds_bus_and_laws() -> void:
@@ -357,12 +361,15 @@ func _founder_mode() -> void:
 	var start_cash: int = w.ledger.bal("city")
 	var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
 	var only_highway: bool = w.lots.is_empty() and w.streets.size() == 1
-	var r1: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 4), "live": true})
-	var r2: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(10, 8), "b": n.call(22, 8), "live": true})
-	w.apply_action({"kind": "plot_lots", "c0": 11, "r0": 7, "c1": 21, "r1": 8, "zone": "residential"})
-	w.apply_action({"kind": "plot_lots", "c0": 11, "r0": 11, "c1": 14, "r1": 11, "zone": "commercial"})
-	w.apply_action({"kind": "plot_lots", "c0": 9, "r0": 5, "c1": 9, "r1": 5, "zone": "civic"})
-	var mh_lot: int = LTGeography.lot_at(w, 9, 5)
+	# Main Street north from the county road, Elm Street across it, house lots on
+	# both sides of Elm, storefronts on the county road, and a lot for the mayor
+	var r1: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(70, 60), "b": n.call(70, 40), "live": true})
+	var r2: Dictionary = w.apply_action({"kind": "plan_road", "a": n.call(60, 50), "b": n.call(90, 50), "live": true})
+	w.apply_action({"kind": "plot_lots", "x0": 707.5, "z0": 452.5, "x1": 900.0, "z1": 492.5, "zone": "residential", "width": 20.0})
+	w.apply_action({"kind": "plot_lots", "x0": 707.5, "z0": 507.5, "x1": 900.0, "z1": 547.5, "zone": "residential", "width": 20.0})
+	w.apply_action({"kind": "plot_lots", "x0": 707.5, "z0": 552.0, "x1": 800.0, "z1": 592.0, "zone": "commercial", "width": 12.0})
+	w.apply_action({"kind": "plot_lots", "x0": 640.0, "z0": 507.5, "x1": 692.5, "z1": 547.5, "zone": "civic"})
+	var mh_lot: int = LTGeography.lot_at(w, 660.0, 525.0)
 	w.apply_action({"kind": "define_project", "ptype": "mayor_house", "target": mh_lot, "live": true})
 	var inc_day: int = -1
 	# two years, or until the first election 90 days after incorporating (at most three years)
@@ -395,7 +402,7 @@ func _contracts_and_lot_details() -> void:
 		var w: LTWorld = LTWorld.new()
 		w.new_town(SEED, {}, {"start": "founder"})
 		var n: Callable = func(i, j): return LTGeography.node_id(w, i, j)
-		w.apply_action({"kind": "plan_road", "a": n.call(10, 12), "b": n.call(10, 6)})
+		w.apply_action({"kind": "plan_road", "a": n.call(70, 60), "b": n.call(70, 54)})
 		if not changes.is_empty():
 			w.apply_action({"kind": "edit_project", "project_id": 0, "changes": changes})
 		w.apply_action({"kind": "go_live", "project_id": 0})
@@ -412,7 +419,7 @@ func _contracts_and_lot_details() -> void:
 	# a drawn road is a draft: no contractor sees it until the mayor presses Go live
 	var dw: LTWorld = LTWorld.new()
 	dw.new_town(SEED, {}, {"start": "founder"})
-	dw.apply_action({"kind": "plan_road", "a": LTGeography.node_id(dw, 10, 12), "b": LTGeography.node_id(dw, 10, 6)})
+	dw.apply_action({"kind": "plan_road", "a": LTGeography.node_id(dw, 70, 60), "b": LTGeography.node_id(dw, 70, 54)})
 	for d in LTProjects.BID_DAYS + 5:
 		dw.tick_day()
 	var draft_quiet: bool = str(dw.projects[0]["status"]) == "draft" and dw.projects[0]["bids"].is_empty()
@@ -453,7 +460,7 @@ func _contracts_and_lot_details() -> void:
 	# lot details: price, hold and zone, applied to a plotted group
 	var lw: LTWorld = LTWorld.new()
 	lw.new_town(SEED, {}, {"start": "founder"})
-	var r: Dictionary = lw.apply_action({"kind": "plot_lots", "c0": 3, "r0": 11, "c1": 8, "r1": 11, "zone": "residential"})
+	var r: Dictionary = lw.apply_action({"kind": "plot_lots", "x0": 100.0, "z0": 552.0, "x1": 300.0, "z1": 592.0, "zone": "residential", "width": 33.3})
 	var group: Array = LTGeography.plot_group_lots(lw, int(r["plot_group"]))
 	lw.apply_action({"kind": "edit_lots", "lots": group, "changes": {"price_pct": 150}})
 	lw.apply_action({"kind": "edit_lots", "lots": [group[0]], "changes": {"hold": true, "name": "Town Green"}})

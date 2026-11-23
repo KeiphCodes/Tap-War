@@ -231,8 +231,10 @@ static func find_partner(w: LTWorld, c: Dictionary, gap: int) -> Dictionary:
 static func _home_buying(w: LTWorld) -> void:
 	var for_sale: Array = []
 	for l in w.lots:
-		if str(l["use"]) == "house" and str(l["owner_kind"]) == "outside" and int(l["units"][0]) == -1:
+		if str(l["use"]) == "house" and int(l["units"][0]) == -1 and (str(l["owner_kind"]) == "outside" or l.has("for_sale")):
 			for_sale.append(l)
+	# the cheapest listing first
+	for_sale.sort_custom(func(a, b): return int(a.get("for_sale", a["value"])) < int(b.get("for_sale", b["value"])))
 	if for_sale.is_empty():
 		return
 	for h in w.households:
@@ -248,7 +250,8 @@ static func _home_buying(w: LTWorld) -> void:
 		for a in adults:
 			income += LTFinance.monthly_income(w, a)
 		var l: Dictionary = for_sale[0]
-		var price: int = int(l["value"])
+		var price: int = int(l.get("for_sale", l["value"]))
+		var seller: String = LTCivic.owner_acct(w, l)
 		var down: int = int(float(price) * 0.1)
 		var cash: int = w.household_cash(h)
 		if cash < down + LTMoney.dollars(3000.0):
@@ -260,9 +263,10 @@ static func _home_buying(w: LTWorld) -> void:
 		if not bool(dec["ok"]):
 			w.log_sim(head, "Tried to buy the house on %s and the mortgage was refused: %s." % [LTGeography.lot_label(w, int(l["id"])), dec["reason"]], true)
 			continue
-		var paid: int = w.household_pay(h, "outside", down, "house_purchases")
+		var paid: int = w.household_pay(h, seller, down, "house_purchases")
 		var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", price - down, float(dec["rate"]), 360, "house", int(l["id"]), [])
-		LTFinance.fund_loan(w, d, "outside", price - down)
+		LTFinance.fund_loan(w, d, seller, price - down)
+		LTCivic.transfer_tax(w, seller, paid + price - down, int(l["id"]))
 		w.bank["lent_12m"] = int(w.bank["lent_12m"]) + price - down
 		LTServices.spend(w, "outside", "real_estate", int(float(price) * 0.05), int(l["id"]))
 		LTServices.spend(w, w.acct_p(head), "legal", LTMoney.dollars(800.0), int(l["id"]), head)

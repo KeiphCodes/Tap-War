@@ -6,7 +6,7 @@ extends SceneTree
 func _init() -> void:
 	var w: LTWorld = LTWorld.new()
 	var t0: int = Time.get_ticks_msec()
-	w.new_town(77, {"lot_cols": 14, "lot_rows": 12, "target_households": 330, "target_population": 1000, "house_lots": 34, "apartment_lots": 50, "apartment_units": 6, "city_start_cash": LTMoney.dollars(1500000.0)})
+	w.new_town(77, {"town_blocks_x": 9, "town_blocks_y": 8, "target_households": 330, "target_population": 1000, "house_lots": 200, "apartment_lots": 22, "apartment_units": 6, "city_start_cash": LTMoney.dollars(1500000.0)})
 	var gen_ms: int = Time.get_ticks_msec() - t0
 	var start_pop: int = w.alive_count()
 	var worst: int = 0
