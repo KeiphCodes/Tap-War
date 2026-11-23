@@ -206,6 +206,16 @@ func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -
 		"pronouns": str(mode.get("player_pronouns", "they")), "age": int(mode.get("player_age", 38)),
 		"hometown": str(mode.get("player_hometown", "Sioux Falls")), "color": str(mode.get("player_color", "blue"))}
 	city["elections"] = bool(mode["elections"])
+	if bool(mode.get("autonomous", false)):
+		var ms: int = int(mode.get("mayor_seed", 0))
+		if ms <= 0:
+			ms = (seed_value * 104729 + 31) % 1000000 + 1
+			mode["mayor_seed"] = ms
+		var pe: Dictionary = LTMayorAI.make_persona(ms)
+		for k in ["name", "pronouns", "age", "hometown", "traits", "mayor_seed"]:
+			player[k] = pe[k]
+		player["sim_mayor"] = true
+		city["elections"] = bool(pe["elections"])
 	if str(mode["start"]) == "founder":
 		LTFounder.setup(self)
 	else:
@@ -255,6 +265,7 @@ func tick_day() -> void:
 		LTCivic.newspaper(self)
 	LTCivic.elections_daily(self)
 	LTFounder.daily(self)
+	LTMayorAI.daily(self)
 	LTEconomy.analyze_market(self)
 	if LTCalendar.day_of_month(day) == LTCalendar.MONTH_DAYS[LTCalendar.month_index(day)]:
 		stats_history.append(snapshot())
@@ -317,6 +328,12 @@ func apply_action(a: Dictionary) -> Dictionary:
 			if bool(act["on"]) and int(city["next_election_day"]) <= day:
 				city["next_election_day"] = day + 365
 			result = {"ok": true, "message": "Elections are %s. %s" % ["on" if bool(act["on"]) else "off", "The next one is %s." % LTCalendar.short(int(city["next_election_day"])) if bool(act["on"]) else "You stay mayor for as long as you like."]}
+		"take_over":
+			if not bool(mode.get("autonomous", false)):
+				result = {"ok": false, "message": "You already run this town."}
+			else:
+				player["player_took_over"] = bool(act["on"])
+				result = {"ok": true, "message": "You are the mayor now. Every decision is yours until you hand it back." if bool(act["on"]) else "Mayor %s is back in charge." % player["name"]}
 		"watch":
 			var cid: int = int(act["citizen_id"])
 			if watch_list.has(cid):
@@ -325,7 +342,9 @@ func apply_action(a: Dictionary) -> Dictionary:
 			else:
 				watch_list.append(cid)
 				result = {"ok": true, "message": "Now watching."}
-	if bool(result.get("ok", false)) and str(act.get("kind", "")) != "watch":
+	# the Sim mayor's moves are made again by the day's tick on replay, so only the
+	# player's own actions go in the log
+	if bool(result.get("ok", false)) and str(act.get("kind", "")) != "watch" and not bool(act.get("sim_mayor", false)):
 		action_log.append(act)
 	return result
 

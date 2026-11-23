@@ -439,7 +439,7 @@ func _build_top() -> void:
 	pm.add_theme_constant_override("v_separation", 18)
 	pm.add_theme_constant_override("item_start_padding", 16)
 	pm.add_theme_constant_override("item_end_padding", 24)
-	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps"]:
+	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps", "Take over as mayor"]:
 		pm.add_item(it)
 	pm.id_pressed.connect(_on_menu)
 	menu_popup = pm
@@ -514,6 +514,22 @@ func _on_menu(id: int) -> void:
 		5:
 			steps_hidden = false
 			refresh_steps()
+		6:
+			if not bool(w().mode.get("autonomous", false)):
+				show_toast("You already run this town. Start a New town with a Sim mayor to watch one build it.")
+				return
+			var r: Dictionary = main.act({"kind": "take_over", "on": not bool(w().player.get("player_took_over", false))})
+			show_toast(str(r["message"]))
+			refresh_menu()
+
+
+## The take over item reads right for the town on screen.
+func refresh_menu() -> void:
+	if menu_popup == null:
+		return
+	var auto: bool = bool(w().mode.get("autonomous", false))
+	menu_popup.set_item_disabled(6, not auto)
+	menu_popup.set_item_text(6, "Hand back to Mayor %s" % w().player["name"] if auto and bool(w().player.get("player_took_over", false)) else "Take over as mayor")
 
 
 func _build_left() -> void:
@@ -853,6 +869,11 @@ func show_setup(first: bool = false) -> void:
 	start.add_item("Found a town: you, your lottery money, and empty prairie")
 	start.add_item("Prairie Hollow: about 100 people already live here")
 	vb.add_child(start)
+	var runner: OptionButton = OptionButton.new()
+	runner.add_item("You run the town")
+	runner.add_item("A random Sim wins the lottery and runs it (take over any time)")
+	runner.tooltip_text = "The Sim mayor makes every decision from their own personality: government, roads, lots, contracts, taxes and laws. Each one goes in the town history with the reason."
+	vb.add_child(runner)
 	var rule: OptionButton = OptionButton.new()
 	rule.add_item("Permanent mayor: the town is yours to run")
 	rule.add_item("Elected mayor: win the vote and keep the people's trust")
@@ -898,6 +919,24 @@ func show_setup(first: bool = false) -> void:
 	seed_edit.tooltip_text = "Every map has a number. Type one you liked to play the same land again."
 	hbs.add_child(seed_edit)
 	vb.add_child(hbs)
+	var hbm: HBoxContainer = HBoxContainer.new()
+	hbm.add_child(_lbl("Mayor seed"))
+	var mseed: LineEdit = LineEdit.new()
+	mseed.placeholder_text = "blank for a new random Sim mayor"
+	mseed.custom_minimum_size = Vector2(260, 0)
+	mseed.tooltip_text = "Every Sim mayor has a number. Type one you liked to get the same person again."
+	hbm.add_child(mseed)
+	vb.add_child(hbm)
+	hbm.visible = false
+	var you_rows: Array = [rule, hb1, who]
+	runner.item_selected.connect(func(i):
+		hbm.visible = i == 1
+		for c in you_rows:
+			c.visible = i == 0
+		if i == 1:
+			start.selected = 0
+			lotto.visible = true
+		start.disabled = i == 1)
 	var hb2: HBoxContainer = HBoxContainer.new()
 	hb2.add_child(_lbl("Town name"))
 	var tname: LineEdit = LineEdit.new()
@@ -925,12 +964,21 @@ func show_setup(first: bool = false) -> void:
 			"player_hometown": home.text.strip_edges(),
 			"town_name": tname.text.strip_edges() if tname.text.strip_edges() != "" else "New Hope",
 		}
+		if runner.selected == 1:
+			mode["autonomous"] = true
+			mode["start"] = "founder"
+			mode["mayor_seed"] = int(mseed.text.strip_edges()) if mseed.text.strip_edges().is_valid_int() else randi() % 999999 + 1
 		card.queue_free()
 		main.new_town(randi() % 1000000, mode)))
 	vb.add_child(hb3)
 
 
 func _welcome() -> void:
+	if LTMayorAI.is_on(w()):
+		var pl: Dictionary = w().player
+		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s, %d, from %s, won %s in the lottery and bought a stretch of prairie on the county road. %s is %s.\nYou are watching. The Sim mayor decides everything: how the town is governed, where the roads and lots go, which contractors win, the taxes and the laws. Every decision goes in the town history with the reason.\nTake over from the [b]Menu[/b] whenever you like, and hand it back the same way. The Mayor tab shows the mayor seed if you want this person again.\nPress [b]Normal[/b] or a faster speed to start." % [w().city["name"], pl["name"], int(pl["age"]), pl["hometown"], _money(int(w().mode["lottery"])), w().player_pronoun("subject").capitalize(), LTMayorAI.describe(pl)]
+		notice.visible = true
+		return
 	if str(w().mode.get("start", "classic")) == "founder":
 		notice_text.text = "[b]Welcome to %s, population 1.[/b]\n%s won %s in the lottery and bought a stretch of prairie on the county road. For now you live in a camper.\nUse [b]Draw road[/b] (right side) to lay out streets off the county road. Each one is a draft contract: set the terms, press [b]Go live[/b], and contractors bid to build it. Then [b]Plot lots[/b] beside your roads and pick a zone. Settlers will come, buy residential lots, and build their own homes. Draft the mayor's house on the Projects tab and send it live. At %d residents the town incorporates and city taxes begin%s.\nYou cannot build businesses or hire anyone. Settlers decide that, and every big decision is written in their history with the reason.\nPress [b]Normal[/b] to start time, [b]Live[/b] for real time, or [b]Today[/b] to match your own date and clock." % [w().city["name"], w().player["name"], _money(int(w().mode["lottery"])), LTFounder.INCORPORATE_AT, ", followed by your first election" if bool(w().mode.get("elections", false)) else ""]
 		notice.visible = true
@@ -944,6 +992,7 @@ func _welcome() -> void:
 func on_new_world() -> void:
 	inspect_kind = ""
 	right.visible = false
+	refresh_menu()
 	_welcome()
 	_clear(feed_box)
 	refresh_all()
@@ -1029,6 +1078,9 @@ func _tab_mayor() -> void:
 	var tt: Dictionary = LTTerrain.t(ww)
 	if not tt.is_empty():
 		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
+		if bool(ww.mode.get("autonomous", false)):
+			var pl: Dictionary = ww.player
+			box.add_child(_rtl("[color=#e8c35a]Sim mayor[/color] [b]%s[/b], %d, from %s: %s. [color=#9fb0c0]Mayor seed[/color] [b]%d[/b] (type it in New town to get this mayor again). %s" % [pl["name"], int(pl.get("age", 40)), pl.get("hometown", ""), LTMayorAI.describe(pl), int(pl.get("mayor_seed", 0)), "[color=#e88a5a]You have taken over. Hand it back from the Menu.[/color]" if bool(pl.get("player_took_over", false)) else "Every decision is in the town history. Take over from the Menu."]))
 		box.add_child(_rtl("[color=#9fb0c0]The land:[/color] %s, %s and %s. [color=#9fb0c0]Map seed[/color] [b]%d[/b] (type it in New town to play this map again)." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
 	box.add_child(_sep())
 	box.add_child(_h("Budget"))

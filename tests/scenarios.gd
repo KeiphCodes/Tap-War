@@ -26,6 +26,7 @@ func _init() -> void:
 	_founder_mode()
 	_real_calendar()
 	_contracts_and_lot_details()
+	_sim_mayor()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -500,3 +501,24 @@ func _save_load_full() -> void:
 	a.run_days(100)
 	b.run_days(100)
 	_check("Saves carry every new system (cases, region, spend book, pregnancies, addictions) and continue identically", err == OK and a.state_hash() == b.state_hash(), "Hashes after 100 more days: %d and %d." % [a.state_hash(), b.state_hash()], a)
+
+
+func _sim_mayor() -> void:
+	# the same mayor seed always makes the same person, who founds and runs the town
+	var a: Dictionary = LTMayorAI.make_persona(4242)
+	var b: Dictionary = LTMayorAI.make_persona(4242)
+	var w: LTWorld = LTWorld.new()
+	w.new_town(21, {}, {"start": "founder", "autonomous": true, "mayor_seed": 4242})
+	for d in 300:
+		w.tick_day()
+	var moves: int = 0
+	for c in w.chronicle:
+		if str(c.get("text", "")).begins_with("Mayor %s" % w.player["name"]):
+			moves += 1
+	var built: int = 0
+	for p in w.projects:
+		if ["building", "done"].has(str(p["status"])):
+			built += 1
+	var r: Dictionary = w.apply_action({"kind": "take_over", "on": true})
+	var ok: bool = str(a["name"]) == str(b["name"]) and a["traits"] == b["traits"] and str(w.player["name"]) == str(a["name"]) and moves >= 5 and built >= 2 and w.streets.size() >= 3 and bool(r["ok"]) and not LTMayorAI.is_on(w) and w.action_log.size() == 1
+	_check("Sim mayor: a seeded Sim founds the town, lays roads, awards contracts and logs each reason, and the player can take over", ok, "%s (%s) made %d decisions in 300 days. Streets %d, projects under way or done %d, residents %d. Take over: %s" % [w.player["name"], LTMayorAI.describe(w.player), moves, w.streets.size(), built, w.residents(), r["message"]], w)

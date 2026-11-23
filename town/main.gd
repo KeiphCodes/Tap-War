@@ -172,6 +172,10 @@ const _NO_UNDO: Array = ["watch"]
 
 
 func act(a: Dictionary) -> Dictionary:
+	if LTMayorAI.is_on(world) and not ["watch", "take_over"].has(str(a["kind"])):
+		var no: Dictionary = {"ok": false, "message": "Mayor %s runs this town. Take over from the Menu to decide for yourself." % world.player["name"]}
+		hud.show_toast(no["message"])
+		return no
 	var snap: PackedByteArray = PackedByteArray() if _NO_UNDO.has(str(a["kind"])) else world.to_bytes()
 	var r: Dictionary = world.apply_action(a)
 	if bool(r.get("ok", false)) and not snap.is_empty():
