@@ -1079,8 +1079,8 @@ func _tab_mayor() -> void:
 	if not tt.is_empty():
 		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
 		if bool(ww.mode.get("autonomous", false)):
-			var pl: Dictionary = ww.player
-			box.add_child(_rtl("[color=#e8c35a]Sim mayor[/color] [b]%s[/b], %d, from %s: %s. [color=#9fb0c0]Mayor seed[/color] [b]%d[/b] (type it in New town to get this mayor again). %s" % [pl["name"], int(pl.get("age", 40)), pl.get("hometown", ""), LTMayorAI.describe(pl), int(pl.get("mayor_seed", 0)), "[color=#e88a5a]You have taken over. Hand it back from the Menu.[/color]" if bool(pl.get("player_took_over", false)) else "Every decision is in the town history. Take over from the Menu."]))
+			var smp: Dictionary = ww.player
+			box.add_child(_rtl("[color=#e8c35a]Sim mayor[/color] [b]%s[/b], %d, from %s: %s. [color=#9fb0c0]Mayor seed[/color] [b]%d[/b] (type it in New town to get this mayor again). %s" % [smp["name"], int(smp.get("age", 40)), smp.get("hometown", ""), LTMayorAI.describe(smp), int(smp.get("mayor_seed", 0)), "[color=#e88a5a]You have taken over. Hand it back from the Menu.[/color]" if bool(smp.get("player_took_over", false)) else "Every decision is in the town history. Take over from the Menu."]))
 		box.add_child(_rtl("[color=#9fb0c0]The land:[/color] %s, %s and %s. [color=#9fb0c0]Map seed[/color] [b]%d[/b] (type it in New town to play this map again)." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
 	box.add_child(_sep())
 	box.add_child(_h("Budget"))
