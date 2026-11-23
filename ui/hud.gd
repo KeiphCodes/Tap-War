@@ -213,6 +213,109 @@ func _lbl(text: String, size: int = 15, color: Color = Color(0.88, 0.9, 0.93)) -
 	return l
 
 
+# ================================================================ paper documents
+## Contracts, permits, petitions, deeds and loans look like paper: a cream page,
+## dark ink, the city's letterhead, a number and date, a stamp, and a line for the
+## mayor's signature. Everything else stays a plain panel.
+
+const PAPER: Color = Color(0.965, 0.94, 0.87)
+const INK: Color = Color(0.17, 0.14, 0.11)
+const INK_SOFT: String = "#6f6150"
+
+
+func _paper_style() -> StyleBoxFlat:
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = PAPER
+	sb.border_color = Color(0.72, 0.64, 0.5)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(2)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(2, 3)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 14
+	sb.content_margin_bottom = 14
+	return sb
+
+
+## Light panel colors swapped for inks that read on paper.
+func _inkify(bb: String) -> String:
+	return bb.replace("#9fb0c0", INK_SOFT).replace("#e8c35a", "#8a5a00").replace("#ef6b5b", "#a02818").replace("#b8c8a0", "#3d6a2a").replace("#6f8090", INK_SOFT)
+
+
+## Recolors everything inside a paper so it reads as ink.
+func _ink_tree(node: Node) -> void:
+	for ch in node.get_children():
+		if ch is RichTextLabel:
+			var r: RichTextLabel = ch
+			r.add_theme_color_override("default_color", INK)
+			r.text = _inkify(r.text)
+		elif ch is CheckBox:
+			# a checkbox on paper: ink text on a faint ruled box, not a dark button
+			for k in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+				(ch as CheckBox).add_theme_color_override(k, INK)
+			var box: StyleBoxFlat = StyleBoxFlat.new()
+			box.bg_color = Color(0.92, 0.88, 0.78)
+			box.border_color = Color(0.72, 0.64, 0.5)
+			box.set_border_width_all(1)
+			box.set_corner_radius_all(3)
+			box.content_margin_left = 8
+			box.content_margin_right = 8
+			box.content_margin_top = 6
+			box.content_margin_bottom = 6
+			for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+				(ch as CheckBox).add_theme_stylebox_override(st, box)
+		elif ch is Label:
+			(ch as Label).add_theme_color_override("font_color", INK)
+		if not (ch is Button or ch is LineEdit or ch is SpinBox):
+			_ink_tree(ch)
+
+
+func _letterhead(doc: String, number: int, stamp: String = "") -> String:
+	var ww: LTWorld = w()
+	var t: String = "[center][font_size=13][color=%s]THE TOWN OF %s[/color][/font_size]\n[b][font_size=19]%s[/font_size][/b]\n[font_size=13][color=%s]No. %04d     %s[/color][/font_size][/center]" % [INK_SOFT, str(ww.city["name"]).to_upper(), doc, INK_SOFT, number, LTCalendar.short(maxi(1, ww.day))]
+	if stamp != "":
+		var col: String = {"APPROVED": "#2f6b2a", "SIGNED": "#2f6b2a", "DRAFT": "#8a5a00", "DENIED": "#a02818", "FILED": "#2c4f7a", "PAID": "#2f6b2a", "CANCELLED": "#a02818"}.get(stamp, "#2c4f7a")
+		t += "\n[right][font_size=18][b][color=%s][ %s ][/color][/b][/font_size][/right]" % [col, stamp]
+	return t + "\n[color=%s]________________________________________[/color]\n" % INK_SOFT
+
+
+func _signature(by_mayor: bool, note: String = "") -> String:
+	var ww: LTWorld = w()
+	var who: String = "%s, Mayor of %s" % [ww.player.get("name", "The mayor"), ww.city["name"]] if by_mayor else note
+	return "\n[color=%s]________________________________\n[i]%s[/i][/color]" % [INK_SOFT, who]
+
+
+## Wraps a card in paper with a letterhead and a signature line.
+func _paper(inner: Control, doc: String, number: int, stamp: String, signature: String) -> PanelContainer:
+	var pc: PanelContainer = PanelContainer.new()
+	pc.add_theme_stylebox_override("panel", _paper_style())
+	var vb: VBoxContainer = VBoxContainer.new()
+	pc.add_child(vb)
+	vb.add_child(_rtl(_letterhead(doc, number, stamp)))
+	vb.add_child(inner)
+	if signature != "":
+		vb.add_child(_rtl(signature))
+	_ink_tree(pc)
+	return pc
+
+
+func _proj_doc(p: Dictionary) -> Array:
+	var doc: String = "BUILDING PERMIT" if bool(p["private"]) else ("PUBLIC WORKS CONTRACT" if LTProjects.is_road(str(p["ptype"])) or p.has("spec") else "CONTRACT")
+	var stamp: String = {"draft": "DRAFT", "bidding": "FILED", "review": "FILED", "building": "SIGNED", "done": "SIGNED", "cancelled": "CANCELLED"}.get(str(p["status"]), "")
+	if bool(p["private"]):
+		stamp = "APPROVED"
+	return [doc, stamp]
+
+
+func _pet_doc(p: Dictionary) -> Array:
+	var stamp: String = {"submitted": "FILED", "denied": "DENIED", "published": "APPROVED", "resolved": "APPROVED"}.get(str(p["status"]), "")
+	if p.has("project_id") and str(p["status"]) != "denied":
+		stamp = "APPROVED"
+	return ["PETITION TO THE MAYOR", stamp]
+
+
 func _rtl(bb: String) -> RichTextLabel:
 	var r: RichTextLabel = RichTextLabel.new()
 	r.bbcode_enabled = true
@@ -476,10 +579,10 @@ func _build_right() -> void:
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(sc)
 	var body: VBoxContainer = VBoxContainer.new()
-	body.custom_minimum_size = Vector2(RIGHT_W - 44, 0)
+	body.custom_minimum_size = Vector2(RIGHT_W - 80, 0)
 	sc.add_child(body)
 	inspect_text = _rtl("")
-	inspect_text.custom_minimum_size = Vector2(RIGHT_W - 44, 0)
+	inspect_text.custom_minimum_size = Vector2(RIGHT_W - 80, 0)
 	body.add_child(inspect_text)
 	inspect_form = VBoxContainer.new()
 	body.add_child(inspect_form)
@@ -1104,7 +1207,7 @@ func _tab_requests() -> void:
 			box.add_child(_petition_card(p, false))
 
 
-func _petition_card(p: Dictionary, actions: bool) -> VBoxContainer:
+func _petition_card(p: Dictionary, actions: bool) -> Control:
 	var ww: LTWorld = w()
 	var vb: VBoxContainer = VBoxContainer.new()
 	var ready: bool = str(p["status"]) == "submitted"
@@ -1145,8 +1248,13 @@ func _petition_card(p: Dictionary, actions: bool) -> VBoxContainer:
 				_answer(pid, "deny", {"reason": LTCivic.DENY_REASONS[i - 1]}))
 		hb.add_child(deny)
 		vb.add_child(hb)
-	vb.add_child(_sep())
-	return vb
+	var pd: Array = _pet_doc(p)
+	var paper: PanelContainer = _paper(vb, pd[0], int(p["id"]), pd[1], "\n[color=%s]Signed by %d residents of %s.[/color]" % [INK_SOFT, p["signers"].size(), w().city["name"]])
+	var gap: VBoxContainer = VBoxContainer.new()
+	gap.add_child(paper)
+	gap.add_theme_constant_override("separation", 10)
+	gap.add_child(Control.new())
+	return gap
 
 
 func _answer(pid: int, response: String, extra: Dictionary) -> void:
@@ -1229,7 +1337,7 @@ func _tab_projects() -> void:
 			box.add_child(_project_card(p))
 
 
-func _project_card(p: Dictionary) -> VBoxContainer:
+func _project_card(p: Dictionary) -> Control:
 	var ww: LTWorld = w()
 	var vb: VBoxContainer = VBoxContainer.new()
 	var t: String = "[b][url=proj:%d]%s[/url][/b]  [color=#9fb0c0]%s%s[/color]" % [p["id"], p["title"], {"draft": "draft, not live", "bidding": "live, taking bids", "review": "bids in, waiting for you"}.get(str(p["status"]), str(p["status"])) if not bool(p["private"]) else str(p["status"]), ", the owner's own job" if bool(p["private"]) else ""]
@@ -1268,8 +1376,14 @@ func _project_card(p: Dictionary) -> VBoxContainer:
 		vb.add_child(grid)
 		var pid2: int = int(p["id"])
 		vb.add_child(_btn("Cancel project", func(): show_toast(str(main.act({"kind": "cancel_project", "project_id": pid2})["message"]))))
-	vb.add_child(_sep())
-	return vb
+	var pd: Array = _proj_doc(p)
+	var sig: String = _signature(true) if not bool(p["private"]) else _signature(false, "Permit issued by the town of %s to %s" % [w().city["name"], str(p["developer"].get("name", "the owner"))])
+	var paper: PanelContainer = _paper(vb, pd[0], int(p["id"]), pd[1], sig)
+	var gap: VBoxContainer = VBoxContainer.new()
+	gap.add_theme_constant_override("separation", 10)
+	gap.add_child(paper)
+	gap.add_child(Control.new())
+	return gap
 
 
 # ================================================================ People and businesses
@@ -1638,8 +1752,48 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 		right.visible = false
 		main.view.select_lot(-1)
 		main.view.select_road(-1)))
-	inspect_text.text = t
+	# documents (contracts, permits, petitions, deeds, loans) are shown on paper
+	var doc: Array = _doc_for(kind, id)
+	if doc.is_empty():
+		right.remove_theme_stylebox_override("panel")
+		inspect_text.remove_theme_color_override("default_color")
+		inspect_text.text = t
+	else:
+		right.add_theme_stylebox_override("panel", _paper_style())
+		inspect_text.add_theme_color_override("default_color", INK)
+		inspect_text.text = _inkify(_letterhead(str(doc[0]), id, str(doc[1])) + t + str(doc[2]))
+		_ink_tree(inspect_form)
 	_scroll_friendly(inspect_text.get_parent())
+
+
+## [title, stamp, signature] when what is inspected is an official paper, else [].
+func _doc_for(kind: String, id: int) -> Array:
+	var ww: LTWorld = w()
+	match kind:
+		"proj":
+			if id < 0 or id >= ww.projects.size():
+				return []
+			var p: Dictionary = ww.projects[id]
+			var pd: Array = _proj_doc(p)
+			var sig: String = _signature(true) if not bool(p["private"]) else _signature(false, "Permit issued by the town of %s to %s" % [ww.city["name"], str(p["developer"].get("name", "the owner"))])
+			return [pd[0], pd[1], sig]
+		"pet":
+			if id < 0 or id >= ww.petitions.size():
+				return []
+			var pt: Dictionary = ww.petitions[id]
+			var pdd: Array = _pet_doc(pt)
+			return [pdd[0], pdd[1], "\n[color=%s]Signed by %d residents of %s.[/color]" % [INK_SOFT, pt["signers"].size(), ww.city["name"]] + _signature(true)]
+		"lot":
+			var l: Dictionary = ww.lot(id)
+			if l.is_empty():
+				return []
+			var owned: bool = str(l["owner_kind"]) == "city"
+			return ["LAND RECORD AND DEED", "FILED", _signature(true) if owned else _signature(false, "Recorded by the town of %s" % ww.city["name"])]
+		"road":
+			return ["ROAD RECORD", "FILED", _signature(true)]
+		"debt":
+			return ["LOAN RECORD", "", _signature(false, "Recorded by the lender")]
+	return []
 
 
 func _sim_text(id: int) -> String:
@@ -2039,7 +2193,7 @@ func _road_form(street_id: int) -> void:
 func _form_row(label: String, ctl: Control) -> void:
 	var hb: HBoxContainer = HBoxContainer.new()
 	var l: Label = _lbl(label, 14)
-	l.custom_minimum_size = Vector2(130, 0)
+	l.custom_minimum_size = Vector2(120, 0)
 	hb.add_child(l)
 	ctl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(ctl)
@@ -2052,6 +2206,9 @@ func _opt(items: Array, selected: int, cb: Callable) -> OptionButton:
 		o.add_item(str(it))
 	o.select(selected)
 	o.item_selected.connect(cb)
+	# long choices are trimmed on the button (the full text shows in the list)
+	o.clip_text = true
+	o.custom_minimum_size = Vector2(120, 0)
 	return o
 
 

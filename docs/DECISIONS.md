@@ -98,6 +98,8 @@ Keith gave full permission to make the calls needed to finish. These are the one
 
 73. **Panels made for thumbs.** The sections are two rows of big buttons instead of small tabs. Text, buttons, dropdowns and checkboxes are larger, scroll bars are about a finger wide, and a drag that starts on text or a button scrolls the panel instead of getting stuck. While someone is scrolling a panel it is not rebuilt under them (it catches up a couple of seconds after they stop), and a rebuilt panel keeps its scroll position.
 
+74. **Official papers look like paper.** Contracts and bids, building permits, petitions, land deeds, road records and loan records show on a cream page in dark ink, with the town's letterhead, a number and date, a stamp (DRAFT, FILED, SIGNED, APPROVED, DENIED or CANCELLED) and a signature line for the mayor (or the town, for a private permit). Everything else stays a plain panel, so papers stand out.
+
 ## Scope calls
 
 23. **The outside bank** (Prairie State Bank) serves the town until the city charters a local one (item 34).
