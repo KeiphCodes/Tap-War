@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-24T04:25:45 by tests/scenarios.gd.
+Generated 2026-11-24T21:31:26 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 82 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 82 days in the county jail.
