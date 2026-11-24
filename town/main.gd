@@ -350,6 +350,9 @@ func _should_interrupt(events: Array) -> bool:
 			return true
 		if k == "protest":
 			return true
+		# a business opening or closing changes the town
+		if k == "business" and (t.contains(" opened ") or t.contains(" closed. Reason")):
+			return true
 		if k in ["death", "bankruptcy", "crime", "estate"] and watched:
 			return true
 		if k == "milestone":

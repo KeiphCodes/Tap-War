@@ -518,7 +518,7 @@ func _on_menu(id: int) -> void:
 			var lv: int = (main.stop_level() + 1) % main.STOP_LEVELS.size()
 			w().mode["stop_level"] = lv
 			refresh_menu()
-			show_toast(["Fast and Turbo now stop only for decisions waiting on you: petitions, bids, variances, lot splits, a budget crisis, elections.", "Fast and Turbo stop for your decisions and for big events: tornadoes, a major employer closing, milestones, and the Sims you watch.", "Fast and Turbo stop for every important event, including each business opening and closing, storms and bankruptcies."][lv])
+			show_toast(["Fast and Turbo now stop only for decisions waiting on you: petitions, bids, variances, lot splits, a budget crisis, elections.", "Fast and Turbo stop for your decisions and for big events: businesses opening and closing, tornadoes, a major employer closing, milestones, and the Sims you watch.", "Fast and Turbo stop for every important event, including each business opening and closing, storms and bankruptcies."][lv])
 		6:
 			if not bool(w().mode.get("autonomous", false)):
 				show_toast("You already run this town. Start a New town with a Sim mayor to watch one build it.")
