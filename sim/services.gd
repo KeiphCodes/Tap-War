@@ -86,16 +86,27 @@ static func month_roll(w: LTWorld) -> void:
 		e["rolled"] = true
 		for pair in [["last_local", "local"], ["last_outside", "outside"], ["last_latent", "latent"]]:
 			e[pair[0]] = int(e[pair[1]]) if first else int(float(e[pair[0]]) * 0.83 + float(e[pair[1]]) * 0.17)
+			# and over about a year, for the trades where one sale makes a month
+			var yk: String = pair[0].replace("last_", "year_")
+			e[yk] = int(e[pair[1]]) if first else int(float(e.get(yk, e[pair[1]])) * 0.92 + float(e[pair[1]]) * 0.08)
 		e["local"] = 0
 		e["outside"] = 0
 		e["latent"] = 0
+
+
+## Lumpy trades: a house sale, a funeral or a court case makes one month look big.
+const LUMPY: Array = ["real_estate", "legal", "funeral", "tuition"]
 
 
 static func market_size(w: LTWorld, category: String) -> int:
 	var e: Dictionary = w.spend_book.get(category, {})
 	if e.is_empty():
 		return 0
-	return int(e["last_local"]) + int(e["last_outside"]) + int(e["last_latent"])
+	var six: int = int(e["last_local"]) + int(e["last_outside"]) + int(e["last_latent"])
+	if LUMPY.has(category) and e.has("year_local"):
+		# a careful look at the whole year, not the last busy month
+		return mini(six, int(e["year_local"]) + int(e["year_outside"]) + int(e["year_latent"]))
+	return six
 
 
 ## Pays for a service. Returns the amount paid. The local option wins if it is
@@ -140,7 +151,31 @@ static func spend(w: LTWorld, from_acct: String, category: String, amount: int, 
 	return paid2
 
 
+const HOME_CAP: Dictionary = {"childcare": 12.0, "repair_shop": 4.0, "bakery": 30.0, "law_office": 3.0, "real_estate": 3.0, "guide_service": 4.0, "construction": 3.0, "trucking": 2.0}
+
+
+## Room for one more customer today: seats, rooms, bays, or one person's hands.
+static func has_room(w: LTWorld, b: Dictionary) -> bool:
+	if b.has("bplan"):
+		var cap: float = LTBuildings.capacity(b["bplan"])
+		return cap <= 0.0 or float(b["customers_today"]) < cap
+	if bool(b.get("home_based", false)):
+		return float(b["customers_today"]) < float(HOME_CAP.get(str(b["type"]), 8.0)) * (1.0 + float(b["staff"].size()) * 0.5)
+	return true
+
+
 static func _can_serve(w: LTWorld, b: Dictionary) -> bool:
+	# a full place turns people away: every room taken, every seat and bay busy
+	if b.has("bplan"):
+		var cap: float = LTBuildings.capacity(b["bplan"])
+		if cap > 0.0 and float(b["customers_today"]) >= cap:
+			return false
+	elif bool(b.get("home_based", false)):
+		# one person working from home: a licensed home daycare takes 12 children,
+		# a home mechanic a few jobs a day, a home office a few clients
+		var hcap: float = float(HOME_CAP.get(str(b["type"]), 8.0)) * (1.0 + float(b["staff"].size()) * 0.5)
+		if float(b["customers_today"]) >= hcap:
+			return false
 	if int(TYPES[str(b["type"])]["staff"]) == 0:
 		return true
 	var owner: Dictionary = w.cit(int(b["owners"][0]))
@@ -422,12 +457,16 @@ static func _lodging(w: LTWorld) -> void:
 	for p in w.projects:
 		if str(p["status"]) != "building" or str(p["winner"].get("kind", "")) != "outside":
 			continue
+		# most outside crews drive home each night; about a third of them stay over,
+		# a room each
 		var crew: int = int(w.companies[int(p["winner"]["id"])]["crew"])
-		var nightly: int = crew * LTMoney.dollars(70.0)
-		if hotels.is_empty():
-			book(w, "lodging", "latent", nightly)
-		else:
-			spend(w, "outside", "lodging", nightly, -1)
+		for k in crew:
+			if w.rng.randf() >= 0.33:
+				continue
+			if hotels.is_empty():
+				book(w, "lodging", "latent", LTMoney.dollars(70.0))
+			else:
+				spend(w, "outside", "lodging", LTMoney.dollars(70.0), -1)
 	# travelers passing through, more when the region is doing well
 	var travelers: float = (1.0 + float(w.alive_count()) * 0.003) * LTRegion.index(w)
 	var n: int = int(travelers)

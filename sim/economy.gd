@@ -16,7 +16,7 @@ const IMPORT_UNIT_COST: int = 560       # wholesale from Valley Wholesale
 const IMPORT_DELIVERY_FEE: int = 4500
 const PRODUCE_UNIT_PRICE: int = 380     # local farm to grocery, one person-day of fresh food
 const PRODUCE_EXPORT_PRICE: int = 260   # farm surplus sold to the outside co-op
-const MEAL_PRICE: int = 1100
+const MEAL_PRICE: int = 1400   # a small town diner ticket in 2026
 const MEAL_COST: int = 420
 const GOODS_PRICE: int = 2600           # household supplies for a week
 const GOODS_COST: int = 1650
@@ -68,7 +68,9 @@ static func analyze_market(w: LTWorld) -> void:
 	m["grocery_outside_households"] = outside_grocery
 	m["grocery_outside_share"] = 0.0 if hh_n == 0 else float(outside_grocery) / float(hh_n)
 	m["avg_grocery_trip_minutes"] = 0.0 if outside_grocery == 0 else trip_minutes / float(outside_grocery)
-	m["cafe_visits_day"] = float(adults) * 0.22
+	# townspeople eat out about once a week at a local diner, and a few travelers
+	# off the county road stop for a meal
+	m["cafe_visits_day"] = float(adults) * 0.14 + 18.0 * LTRegion.index(w)
 	m["goods_week"] = float(hh_n)
 	var groceries: Array = w.open_businesses("grocery")
 	var farms: Array = w.open_businesses("farm")
@@ -177,7 +179,8 @@ static func startup_costs(w: LTWorld, btype: String, home_based: bool, existing:
 		equipment = int(float(equipment) * (0.5 + scale * 0.5))
 		stock = int(float(stock) * scale)
 		if not existing:
-			building = LTMoney.dollars(float(sqft) * (SHED_PER_SQFT if bool(sheet["shed"]) else STOREFRONT_PER_SQFT))
+			# the bank wants a 10% contingency for overruns on any new building
+			building = LTMoney.dollars(float(sqft) * (SHED_PER_SQFT if bool(sheet["shed"]) else STOREFRONT_PER_SQFT) * 1.1)
 	# three months of wages and utilities to get through the slow start
 	var staff: int = 0 if home_based else int(cfg["staff"])
 	var wage: int = maxi(int(cfg["wage"]), LTCivic.min_daily_wage(w))
@@ -333,7 +336,8 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	if HOME_OK.has(btype) and hh_lot >= 0 and str(w.lot(hh_lot)["use"]) == "house" and _home_free(w, hh_lot):
 		var full: Dictionary = startup_costs(w, btype, false)
 		# most small town businesses of these kinds start at home
-		if lot_id < 0 or _town_size(w) < 400 or (not existing and w.cash(c) < int(float(full["total"]) * 0.15)):
+		var office_trade: bool = ["law_office", "real_estate", "guide_service", "construction", "trucking"].has(btype)
+		if lot_id < 0 or _town_size(w) < 400 or (office_trade and _town_size(w) < 1500) or (not existing and w.cash(c) < int(float(full["total"]) * 0.15)):
 			home_based = true
 			existing = false
 			lot_id = hh_lot
@@ -382,6 +386,20 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 			gross_margin = float(est_s["margin"])
 			doubt = str(est_s["doubt"])
 			service_why = str(est_s["why"])
+	# what the ones already open really take in: a newcomer splits that market.
+	# The sharper the founder, the more they trust what they can see over hope.
+	var rivals: Array = w.open_businesses(btype)
+	if not rivals.is_empty():
+		var seen: float = 0.0
+		for rb in rivals:
+			var rh: Array = rb.get("customers_hist", [])
+			var tot: float = 0.0
+			for i in range(maxi(0, rh.size() - 3), rh.size()):
+				tot += float(rh[i])
+			seen += tot / float(maxi(1, mini(3, rh.size())))
+		var split: float = seen / float(rivals.size() + 1)
+		var sharp: float = clampf((float(t["intelligence"]) * 0.5 + float(c["skills"]["finance"]) * 0.3 + float(c["skills"]["management"]) * 0.2) / 100.0, 0.0, 1.0)
+		monthly_gross = lerpf(monthly_gross, minf(monthly_gross, split), sharp)
 	var staff: int = 0 if home_based else int(cfg["staff"])
 	var wage: int = maxi(int(cfg["wage"]), LTCivic.min_daily_wage(w))
 	var costs: float = float(staff * wage) * 22.0
@@ -405,8 +423,12 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	if not need.is_empty() and int(need["incentives"].get("tax_break_years", 0)) > 0:
 		tax = 0.0
 	var profit: float = (monthly_gross * gross_margin - costs) * (1.0 - tax)
-	var optimism: float = 1.0 + (float(t["risk"]) - 50.0) / 100.0 * 0.7 - float(c["skills"]["finance"]) / 400.0
-	var est: float = profit * optimism
+	# judgment: smart Sims who know numbers and how to run things read the market
+	# close to the truth; dreamers and gamblers see what they hope to see
+	var judgment: float = clampf(float(t["intelligence"]) * 0.4 + float(c["skills"]["finance"]) * 0.4 + float(c["skills"]["management"]) * 0.2, 0.0, 100.0)
+	var optimism: float = 1.0 + (float(t["risk"]) - 50.0) / 100.0 * 0.7 * (1.0 - judgment / 150.0)
+	var blur: float = (1.0 - judgment / 110.0) * 0.45 * absf(monthly_gross * gross_margin)
+	var est: float = profit * optimism + w.rng.randfn(0.0, maxf(1.0, blur)) + (1.0 - judgment / 100.0) * 0.15 * absf(monthly_gross * gross_margin)
 	var current_income: float = float(c["job"]["daily_wage"]) * 21.0
 	# funding check from the Sim's side, no inquiry yet
 	var can_fund: bool = loan_need == 0
@@ -440,8 +462,9 @@ static func _evaluate(w: LTWorld, c: Dictionary, btype: String) -> Dictionary:
 	if not can_fund:
 		score_v -= 40.0
 	if est <= 0.0:
-		score_v -= 20.0
-	return {"type": btype, "lot": lot_id, "score": score_v, "est_monthly": int(est), "startup": startup, "loan_need": loan_need, "grant": grant, "need_id": int(need.get("id", -1)), "funding": funding_note, "reason": "", "doubt": doubt, "skill": skill, "service_why": service_why, "has_need": not need.is_empty(), "home": home_based, "costs": cs}
+		# a careful planner walks away from a plan that does not pay; a dreamer may not
+		score_v -= 20.0 + judgment * 0.6
+	return {"type": btype, "lot": lot_id, "score": score_v, "est_monthly": int(est), "bank_view": int(profit), "startup": startup, "loan_need": loan_need, "grant": grant, "need_id": int(need.get("id", -1)), "funding": funding_note, "reason": "", "doubt": doubt, "skill": skill, "service_why": service_why, "has_need": not need.is_empty(), "home": home_based, "costs": cs}
 
 
 ## The plain words a Sim gives for a plan, built only for the plan they pick.
@@ -525,13 +548,13 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 	var gap: int = startup - w.biz_cash(b)
 	if gap > 0:
 		var guarantee: bool = not need.is_empty() and bool(need["incentives"].get("loan_guarantee", false))
-		var dec: Dictionary = LTFinance.business_offer(w, c, cs, w.biz_cash(b), int(plan["est_monthly"]))
+		var dec: Dictionary = LTFinance.business_offer(w, c, cs, w.biz_cash(b), int(plan.get("bank_view", plan["est_monthly"])))
 		if not bool(dec["ok"]) and not guarantee:
 			# short on the down payment: family may help, then back to the bank
 			var famh: int = _family_help(w, c, b, acct, int(float(startup) * 0.2) - w.biz_cash(b))
 			if famh > 0:
 				sources.append("%s from family toward the down payment" % LTMoney.fmt(famh))
-				dec = LTFinance.business_offer(w, c, cs, w.biz_cash(b), int(plan["est_monthly"]))
+				dec = LTFinance.business_offer(w, c, cs, w.biz_cash(b), int(plan.get("bank_view", plan["est_monthly"])))
 				gap = startup - w.biz_cash(b)
 		if not bool(dec["ok"]) and guarantee:
 			dec = {"ok": true, "rate": LTFinance.bank_rate(w, "business_loan", 680), "reason": "the city guarantee", "program": "bank loan with a city guarantee", "re_years": 20, "years": 7}
@@ -641,7 +664,7 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 	var extras: int = LTBuildings.extras_cost(bplan)
 	if extras > 0:
 		w.ledger.pay(w.acct_p(c), acct, mini(extras, w.cash(c)), "owner_investment")
-	var bcost: int = maxi(int(cs["building"]), LTBuildings.cost(bplan))
+	var bcost: int = maxi(int(float(cs["building"]) / 1.1), LTBuildings.cost(bplan))
 	var r: Dictionary = LTProjects.define_project(w, "shop", lot_id, int(float(bcost) * 1.3), -1, false,
 		{"kind": "business", "id": int(b["id"]), "name": str(b["name"]), "acct": acct}, bcost, int(cs["sqft"]))
 	if bool(r.get("ok", false)):
@@ -649,6 +672,13 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		pr["business_id"] = int(b["id"])
 		pr["title"] = "%s: a %d square foot building" % [b["name"], int(cs["sqft"])]
 		b["project_id"] = int(pr["id"])
+		# the building money, with its contingency, is set aside from the opening
+		# reserve so an overrun cannot eat the cash for stock and payroll
+		var escrow: String = "escrow:%d" % int(pr["id"])
+		var keep: int = int(cs["reserve"]) + (int(cs["stock"]) if ["grocery", "cafe", "general_store"].has(btype) else 0)
+		w.ledger.pay(acct, escrow, maxi(0, w.biz_cash(b) - keep), "construction_escrow")
+		pr["developer"]["acct"] = escrow
+		pr["developer"]["refund"] = acct
 	w.log_sim(c, "Decided to start %s and hired builders for the building. Reason: %s" % [b["name"], reason], true)
 	w.log_biz(b, "Planned by %s on %s. Reason: %s" % [w.full_name(c), LTGeography.lot_label(w, lot_id), reason])
 	w.chronicle_add("%s is putting up a building on %s for %s." % [w.full_name(c), LTGeography.lot_street(w, lot_id)["name"], b["name"]], "business", false, [c["id"]])
@@ -825,6 +855,7 @@ static func daily(w: LTWorld) -> void:
 				_farm_day(w, b)
 	_household_shopping(w)
 	_cafe_visits(w)
+	_traveler_meals(w)
 	LTServices.daily(w)
 	for b in w.businesses:
 		if str(b["status"]) != "open":
@@ -1144,12 +1175,13 @@ static func _cafe_visits(w: LTWorld) -> void:
 		if not w.is_present(c) or w.age_years(c) < 16:
 			continue
 		var n: Dictionary = c["needs"]
-		var want: float = (100.0 - float(n["fun"])) * 0.004 + (100.0 - float(n["social"])) * 0.003 + float(c["traits"]["sociability"]) * 0.001
+		# about once a week for most people; more for the outgoing, the bored and the lonely
+		var want: float = 0.09 + float(c["traits"]["sociability"]) * 0.0008 + (100.0 - float(n["fun"])) * 0.0008 + (100.0 - float(n["social"])) * 0.0008
 		var money_ok: float = clampf(float(w.cash(c)) / float(LTMoney.dollars(400.0)), 0.0, 1.0)
-		if w.rng.randf() > want * money_ok * 0.5:
+		if w.rng.randf() > want * money_ok:
 			continue
 		var cafe: Dictionary = cafes[w.rng.randi_range(0, cafes.size() - 1)]
-		if float(cafe["stock"]) < 1.0:
+		if float(cafe["stock"]) < 1.0 or not LTServices.has_room(w, cafe):
 			continue
 		var price: int = int(float(MEAL_PRICE) * float(cafe["price_level"]))
 		if w.ledger.pay_full(w.acct_p(c), w.acct_b(cafe), price, "retail_sales"):
@@ -1170,6 +1202,25 @@ static func _cafe_visits(w: LTWorld) -> void:
 				var s: Dictionary = w.cit(int(sid))
 				if w.is_present(s) and w.rng.randf() < 0.2:
 					LTPeople.relate_event(w, c, s, "acquaintance", 1.0, 2.0)
+
+
+## Travelers on the county road stop to eat where there is a diner.
+static func _traveler_meals(w: LTWorld) -> void:
+	var cafes: Array = w.open_businesses("cafe")
+	if cafes.is_empty():
+		return
+	var n: int = int(18.0 * LTRegion.index(w) * w.rng.randf_range(0.7, 1.3))
+	for i in n:
+		var cafe: Dictionary = cafes[w.rng.randi_range(0, cafes.size() - 1)]
+		if float(cafe["stock"]) < 1.0 or not LTServices.has_room(w, cafe):
+			continue
+		var price: int = int(float(MEAL_PRICE) * float(cafe["price_level"]))
+		w.ledger.pay("outside", w.acct_b(cafe), price, "retail_sales")
+		cafe["stock"] = float(cafe["stock"]) - 1.0
+		cafe["customers_today"] = int(cafe["customers_today"]) + 1
+		cafe["sales_today"] = int(cafe["sales_today"]) + price
+		cafe["month_revenue"] = int(cafe["month_revenue"]) + price
+		cafe["lifetime_revenue"] = int(cafe["lifetime_revenue"]) + price
 
 
 static func _end_of_day(w: LTWorld, b: Dictionary) -> void:
@@ -1369,14 +1420,24 @@ static func _payday(w: LTWorld) -> void:
 				w.remember(s, "cheated", int(b["id"]), -15.0)
 				if float(s["traits"]["discipline"]) < 70.0 or int(b["short_pay_days"]) > 2:
 					leave_job(w, s, "the paychecks stopped coming in full")
-		# owner draw: what is left over above a cushion
-		var cushion: int = LTMoney.dollars(3000.0) + int(b["wage"]) * 5 * b["staff"].size()
-		var extra: int = w.biz_cash(b) - cushion
+		# owner draw: owners pay themselves from what is left above a reserve of a few
+		# months of costs and loan payments; careful owners with finance sense keep more
 		var owner: Dictionary = w.cit(int(b["owners"][0]))
+		var months: float = 2.0
+		if w.is_present(owner):
+			months += float(owner["traits"]["discipline"]) / 50.0 + float(owner["skills"]["finance"]) / 50.0
+		var monthly_need: int = int(b.get("last_month_costs", 0)) + _biz_debt_due(w, b)
+		var cushion: int = LTMoney.dollars(3000.0) + int(b["wage"]) * 5 * b["staff"].size() + int(float(monthly_need) * months)
+		var extra: int = w.biz_cash(b) - cushion
 		if extra > 0 and w.is_present(owner):
 			var t: Dictionary = owner["traits"]
 			var share: float = 0.35 + float(t["greed"]) / 300.0 - float(t["discipline"]) / 400.0
 			var draw: int = int(float(extra) * clampf(share, 0.15, 0.7))
+			# owners live on profit, not on the start up money: no more in a week than
+			# about a quarter of what the business cleared last month
+			var hist: Array = b.get("month_profit_hist", [])
+			var last_profit: int = int(hist[hist.size() - 1]) if not hist.is_empty() else 0
+			draw = mini(draw, maxi(0, last_profit) / 4)
 			var inv_cut: int = int(float(draw) * float(b.get("investor_share", 0.0)))
 			if inv_cut > 0:
 				w.ledger.pay(acct, "outside", inv_cut, "investor_dividends")
@@ -1390,6 +1451,14 @@ static func _payday(w: LTWorld) -> void:
 			# a broke owner still has to eat: takes a small draw even when the business cannot spare it
 			w.ledger.pay(acct, w.acct_p(owner), LTMoney.dollars(200.0), "owner_draws")
 	LTCivic.city_payday(w)
+
+
+## What the business owes on its loans each month.
+static func _biz_debt_due(w: LTWorld, b: Dictionary) -> int:
+	var t: int = 0
+	for d in LTFinance.debts_of(w, "b", int(b["id"])):
+		t += LTFinance.min_due(d)
+	return t
 
 
 static func _month_close(w: LTWorld, b: Dictionary) -> void:
@@ -1428,11 +1497,16 @@ static func _month_close(w: LTWorld, b: Dictionary) -> void:
 	b["customers_hist"].append(int(b["month_revenue"]))
 	if b["customers_hist"].size() > 36:
 		b["customers_hist"].remove_at(0)
+	b["last_month_costs"] = int(b["month_costs"])
+	b["last_month_revenue"] = int(b["month_revenue"])
 	b["month_revenue"] = 0
 	b["month_costs"] = 0
 	if btype == "landlord":
 		return
-	if profit < 0:
+	if int(b.get("last_month_revenue", 1)) == 0 and w.biz_cash(b) < LTMoney.dollars(500.0) and w.day - int(b["opened_day"]) > 45:
+		# no sales and no money to buy stock or pay anyone: the business is dying
+		b["loss_months"] = int(b["loss_months"]) + 2
+	elif profit < 0:
 		b["loss_months"] = int(b["loss_months"]) + 1
 	else:
 		b["loss_months"] = maxi(0, int(b["loss_months"]) - 1)
@@ -1550,6 +1624,7 @@ static func close_business(w: LTWorld, b: Dictionary, reason: String) -> void:
 		if str(owner["job"]["kind"]) == "owner" and int(owner["job"]["employer"]) == int(b["id"]):
 			LTPeople.clear_job(w, owner)
 		w.remember(owner, "business_failed", int(b["id"]), -40.0)
+		owner["last_failure_day"] = w.day
 		var personal_note: String = ""
 		if leftover_debt > 0:
 			personal_note = " %s of business debt is still owed%s." % [LTMoney.fmt(leftover_debt), " personally, since a sole proprietor and the business are one pocket" if str(b["legal_form"]) == "sole" else " by whoever guaranteed it"]
@@ -1576,6 +1651,73 @@ static func heir_keeps_business(w: LTWorld, heir: Dictionary, b: Dictionary) -> 
 	if not profits.is_empty() and int(profits[profits.size() - 1]) > 0:
 		s += 15.0
 	return s > 35.0 and w.age_years(heir) < 75
+
+
+## An owner who leaves sells a business that makes money, as real owners do: for
+## about two and a half years of its profit, to the local Sim best able to run it.
+## The buyer puts money down and the bank (often through the SBA) lends the rest.
+static func sell_business(w: LTWorld, b: Dictionary, seller: Dictionary, why: String) -> bool:
+	var hist: Array = b.get("month_profit_hist", [])
+	if hist.size() < 3 or str(b["type"]) == "landlord":
+		return false
+	var t: int = 0
+	for i in range(hist.size() - 3, hist.size()):
+		t += int(hist[i])
+	var monthly: int = t / 3
+	if monthly <= 0:
+		return false
+	var price: int = maxi(LTMoney.dollars(10000.0), int(float(monthly) * 12.0 * 2.5))
+	var cfg: Dictionary = tcfg(str(b["type"]))
+	var best: Dictionary = {}
+	var best_s: float = -1e9
+	for c in w.citizens:
+		if not w.is_present(c) or int(c["household"]) == int(seller["household"]) or not c["owns"].is_empty() or bool(c["homeless"]):
+			continue
+		var age: int = w.age_years(c)
+		if age < 22 or age > 66 or bool(c["retired"]):
+			continue
+		var skill: float = float(c["skills"][str(cfg["skill"])])
+		if skill < float(cfg.get("min_skill", 22)) or w.cash(c) < int(float(price) * 0.1):
+			continue
+		var s: float = skill * 0.5 + float(c["traits"]["intelligence"]) * 0.2 + float(c["skills"]["finance"]) * 0.2 + float(c["traits"]["ambition"]) * 0.2
+		if int(c["job"]["employer"]) == int(b["id"]) and str(c["job"]["kind"]) == "business":
+			s += 15.0   # the employee who knows the place
+		if s > best_s:
+			best_s = s
+			best = c
+	if best.is_empty():
+		return false
+	var down: int = mini(price, maxi(0, w.cash(best) - LTMoney.dollars(2000.0)))
+	var sacct: String = w.acct_p(seller)
+	if down < price:
+		var offer: Dictionary = LTFinance.business_offer(w, best, {"total": price, "building": 0}, down, monthly)
+		if not bool(offer["ok"]):
+			w.log_sim(best, "Wanted to buy %s and the bank said no: %s." % [b["name"], offer["reason"]], true)
+			return false
+		var d: Dictionary = LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", price - down, float(offer["rate"]), 120, "", -1, [])
+		d["guarantor"] = int(best["id"])
+		d["sba"] = bool(offer.get("sba", false))
+		LTFinance._dhist(w, d, "Loan to buy the business: %s." % offer["reason"])
+		LTFinance.fund_loan(w, d, sacct, price - down)
+	w.ledger.pay(w.acct_p(best), sacct, down, "business_sales")
+	b["owners"].erase(int(seller["id"]))
+	b["owners"].insert(0, int(best["id"]))
+	seller["owns"].erase(int(b["id"]))
+	best["owns"].append(int(b["id"]))
+	for d2 in LTFinance.debts_of(w, "b", int(b["id"])):
+		if int(d2["guarantor"]) == int(seller["id"]):
+			d2["guarantor"] = int(best["id"])
+			LTFinance._dhist(w, d2, "%s took over the guarantee when buying the business." % w.full_name(best))
+	w.debt_index_dirty = true
+	if str(best["job"]["kind"]) != "none":
+		leave_job(w, best, "bought %s" % b["name"])
+	LTPeople.set_job(w, best, "owner", int(b["id"]), "owner of " + str(b["name"]), 0, str(cfg["skill"]))
+	w.counters["businesses_sold"] = int(w.counters.get("businesses_sold", 0)) + 1
+	w.log_biz(b, "Sold by %s to %s for %s (%s down). Reason: %s." % [w.full_name(seller), w.full_name(best), LTMoney.fmt(price), LTMoney.fmt(down), why])
+	w.log_sim(seller, "Sold %s to %s for %s. Reason: %s." % [b["name"], w.full_name(best), LTMoney.fmt(price), why], true)
+	w.log_sim(best, "Bought %s for %s with %s down. Reason: it makes about %s a month and %s knows the work." % [b["name"], LTMoney.fmt(price), LTMoney.fmt(down), LTMoney.fmt(monthly), best["first_name"]], true)
+	w.chronicle_add("%s sold %s to %s." % [w.full_name(seller), b["name"], w.full_name(best)], "business", true, [seller["id"], best["id"]])
+	return true
 
 
 static func transfer_business(w: LTWorld, b: Dictionary, from: Dictionary, to: Dictionary) -> void:

@@ -10,20 +10,20 @@ const FEMALE_FIRST: Array = ["Mary", "Anna", "Beth", "Carol", "Dana", "Emma", "F
 const MALE_FIRST: Array = ["James", "John", "Robert", "Michael", "David", "William", "Richard", "Joseph", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven", "Paul", "Andrew", "Joshua", "Kenneth", "Kevin", "Brian", "George", "Timothy", "Ronald", "Edward", "Jeffrey", "Ryan", "Jacob", "Gary", "Walt", "Hank", "Leon", "Earl", "Glen", "Roy"]
 const LAST_NAMES: Array = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Olson", "Larson", "Nelson", "Hanson", "Peterson", "Berg", "Lund", "Schmidt", "Weber", "Fischer"]
 const OUTSIDE_JOBS: Array = [
-	{"title": "factory worker", "wage": 136.0, "skill": "repair"},
-	{"title": "warehouse worker", "wage": 124.0, "skill": "logistics"},
-	{"title": "truck driver", "wage": 168.0, "skill": "logistics"},
-	{"title": "office clerk", "wage": 132.0, "skill": "finance"},
-	{"title": "farm hand", "wage": 112.0, "skill": "farming"},
-	{"title": "construction laborer", "wage": 150.0, "skill": "construction"},
-	{"title": "nursing aide", "wage": 128.0, "skill": "medicine"},
-	{"title": "store clerk", "wage": 110.0, "skill": "retail"},
-	{"title": "line cook", "wage": 114.0, "skill": "cooking"},
+	{"title": "factory worker", "wage": 168.0, "skill": "repair"},
+	{"title": "warehouse worker", "wage": 152.0, "skill": "logistics"},
+	{"title": "truck driver", "wage": 216.0, "skill": "logistics"},
+	{"title": "office clerk", "wage": 152.0, "skill": "finance"},
+	{"title": "farm hand", "wage": 136.0, "skill": "farming"},
+	{"title": "construction laborer", "wage": 176.0, "skill": "construction"},
+	{"title": "nursing aide", "wage": 144.0, "skill": "medicine"},
+	{"title": "store clerk", "wage": 120.0, "skill": "retail"},
+	{"title": "line cook", "wage": 128.0, "skill": "cooking"},
 ]
 const COMMUTE_COST_DAILY: int = 700
 const FOOD_DAILY_ADULT: int = 900
 const FOOD_DAILY_CHILD: int = 550
-const PENSION_MONTHLY: int = 145000
+const PENSION_MONTHLY: int = 190000   # about the average Social Security check in 2026
 
 
 # ================================================================ generation
@@ -407,7 +407,8 @@ static func pick_outside_job(w: LTWorld, c: Dictionary) -> Dictionary:
 
 static func _outside_wage(w: LTWorld, c: Dictionary, j: Dictionary) -> int:
 	var sk: float = float(c["skills"][str(j["skill"])])
-	return LTMoney.dollars(float(j["wage"]) * (0.85 + sk / 300.0))
+	# skill pays: a beginner starts at 80% of the going rate, a master earns 30% over it
+	return LTMoney.dollars(float(j["wage"]) * (0.8 + sk / 200.0))
 
 
 static func set_job(w: LTWorld, c: Dictionary, kind: String, employer: int, title: String, daily_wage: int, skill: String) -> void:
@@ -979,7 +980,18 @@ static func decide_weekly(w: LTWorld, c: Dictionary, age: int) -> void:
 		var opening: Dictionary = LTEconomy.best_local_opening(w, c)
 		if not opening.is_empty():
 			options.append({"key": "teen_job", "score": need_money, "reason": "wants spending money and the household is tight", "opening": opening})
-	if age >= 21 and age < 70 and kind != "owner" and c["owns"].is_empty():
+	# starting a business is a big decision people come back to now and then (about
+	# three times a year), sooner when the city has asked for one; after a failure, it
+	# takes a couple of years to try again
+	var open_need: bool = false
+	for nd in w.city_needs:
+		if str(nd["status"]) == "open":
+			open_need = true
+			break
+	var founding_turn: bool = open_need or (int(c["id"]) + w.day / 7) % 17 == 0
+	if w.memory_weight(c, "business_failed") < -10.0 and w.day - int(c.get("last_failure_day", -9999)) < 730:
+		founding_turn = false
+	if founding_turn and age >= 21 and age < 70 and kind != "owner" and c["owns"].is_empty():
 		var plan: Dictionary = LTEconomy.consider_founding(w, c)
 		if not plan.is_empty():
 			options.append({"key": "found", "score": float(plan["score"]), "reason": str(plan["reason"]), "plan": plan})
@@ -1396,7 +1408,7 @@ static func _household_leaves(w: LTWorld, h: Dictionary, score: float) -> void:
 				if ob["owners"].size() > 1:
 					ob["owners"].erase(int(m["id"]))
 					m["owns"].erase(int(bid))
-				else:
+				elif not LTEconomy.sell_business(w, ob, m, "moving away"):
 					LTEconomy.close_business(w, ob, "the owner moved away")
 		if str(m["job"]["kind"]) != "none" and str(m["job"]["kind"]) != "owner":
 			LTEconomy.leave_job(w, m, "moved away")

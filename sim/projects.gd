@@ -808,6 +808,7 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 			LTFounder.settler_moves_in(w, p, l2)
 	elif ptype == "shop":
 		var sb: Dictionary = w.biz(int(p.get("business_id", -1)))
+		LTBuildings._close_escrow(w, p)
 		if not sb.is_empty() and str(sb["status"]) == "building":
 			sb["building_quality"] = q
 			LTEconomy.open_business(w, sb)

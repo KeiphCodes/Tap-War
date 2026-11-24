@@ -498,7 +498,22 @@ static func fund_loan(w: LTWorld, d: Dictionary, to_acct: String, amount: int) -
 static func monthly_income(w: LTWorld, c: Dictionary) -> int:
 	if bool(c["retired"]):
 		return LTPeople.PENSION_MONTHLY
-	return int(c["job"]["daily_wage"]) * 21
+	var pay: int = int(c["job"]["daily_wage"]) * 21
+	# an owner lives on the business: the average of its last three months' profit
+	for bid in c.get("owns", []):
+		var b: Dictionary = w.biz(int(bid))
+		if b.is_empty() or str(b["status"]) != "open":
+			continue
+		var hist: Array = b.get("month_profit_hist", [])
+		if hist.is_empty():
+			continue
+		var t: int = 0
+		var n: int = 0
+		for i in range(maxi(0, hist.size() - 3), hist.size()):
+			t += int(hist[i])
+			n += 1
+		pay += maxi(0, t / maxi(1, n)) / maxi(1, b["owners"].size())
+	return pay
 
 
 static func personal_loan(w: LTWorld, c: Dictionary, reason: String) -> void:
@@ -594,6 +609,15 @@ static func _cycle(w: LTWorld, d: Dictionary) -> void:
 			return
 	var interest: int = int(float(d["balance"]) * float(d["rate"]) / 12.0)
 	d["balance"] = int(d["balance"]) + interest
+	if str(d["debtor_kind"]) == "b":
+		var db: Dictionary = w.biz(int(d["debtor_id"]))
+		if not db.is_empty() and str(db["status"]) == "building":
+			# while the building goes up the interest is added to the loan; payments
+			# start when the doors open
+			if not bool(d.get("deferred_note", false)):
+				d["deferred_note"] = true
+				_dhist(w, d, "Payments wait until the business opens; the interest meanwhile is added to the loan.")
+			return
 	var due: int = min_due(d)
 	if int(d["term"]) > 0:
 		due = mini(int(d["payment"]) + int(d["missed"]) * 0, int(d["balance"]))
@@ -693,6 +717,20 @@ static func _enforce(w: LTWorld, d: Dictionary, people: Array) -> void:
 	if int(d["missed"]) == 4:
 		for c in people:
 			credit_event(w, c, "collections")
+	if secured == "house" and str(d["type"]) == "mortgage" and int(d["missed"]) >= 2 and int(d["missed"]) < 5 and not people.is_empty():
+		# behind on the mortgage with equity in the house: most owners sell before the
+		# bank forecloses and keep what is left; sharper ones see it sooner
+		var c0: Dictionary = people[0]
+		var h0: Dictionary = w.hh(int(c0["household"]))
+		var l0: Dictionary = w.lot(int(d["collateral_lot"]))
+		if int(h0.get("mortgage", -1)) == int(d["id"]) and int(h0["lot"]) == int(l0["id"]) and float(l0["value"]) * 0.9 > float(bal):
+			var sense: float = float(c0["skills"]["finance"]) * 0.4 + float(c0["traits"]["discipline"]) * 0.3 + float(int(d["missed"]) - 2) * 25.0 - float(c0["traits"]["risk"]) * 0.2
+			if sense + w.rng.randf_range(-10.0, 10.0) > 15.0:
+				sell_house(w, h0, "behind on the mortgage; selling before the bank forecloses keeps the equity and the credit record")
+				h0["tenure"] = "rent"
+				h0["rent"] = int(l0["unit_rent"])
+				w.counters["distress_sales"] = int(w.counters.get("distress_sales", 0)) + 1
+				return
 	if secured == "house" and int(d["missed"]) >= 5:
 		_foreclose(w, d, people)
 		return
