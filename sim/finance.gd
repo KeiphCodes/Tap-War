@@ -336,6 +336,150 @@ static func bank_decision(w: LTWorld, c: Dictionary, dtype: String, amount: int,
 	return {"ok": true, "reason": "credit %d and income cover it" % score, "rate": rate, "max": amount, "term": term}
 
 
+## ---------------------------------------------------------------- loan programs
+## The bank looks for a way to say yes, the way real lenders do. A buyer who can
+## put money down and whose credit is good enough gets the program that fits:
+## - Conventional mortgage: credit 620 or better, 5% down (private mortgage
+##   insurance under 20% down), payments under 43% of income.
+## - FHA: credit 580 with 3.5% down (500 to 579 with 10% down), payments up to
+##   50% of income, with mortgage insurance for the life of the loan.
+## - USDA Rural Development: no money down in a small rural town, credit 640,
+##   for families earning under about $110,000, payments under 41% of income.
+## - Business: a conventional bank loan with 20% down and cash flow 1.25 times
+##   the payments; an SBA 7(a) loan with 10% down and cash flow 1.15 times; or,
+##   for $50,000 or less, an SBA microloan from a nonprofit lender with credit 600
+##   and some money of one's own in it.
+## Everyone also needs cash for closing costs. When the answer is no, the bank
+## says what it would take, and the Sim remembers.
+
+const USDA_INCOME_LIMIT: int = 1100000000   # $110,000 a year, in cents
+
+
+static func _score(w: LTWorld, c: Dictionary) -> int:
+	return int(c["credit"]["score"]) if bool(c["credit"]["has_file"]) else 0
+
+
+static func _existing_dues(w: LTWorld, c: Dictionary) -> int:
+	var t: int = 0
+	for d in personal_exposure(w, c):
+		t += min_due(d)
+	return t
+
+
+## The best mortgage the household can get for this price, or why not.
+static func mortgage_offer(w: LTWorld, h: Dictionary, head: Dictionary, price: int) -> Dictionary:
+	var adults: Array = w.household_adults(h)
+	var income: int = 0
+	for a in adults:
+		income += monthly_income(w, a)
+	var cash: int = w.household_cash(h)
+	var closing: int = int(float(price) * 0.03)
+	# on a joint loan the lender goes by the lower score of the borrowers with income
+	var score: int = 999
+	for a in adults:
+		if monthly_income(w, a) > 0 or a == head:
+			score = mini(score, _score(w, a))
+	if score == 999:
+		score = _score(w, head)
+	credit_event(w, head, "inquiry")
+	if w.day - int(head["credit"]["bankruptcy_day"]) < 730:
+		return {"ok": false, "reason": "a bankruptcy less than two years old is on the record", "advice": "wait until it is two years old"}
+	var dues: int = _existing_dues(w, head)
+	var tight: float = float(w.bank["tightness"])
+	var programs: Array = [
+		# name, min score, down share, max payments share of income, rate add, insurance a year
+		["conventional", 620 + int(tight * 60.0), 0.2, 0.43, 0.0, 0.0],
+		["conventional", 620 + int(tight * 60.0), 0.05, 0.43, 0.0025, 0.005],
+		["USDA", 640 + int(tight * 40.0), 0.0, 0.41, 0.0, 0.0035],
+		["FHA", 580, 0.035, 0.5, 0.0025, 0.0055],
+		["FHA", 500, 0.1, 0.5, 0.005, 0.0055],
+	]
+	var why_not: Array = []
+	for pg in programs:
+		var name: String = str(pg[0])
+		if name == "USDA" and income * 12 > USDA_INCOME_LIMIT:
+			continue
+		var down: int = int(float(price) * float(pg[2]))
+		if cash < down + closing:
+			why_not.append("%s needs %s down plus %s closing costs" % [name, LTMoney.fmt(down), LTMoney.fmt(closing)])
+			continue
+		if score < int(pg[1]):
+			why_not.append("%s needs credit %d" % [name, int(pg[1])])
+			continue
+		var loan: int = price - down
+		if name == "FHA":
+			loan += int(float(loan) * 0.0175)   # the upfront premium is added to the loan
+		var rate: float = bank_rate(w, "mortgage", score) + float(pg[4])
+		var pay: int = amortized_payment(loan, rate, 360) + int(float(loan) * float(pg[5]) / 12.0)
+		var dti: float = float(pay + dues) / maxf(1.0, float(income))
+		if dti > float(pg[3]) - tight * 0.05:
+			why_not.append("%s payments would be %d%% of income" % [name, int(dti * 100.0)])
+			continue
+		return {"ok": true, "program": name, "down": down, "loan": loan, "rate": rate, "closing": closing, "insurance": float(pg[5]),
+			"reason": "%s loan: %s down, credit %d, payments %d%% of income" % [name, LTMoney.fmt(down), score, int(dti * 100.0)]}
+	var advice: String = ""
+	if score < 580:
+		advice = "bring credit up to 580 and save %s for 3.5%% down and closing" % LTMoney.fmt(int(float(price) * 0.065))
+	elif cash < int(float(price) * 0.065):
+		advice = "save %s more for the down payment and closing costs" % LTMoney.fmt(int(float(price) * 0.065) - cash)
+	else:
+		advice = "earn more or pay down other debts, or look at a cheaper house"
+	return {"ok": false, "reason": "; ".join(why_not.slice(0, 2)) if not why_not.is_empty() else "no program fits", "advice": advice}
+
+
+## How a founder could finance a start up. equity is the founder's own money in
+## it (savings, family gifts, grants). est_monthly is the founder's own guess of
+## monthly profit; the bank only counts 70% of it.
+static func business_offer(w: LTWorld, c: Dictionary, cs: Dictionary, equity: int, est_monthly: int) -> Dictionary:
+	var total: int = int(cs["total"])
+	var gap: int = maxi(0, total - equity)
+	var share: float = float(equity) / maxf(1.0, float(total))
+	var score: int = _score(w, c)
+	credit_event(w, c, "inquiry")
+	if w.day - int(c["credit"]["bankruptcy_day"]) < 730:
+		return {"ok": false, "reason": "a bankruptcy less than two years old is on the record", "advice": "wait until it is two years old"}
+	var tight: float = float(w.bank["tightness"])
+	var cash_flow: float = float(est_monthly) * 0.7 + float(monthly_income(w, c)) * 0.25
+	var dues: int = _existing_dues(w, c)
+	var building: int = mini(gap, int(float(cs["building"]) * 0.9))
+	var programs: Array = [
+		# name, min score, min own share, min coverage, rate add, fee share, real estate years, other years, max amount
+		["bank loan", bank_min_score(w, "business_loan"), 0.2, 1.25, 0.0, 0.0, 20, 7, 0],
+		["SBA 7(a) loan", 640 + int(tight * 60.0), 0.1, 1.15, 0.0125, 0.03, 25, 10, 0],
+		["SBA microloan", 600, 0.05, 1.05, 0.025, 0.0, 6, 6, 5000000],
+	]
+	var why_not: Array = []
+	for pg in programs:
+		var name: String = str(pg[0])
+		if int(pg[8]) > 0 and gap > int(pg[8]):
+			continue
+		if share < float(pg[2]):
+			why_not.append("a %s needs %d%% down, %s" % [name, int(float(pg[2]) * 100.0), LTMoney.fmt(int(float(total) * float(pg[2])))])
+			continue
+		if score < int(pg[1]):
+			why_not.append("a %s needs credit %d" % [name, int(pg[1])])
+			continue
+		var rate: float = bank_rate(w, "business_loan", maxi(score, 600)) + float(pg[4])
+		var re_part: int = building if int(pg[8]) == 0 else 0
+		var pay: int = amortized_payment(re_part, rate - 0.01, int(pg[6]) * 12) + amortized_payment(gap - re_part, rate, int(pg[7]) * 12)
+		var cover: float = cash_flow / maxf(1.0, float(pay + dues))
+		if cover < float(pg[3]) + tight * 0.1:
+			why_not.append("the %s would need the business to earn %.2f times the payments, the plan shows %.2f" % [name, float(pg[3]), cover])
+			continue
+		return {"ok": true, "program": name, "rate": rate, "fee": int(float(gap) * float(pg[5]) * 0.75), "re_part": re_part, "re_years": int(pg[6]), "years": int(pg[7]),
+			"sba": name.begins_with("SBA"), "reason": "%s at %.1f%%, %d%% down, credit %d" % [name, rate * 100.0, int(share * 100.0), score]}
+	var advice: String = ""
+	if share < 0.05:
+		advice = "save at least %s to put into it" % LTMoney.fmt(int(float(total) * 0.1))
+	elif score < 600:
+		advice = "build credit to at least 640"
+	elif share < 0.1:
+		advice = "put in %s more of their own money" % LTMoney.fmt(int(float(total) * 0.1) - equity)
+	else:
+		advice = "start smaller or show more income"
+	return {"ok": false, "reason": "; ".join(why_not.slice(0, 2)) if not why_not.is_empty() else "no program fits", "advice": advice}
+
+
 ## Pays out a new loan from the local bank if the town has one with the money, else
 ## from the outside bank. The debt record names whichever lender it really was.
 static func fund_loan(w: LTWorld, d: Dictionary, to_acct: String, amount: int) -> void:
@@ -590,6 +734,11 @@ static func _charge_off(w: LTWorld, d: Dictionary, people: Array, why: String) -
 
 
 static func _book_loss(w: LTWorld, d: Dictionary, loss: int) -> void:
+	if bool(d.get("sba", false)):
+		# the SBA pays the lender 75% of what is lost
+		var paid: int = w.ledger.pay("outside", creditor_acct(w, d), int(float(loss) * 0.75), "sba_guarantee")
+		_dhist(w, d, "The SBA guarantee paid the lender %s." % LTMoney.fmt(paid))
+		loss -= paid
 	if str(d["creditor"]) == "bank":
 		w.bank["losses_12m"] = int(w.bank["losses_12m"]) + loss
 		w.bank["losses_total"] = int(w.bank["losses_total"]) + loss

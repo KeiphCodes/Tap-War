@@ -334,7 +334,10 @@ static func _expand(w: LTWorld, b: Dictionary) -> void:
 	var lay: Dictionary = layout(l, plan)
 	var why: String = "turning customers away: the building serves about %d a day and more than that come" % int(capacity(b["bplan"]))
 	if not bool(lay["fits"]):
-		w.log_biz(b, "Wanted to add %d square feet but the lot is too small. Reason: %s." % [add, why])
+		if LTLand.assemble_for(w, b):
+			lay = layout(w.lot(int(b["lot"])), plan)
+	if not bool(lay["fits"]):
+		w.log_biz(b, "Wanted to add %d square feet but the lot is too small and no land next door is for sale. Reason: %s." % [add, why])
 		return
 	var r: Dictionary = LTProjects.define_project(w, "expansion", int(l["id"]), int(float(price) * 1.3), -1, false,
 		{"kind": "business", "id": int(b["id"]), "name": str(b["name"]), "acct": acct}, price, add)

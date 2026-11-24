@@ -75,6 +75,7 @@ static func daily(w: LTWorld) -> void:
 		_contracts(w, t)
 		_answer_petitions(w, t)
 		_variances(w, t)
+		_plats(w, t)
 		_mayors_house(w, t)
 	if w.day % 7 == 5:
 		_award(w, t)
@@ -369,3 +370,14 @@ static func _variances(w: LTWorld, t: Dictionary) -> void:
 		var r: Dictionary = _act(w, {"kind": "decide_variance", "variance_id": int(v["id"]), "approve": yes})
 		if bool(r.get("ok", false)):
 			_say(w, "%s the %s family's variance to %s. Reason: %s." % ["granted" if yes else "denied", v["family"], v["want"]["label"], ("the family needs it and the neighbors can live with it" if int(v["against"]) == 0 else "the family's need outweighs the neighbors' worries") if yes else ("the rules are there for everyone" if int(v["against"]) == 0 else "the neighbors objected")])
+
+
+## Lot splits: growth-minded mayors like more lots on the tax roll; orderly ones
+## listen when neighbors object.
+static func _plats(w: LTWorld, t: Dictionary) -> void:
+	for p in LTLand.pending_plats(w):
+		var score: float = float(t["ambition"]) * 0.4 + float(t["greed"]) * 0.2 + float(t["kindness"]) * 0.2 - float(t["discipline"]) * 0.2 + float(int(p["for"]) - int(p["against"]) * 2) * 10.0
+		var yes: bool = score > 18.0
+		var r: Dictionary = _act(w, {"kind": "decide_plat", "plat_id": int(p["id"]), "approve": yes})
+		if bool(r.get("ok", false)):
+			_say(w, "%s the request to split lot %d. Reason: %s." % ["approved" if yes else "denied", int(p["lot"]), "more lots mean more homes and more taxes" if yes else ("the neighbors objected" if int(p["against"]) > 0 else "the block should stay as it was planned")])

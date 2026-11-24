@@ -1057,7 +1057,7 @@ func _lot_sig(l: Dictionary) -> String:
 				if int(u) >= 0:
 					occ += 1
 			extra = "%d|%s|%d|%s|%s" % [occ, l["owner_kind"], int(float(l["condition"]) / 25.0), str(l.get("home", {})), _home_biz_name(int(l["id"]))]
-	return "%s|%s|%s|%s|%s|%s" % [use, l["zone"], l["building"], extra, _season, _snow]
+	return "%s|%s|%s|%s|%s|%s|%.1f|%.1f|%.1f|%.1f" % [use, l["zone"], l["building"], extra, _season, _snow, float(l["x0"]), float(l["z0"]), float(l["x1"]), float(l["z1"])]
 
 
 func _zone_color(z: String) -> Color:
@@ -1084,6 +1084,7 @@ func _hash_color(seed_v: int, palette: Array) -> Color:
 
 
 func _build_lot(l: Dictionary) -> void:
+	_lay_cache.erase(int(l["id"]))
 	var id: int = int(l["id"])
 	if lot_nodes.has(id):
 		(lot_nodes[id] as Node3D).queue_free()

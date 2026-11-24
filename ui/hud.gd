@@ -1262,6 +1262,27 @@ func _law_row(key: String) -> VBoxContainer:
 
 # ================================================================ Requests inbox
 
+func _plat_card(p: Dictionary) -> PanelContainer:
+	var vb: VBoxContainer = VBoxContainer.new()
+	var t: String = "%s asks to split %s.\n%s\nTheir reason: %s.\nNeighbors: %d for, %d against.\n" % [sim_link(int(p["cid"])), lot_link(int(p["lot"])), p["text"], p["why"], int(p["for"]), int(p["against"])]
+	for vo in p["voices"]:
+		t += "- %s\n" % vo
+	t += "Asked %s. Lapses %s." % [LTCalendar.short(int(p["day"])), LTCalendar.short(int(p["day"]) + 60)]
+	vb.add_child(_rtl(t))
+	var hb: HBoxContainer = HBoxContainer.new()
+	var pid: int = int(p["id"])
+	hb.add_child(_big(_btn("Approve", func():
+		var r: Dictionary = main.act({"kind": "decide_plat", "plat_id": pid, "approve": true})
+		show_toast(str(r["message"]))
+		refresh_all(), "A new building lot goes on the market. More homes and more property tax; neighbors against it may not like it.")))
+	hb.add_child(_big(_btn("Deny", func():
+		var r: Dictionary = main.act({"kind": "decide_plat", "plat_id": pid, "approve": false})
+		show_toast(str(r["message"]))
+		refresh_all(), "The lot stays as it was platted.")))
+	vb.add_child(hb)
+	return _paper(vb, "APPLICATION TO SPLIT A LOT", pid + 1, "FILED", "")
+
+
 func _variance_card(v: Dictionary) -> PanelContainer:
 	var ww: LTWorld = w()
 	var vb: VBoxContainer = VBoxContainer.new()
@@ -1332,6 +1353,12 @@ func _tab_requests() -> void:
 		box.add_child(_lbl("A family wants to build something the zoning rules do not allow. Ordinary permits that meet the code are issued by the building inspector; only exceptions come to you. Unanswered requests lapse after 60 days.", 13, Color(0.7, 0.75, 0.8)))
 		for v in vars:
 			box.add_child(_variance_card(v))
+	var plats: Array = LTLand.pending_plats(ww)
+	if not plats.is_empty():
+		box.add_child(_h("Lot splits"))
+		box.add_child(_lbl("An owner wants to split a lot to make a new building lot. Splits need the mayor's approval; combining lots an owner already holds is filed by the county without you. Unanswered requests lapse after 60 days.", 13, Color(0.7, 0.75, 0.8)))
+		for p in plats:
+			box.add_child(_plat_card(p))
 	box.add_child(_h("Requests from citizens"))
 	box.add_child(_lbl("Petitions come from real needs Sims feel. They gather signatures over time. Answer them here.", 13, Color(0.7, 0.75, 0.8)))
 	var sort: OptionButton = OptionButton.new()
@@ -2230,6 +2257,11 @@ func _lot_text(id: int) -> String:
 			t += "Empty. You can rezone it. A Sim may build here if the zone fits what they want.\n"
 	if str(l["zone"]) == "commercial" and str(l["use"]) == "empty":
 		t += "Lease if a business opens here: %s a month.\n" % _money(LTCivic.lot_rent(ww, id))
+	t += "Size: %d by %d feet.\n" % [int(LTGeography.lot_frontage(l) * 3.28), int(LTGeography.lot_depth(l) * 3.28)]
+	if l.has("for_sale"):
+		t += "For sale by its owner: %s.\n" % _money(int(l["for_sale"]))
+	for rec in l.get("record", []):
+		t += "%s: %s\n" % [LTCalendar.short(int(rec["day"])), rec["text"]]
 	return t
 
 

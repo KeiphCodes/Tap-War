@@ -252,20 +252,28 @@ static func _home_buying(w: LTWorld) -> void:
 		var l: Dictionary = for_sale[0]
 		var price: int = int(l.get("for_sale", l["value"]))
 		var seller: String = LTCivic.owner_acct(w, l)
-		var down: int = int(float(price) * 0.1)
 		var cash: int = w.household_cash(h)
-		if cash < down + LTMoney.dollars(3000.0):
+		if cash < int(float(price) * 0.03) + LTMoney.dollars(1000.0):
 			continue
 		var want: float = float(w.household_members(h).size()) * 8.0 + float(head["traits"]["ambition"]) * 0.3 + float(head["traits"]["discipline"]) * 0.2 - 30.0
 		if want + w.rng.randf_range(-10.0, 10.0) < 20.0:
 			continue
-		var dec: Dictionary = LTFinance.bank_decision(w, head, "mortgage", price - down, income)
-		if not bool(dec["ok"]):
-			w.log_sim(head, "Tried to buy the house on %s and the mortgage was refused: %s." % [LTGeography.lot_label(w, int(l["id"])), dec["reason"]], true)
+		var offer: Dictionary = LTFinance.mortgage_offer(w, h, head, price)
+		if not bool(offer["ok"]):
+			w.log_sim(head, "Tried to buy the house on %s and the bank said no: %s. The banker's advice: %s." % [LTGeography.lot_label(w, int(l["id"])), offer["reason"], offer["advice"]], true)
+			head["bank_advice"] = {"day": w.day, "text": str(offer["advice"]), "for": "home"}
 			continue
+		var down: int = int(offer["down"])
+		var dec: Dictionary = {"rate": float(offer["rate"])}
+		w.household_pay(h, "outside", int(offer["closing"]), "closing_costs")
 		var paid: int = w.household_pay(h, seller, down, "house_purchases")
-		var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", price - down, float(dec["rate"]), 360, "house", int(l["id"]), [])
+		var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", int(offer["loan"]), float(dec["rate"]), 360, "house", int(l["id"]), [])
+		d["program"] = str(offer["program"])
+		LTFinance._dhist(w, d, "%s." % offer["reason"])
 		LTFinance.fund_loan(w, d, seller, price - down)
+		if int(offer["loan"]) > price - down:
+			# the FHA upfront premium is part of the loan
+			w.ledger.pay(LTFinance.creditor_acct(w, d), "outside", int(offer["loan"]) - (price - down), "fha_premiums")
 		LTCivic.transfer_tax(w, seller, paid + price - down, int(l["id"]))
 		w.bank["lent_12m"] = int(w.bank["lent_12m"]) + price - down
 		LTServices.spend(w, "outside", "real_estate", int(float(price) * 0.05), int(l["id"]))
@@ -279,7 +287,7 @@ static func _home_buying(w: LTWorld) -> void:
 		l["owner_kind"] = "sim"
 		l["owner_id"] = int(head["id"])
 		for_sale.erase(l)
-		w.log_sim(head, "Bought the house on %s for %s with %s down and a mortgage. Reason: the family wanted a place of its own." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(paid)], true)
+		w.log_sim(head, "Bought the house on %s for %s with %s down and a %s mortgage. Reason: the family wanted a place of its own." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(paid), offer["program"]], true)
 		w.chronicle_add("The %s household bought a house on %s." % [head["last_name"], LTGeography.lot_street(w, int(l["id"]))["name"]], "housing", w.involves_watched(h["members"]), h["members"].duplicate())
 
 

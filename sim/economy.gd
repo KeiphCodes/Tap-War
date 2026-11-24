@@ -525,18 +525,31 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 	var gap: int = startup - w.biz_cash(b)
 	if gap > 0:
 		var guarantee: bool = not need.is_empty() and bool(need["incentives"].get("loan_guarantee", false))
-		var dec: Dictionary = LTFinance.bank_decision(w, c, "business_loan", gap, maxi(int(plan["est_monthly"]) + LTFinance.monthly_income(w, c), 1))
+		var dec: Dictionary = LTFinance.business_offer(w, c, cs, w.biz_cash(b), int(plan["est_monthly"]))
+		if not bool(dec["ok"]) and not guarantee:
+			# short on the down payment: family may help, then back to the bank
+			var famh: int = _family_help(w, c, b, acct, int(float(startup) * 0.2) - w.biz_cash(b))
+			if famh > 0:
+				sources.append("%s from family toward the down payment" % LTMoney.fmt(famh))
+				dec = LTFinance.business_offer(w, c, cs, w.biz_cash(b), int(plan["est_monthly"]))
+				gap = startup - w.biz_cash(b)
 		if not bool(dec["ok"]) and guarantee:
-			dec = {"ok": true, "rate": LTFinance.bank_rate(w, "business_loan", 680), "reason": "the city guarantee"}
-		if bool(dec["ok"]):
-			# the building is a 20 year commercial mortgage, the rest a 7 year equipment loan
+			dec = {"ok": true, "rate": LTFinance.bank_rate(w, "business_loan", 680), "reason": "the city guarantee", "program": "bank loan with a city guarantee", "re_years": 20, "years": 7}
+		if bool(dec["ok"]) and gap > 0:
+			# the building on a long real estate loan, equipment and the rest shorter
 			var parts: Array = []
-			var mort: int = mini(gap, int(float(cs["building"]) * 0.85))
+			var mort: int = mini(gap, int(dec.get("re_part", int(float(cs["building"]) * 0.85))))
+			var fee: int = int(dec.get("fee", 0))
 			if mort > 0:
-				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "commercial_mortgage", mort, float(dec["rate"]) - 0.01, 240, "building", lot_id, []))
-			if gap - mort > 0:
-				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", gap - mort, float(dec["rate"]), 84, "equipment", -1, []))
+				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "commercial_mortgage", mort, float(dec["rate"]) - 0.01, int(dec.get("re_years", 20)) * 12, "building", lot_id, []))
+			if gap - mort + fee > 0:
+				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", gap - mort + fee, float(dec["rate"]), int(dec.get("years", 7)) * 12, "equipment", -1, []))
+			if fee > 0:
+				w.ledger.pay(acct, "outside", fee, "sba_fees")
 			for d in parts:
+				if bool(dec.get("sba", false)):
+					d["sba"] = true
+					LTFinance._dhist(w, d, "Made under the SBA program: the government guarantees 75% if it goes bad.")
 				if legal == "llc" and w.day - int(c.get("moved_in", 0)) >= 0:
 					d["guarantor"] = int(c["id"])
 					w.debt_index_dirty = true
@@ -547,7 +560,7 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 				LTFinance.fund_loan(w, d, acct, int(d["balance"]))
 			w.bank["lent_12m"] = int(w.bank["lent_12m"]) + gap
 			w.counters["loans_made"] = int(w.counters["loans_made"]) + 1
-			sources.append("a %s bank loan at %.1f%%%s" % [LTMoney.fmt(gap), float(dec["rate"]) * 100.0, " with a personal guarantee" if legal == "llc" else ""])
+			sources.append("a %s %s at %.1f%%%s" % [LTMoney.fmt(gap), str(dec.get("program", "bank loan")), float(dec["rate"]) * 100.0, " with a personal guarantee" if legal == "llc" else ""])
 		else:
 			var fam: int = 0
 			for k in c["rel"]:
@@ -583,7 +596,8 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 				w.counters["loans_denied"] = int(w.counters["loans_denied"]) + 1
 				w.counters["founding_failed"] = int(w.counters["founding_failed"]) + 1
 				_unwind(w, b, c)
-				w.log_sim(c, "Tried to start a %s and could not raise the money. The bank said no: %s." % [str(cfg["display"]).to_lower(), dec["reason"]], true)
+				w.log_sim(c, "Tried to start a %s and could not raise the money. The bank said no: %s. The banker's advice: %s." % [str(cfg["display"]).to_lower(), dec["reason"], dec.get("advice", "come back with more money down")], true)
+				c["bank_advice"] = {"day": w.day, "text": str(dec.get("advice", "")), "for": btype}
 				w.remember(c, "loan_denied", -1, -15.0)
 				return
 	# equipment is bought now, mostly used and from out of town; the building, if
@@ -638,6 +652,27 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 	w.log_sim(c, "Decided to start %s and hired builders for the building. Reason: %s" % [b["name"], reason], true)
 	w.log_biz(b, "Planned by %s on %s. Reason: %s" % [w.full_name(c), LTGeography.lot_label(w, lot_id), reason])
 	w.chronicle_add("%s is putting up a building on %s for %s." % [w.full_name(c), LTGeography.lot_street(w, lot_id)["name"], b["name"]], "business", false, [c["id"]])
+
+
+## Parents, grown children and spouses in other households who trust the founder
+## chip in toward the down payment. Returns what they put in.
+static func _family_help(w: LTWorld, c: Dictionary, b: Dictionary, acct: String, want: int) -> int:
+	if want <= 0:
+		return 0
+	var got: int = 0
+	for k in c["rel"]:
+		if got >= want:
+			break
+		var r: Dictionary = c["rel"][k]
+		var o: Dictionary = w.cit(int(k))
+		if not w.is_present(o) or int(o["household"]) == int(c["household"]) or not ["parent", "child", "spouse"].has(str(r["kind"])):
+			continue
+		var give: int = mini(want - got, maxi(0, w.cash(o) - LTMoney.dollars(5000.0)) / 2)
+		if give > LTMoney.dollars(500.0) and float(o["traits"]["kindness"]) + float(r["trust"]) > 90.0:
+			w.ledger.pay(w.acct_p(o), acct, give, "family_gifts")
+			w.log_sim(o, "Gave %s to %s toward the down payment on %s. Reason: family, and the bank wanted more money down." % [LTMoney.fmt(give), c["first_name"], b["name"]], true)
+			got += give
+	return got
 
 
 ## Opening day: the building is finished (or the business runs from home).

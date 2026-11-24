@@ -29,6 +29,7 @@ func _init() -> void:
 	_sim_mayor()
 	_custom_homes()
 	_business_buildings()
+	_property_lines_and_bank()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -586,3 +587,56 @@ func _business_buildings() -> void:
 		grew = int(b["bplan"]["sqft"]) > before_sq
 	var ok: bool = lean["features"].has("hood") and not lean["features"].has("patio") and rich["features"].has("patio") and LTBuildings.capacity(rich) > 0.0 and not b.is_empty() and b.has("bplan") and grew
 	_check("Business buildings: owners design them room by room within their money, rooms set how many they serve, and busy ones add on", ok, "Lean cafe: %s. With money to spare: %s. %s grew from %d to %d sq ft." % [LTBuildings.text(lean), LTBuildings.text(rich), b.get("name", "?"), before_sq, int(b.get("bplan", {}).get("sqft", 0))], w)
+
+
+func _property_lines_and_bank() -> void:
+	var w: LTWorld = _town(5)
+	# a family owns its house lot and buys the empty lot beside it, then combines them
+	var a: Dictionary = {}
+	var b: Dictionary = {}
+	for l in w.lots:
+		if str(l["use"]) == "house" and str(l["owner_kind"]) == "sim":
+			for n in LTLand.side_neighbors(w, l):
+				a = l
+				b = n
+				break
+		if not a.is_empty():
+			break
+	var fw_a: float = LTGeography.lot_frontage(a)
+	var fw_b: float = LTGeography.lot_frontage(b)
+	b["use"] = "empty"
+	b["units"] = []
+	b.erase("home")
+	b["zone"] = a["zone"]
+	b["owner_kind"] = a["owner_kind"]
+	b["owner_id"] = a["owner_id"]
+	var m: Dictionary = LTLand.merge(w, int(a["id"]), int(b["id"]), "test")
+	var merged: bool = bool(m["ok"]) and absf(LTGeography.lot_frontage(a) - (fw_a + fw_b)) < 0.2 and bool(b.get("removed", false))
+	# then asks the mayor to split a building lot back off
+	var owner: Dictionary = w.cit(int(a["owner_id"]))
+	var lots_before: int = w.lots.size()
+	LTLand._file_plat(w, a, owner, float(LTLand.minimum(str(a["zone"]))[0]) + 0.5, "test")
+	var pid: int = w.city["plats"].size() - 1
+	var r: Dictionary = w.apply_action({"kind": "decide_plat", "plat_id": pid, "approve": true})
+	var split_ok: bool = bool(r["ok"]) and w.lots.size() == lots_before + 1 and bool(LTHomes.layout(a, a["home"])["fits"]) and w.lot(lots_before).has("for_sale")
+	# the bank: good credit and 20% down gets a conventional mortgage; fair credit
+	# and a little cash gets FHA; a founder with 12% down gets an SBA loan
+	var h: Dictionary = w.hh(int(owner["household"]))
+	var head: Dictionary = w.household_adults(h)[0]
+	head["credit"]["has_file"] = true
+	head["credit"]["score"] = 760
+	head["job"]["daily_wage"] = 40000
+	_give(w, head, 120000.0)
+	var conv: Dictionary = LTFinance.mortgage_offer(w, h, head, LTMoney.dollars(250000.0))
+	head["credit"]["score"] = 590
+	for o in w.household_adults(h):
+		if o != head:
+			w.ledger.pay(w.acct_p(o), "outside", w.cash(o), "test")
+	w.ledger.pay(w.acct_p(head), "outside", maxi(0, w.cash(head) - LTMoney.dollars(20000.0)), "test")
+	var fha: Dictionary = LTFinance.mortgage_offer(w, h, head, LTMoney.dollars(250000.0))
+	head["credit"]["score"] = 665
+	var cs: Dictionary = {"total": LTMoney.dollars(200000.0), "building": LTMoney.dollars(120000.0)}
+	var sba: Dictionary = LTFinance.business_offer(w, head, cs, LTMoney.dollars(24000.0), LTMoney.dollars(5000.0))
+	var none: Dictionary = LTFinance.business_offer(w, head, cs, LTMoney.dollars(2000.0), LTMoney.dollars(5000.0))
+	var bank_ok: bool = bool(conv["ok"]) and str(conv["program"]) == "conventional" and bool(fha["ok"]) and str(fha["program"]) == "FHA" and bool(sba["ok"]) and str(sba["program"]).begins_with("SBA") and not bool(none["ok"]) and str(none.get("advice", "")) != ""
+	_check("Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit", merged and split_ok and bank_ok, "Merge: %s Split: %s Conventional: %s. FHA: %s. Business: %s. Too little down: %s; advice: %s." % [m["message"], r["message"], conv.get("reason", conv.get("advice", "")), fha.get("reason", fha.get("advice", "")), sba.get("reason", ""), none.get("reason", ""), none.get("advice", "")], w)
