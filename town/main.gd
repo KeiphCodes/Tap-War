@@ -25,7 +25,7 @@ var _accum: float = 0.0
 var view: Node3D
 var hud: CanvasLayer
 var sound: Node
-var interrupt_kinds: Dictionary = {"bankruptcy": true, "death": true, "business": true, "petition": true, "city": true, "project": true, "estate": true, "protest": true, "crime": true, "region": true, "election": true, "health": true}
+var interrupt_kinds: Dictionary = {"bankruptcy": true, "death": true, "business": true, "petition": true, "city": true, "project": true, "estate": true, "protest": true, "crime": true, "region": true, "election": true, "health": true, "milestone": true}
 var _pending_interrupt: Array = []
 var last_fast_speed: int = 3
 var catch_up_to: int = -1        # a game day to fast forward to, for matching the real date
@@ -313,23 +313,46 @@ func _sounds(events: Array) -> void:
 		return
 
 
+## How much stops Fast and Turbo: 0 only decisions waiting on the mayor, 1 those
+## plus truly big events (the default), 2 everything marked important.
+const STOP_LEVELS: Array = ["Stop time: decisions only", "Stop time: major events", "Stop time: everything"]
+
+
+func stop_level() -> int:
+	return int(world.mode.get("stop_level", 1))
+
+
 func _should_interrupt(events: Array) -> bool:
+	var level: int = stop_level()
+	# decisions only the mayor can make; the Sim mayor makes them in autonomous mode
+	var deciding: bool = not LTMayorAI.is_on(world)
 	for e in events:
 		var k: String = str(e["kind"])
-		if k == "bankruptcy" or k == "death" or k == "estate":
-			if world.involves_watched(e["refs"]) or k == "bankruptcy":
+		var t: String = str(e["text"])
+		var watched: bool = world.involves_watched(e["refs"])
+		if deciding:
+			if k == "petition" and t.contains("on the mayor's desk"):
 				return true
-		elif k == "business" or k == "protest":
+			if k == "project" and t.begins_with("Bids are in"):
+				return true
+			if k == "city" and (t.begins_with("Variance request") or t.begins_with("Plat request") or t.begins_with("City budget crisis")):
+				return true
+		if k == "election" and (t.contains("won") or t.contains("lost") or t.contains("recall")):
 			return true
-		elif k == "petition" and str(e["text"]).contains("on the mayor's desk"):
+		if level == 0:
+			continue
+		if level == 2:
+			if k in ["bankruptcy", "business", "protest", "region", "election"] or ((k in ["death", "estate", "crime", "health"]) and watched):
+				return true
+			continue
+		# major: disasters, the county's big employers, a milestone, and the Sims you watch
+		if k == "region" and (t.begins_with("A tornado cut") or t.contains("shut down in the county seat")):
 			return true
-		elif k == "city" and str(e["text"]).begins_with("City budget crisis"):
+		if k == "protest":
 			return true
-		elif k == "project" and str(e["text"]).begins_with("Bids are in"):
+		if k in ["death", "bankruptcy", "crime", "estate"] and watched:
 			return true
-		elif k == "election" or k == "region":
-			return true
-		elif (k == "crime" or k == "health") and world.involves_watched(e["refs"]):
+		if k == "milestone":
 			return true
 	return false
 

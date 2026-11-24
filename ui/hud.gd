@@ -439,7 +439,7 @@ func _build_top() -> void:
 	pm.add_theme_constant_override("v_separation", 18)
 	pm.add_theme_constant_override("item_start_padding", 16)
 	pm.add_theme_constant_override("item_end_padding", 24)
-	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps", "Take over as mayor"]:
+	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps", "Take over as mayor", "Stop time: major events"]:
 		pm.add_item(it)
 	pm.id_pressed.connect(_on_menu)
 	menu_popup = pm
@@ -514,6 +514,11 @@ func _on_menu(id: int) -> void:
 		5:
 			steps_hidden = false
 			refresh_steps()
+		7:
+			var lv: int = (main.stop_level() + 1) % main.STOP_LEVELS.size()
+			w().mode["stop_level"] = lv
+			refresh_menu()
+			show_toast(["Fast and Turbo now stop only for decisions waiting on you: petitions, bids, variances, lot splits, a budget crisis, elections.", "Fast and Turbo stop for your decisions and for big events: tornadoes, a major employer closing, milestones, and the Sims you watch.", "Fast and Turbo stop for every important event, including each business opening and closing, storms and bankruptcies."][lv])
 		6:
 			if not bool(w().mode.get("autonomous", false)):
 				show_toast("You already run this town. Start a New town with a Sim mayor to watch one build it.")
@@ -528,6 +533,7 @@ func refresh_menu() -> void:
 	if menu_popup == null:
 		return
 	var auto: bool = bool(w().mode.get("autonomous", false))
+	menu_popup.set_item_text(7, main.STOP_LEVELS[main.stop_level()])
 	menu_popup.set_item_disabled(6, not auto)
 	menu_popup.set_item_text(6, "Hand back to Mayor %s" % w().player["name"] if auto and bool(w().player.get("player_took_over", false)) else "Take over as mayor")
 
