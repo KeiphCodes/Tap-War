@@ -1377,11 +1377,66 @@ func _business(root: Node3D, l: Dictionary) -> void:
 			_box(root, Vector3(3.0, 0.3, 0.3), Vector3(-3.0, 0.2 + i * 0.32, 4.0), Color(0.75, 0.6, 0.4))
 	else:
 		_storefront(root, b, btype, open, struggling, accent)
+	var two: bool = b.has("bplan") and int(b["bplan"].get("stories", 1)) == 2
+	if b.has("bplan"):
+		_biz_extras(root, l, b, open)
 	var title: String = str(b["name"])
 	if not open:
 		title += "\nCLOSED"
-	var s: Label3D = _sign(root, title, Vector3(0, 6.6, 0), 36, Color(1, 1, 1) if open else Color(0.75, 0.7, 0.65))
+	var s: Label3D = _sign(root, title, Vector3(0, 9.6 if two else 6.6, 0), 36, Color(1, 1, 1) if open else Color(0.75, 0.7, 0.65))
 	s.pixel_size = 0.05
+
+
+## What the owner built beyond the basic building: apartments upstairs, a
+## drive-through, a patio, a loading dock, a parking lot, a playground.
+func _biz_extras(root: Node3D, l: Dictionary, b: Dictionary, open: bool) -> void:
+	var plan: Dictionary = b["bplan"]
+	var feats: Array = plan.get("features", [])
+	var lay: Dictionary = LTBuildings.layout(l, plan)
+	if feats.has("apartments"):
+		var occupied: int = 0
+		for u in l["units"]:
+			if int(u) >= 0:
+				occupied += 1
+		_box(root, Vector3(8.0, 3.0, 6.0), Vector3(-0.5, 5.9, -1.5), Color(0.72, 0.52, 0.42))
+		_box(root, Vector3(8.4, 0.3, 6.4), Vector3(-0.5, 7.5, -1.5), Color(0.3, 0.3, 0.32))
+		for i in 4:
+			var lit: bool = i < occupied * 2
+			_box(root, Vector3(1.0, 1.3, 0.1), Vector3(-3.5 + float(i) * 2.0, 5.9, 1.55), Color(1.0, 0.86, 0.5) if lit else Color(0.25, 0.3, 0.35), lit)
+	if lay.has("parking"):
+		var pr: Array = lay["parking"]
+		_box(root, Vector3(float(pr[2]) - float(pr[0]), 0.05, float(pr[3]) - float(pr[1])), Vector3((float(pr[0]) + float(pr[2])) * 0.5, 0.04, KIT_BACK - (float(pr[1]) + float(pr[3])) * 0.5), Color(0.32, 0.32, 0.34))
+		var cols: int = maxi(1, int((float(pr[2]) - float(pr[0])) / 2.7))
+		for i in cols + 1:
+			_box(root, Vector3(0.1, 0.02, 4.8), Vector3(float(pr[0]) + float(i) * 2.7, 0.08, KIT_BACK - float(pr[1]) - 2.6), Color(0.95, 0.95, 0.95))
+	if lay.has("drive_thru"):
+		var dr: Array = lay["drive_thru"]
+		var dx: float = (float(dr[0]) + float(dr[2])) * 0.5
+		_box(root, Vector3(float(dr[2]) - float(dr[0]), 0.05, KIT_BACK), Vector3(dx, 0.05, KIT_BACK * 0.5 - 1.0), Color(0.36, 0.36, 0.38))
+		_box(root, Vector3(0.6, 2.6, 1.6), Vector3(float(dr[0]) + 0.3, 1.3, -1.0), Color(0.95, 0.85, 0.3) if open else Color(0.5, 0.48, 0.4), open)
+		_box(root, Vector3(0.12, 1.8, 0.12), Vector3(dx, 0.9, KIT_BACK - 3.0), Color(0.3, 0.3, 0.3))
+		_box(root, Vector3(1.4, 1.0, 0.1), Vector3(dx, 2.0, KIT_BACK - 3.0), Color(0.2, 0.25, 0.3))
+	if lay.has("patio") and LTCalendar.season(w.day) != "Winter":
+		var pa: Array = lay["patio"]
+		var n: int = clampi(int((float(pa[2]) - float(pa[0])) / 2.2), 1, 4)
+		for i in n:
+			var tp: Vector3 = Vector3(float(pa[0]) + 1.1 + float(i) * 2.2, 0, KIT_BACK - (float(pa[1]) + float(pa[3])) * 0.5)
+			_cyl(root, 0.5, 0.08, tp + Vector3(0, 0.8, 0), Color(0.92, 0.92, 0.9))
+			_cyl(root, 0.06, 0.8, tp + Vector3(0, 0.4, 0), Color(0.3, 0.3, 0.3))
+			if open:
+				_cyl(root, 0.05, 2.2, tp + Vector3(0, 1.1, 0), Color(0.4, 0.4, 0.4))
+				_roof(root, Vector3(1.8, 0.5, 1.8), tp + Vector3(0, 2.3, 0), Color(0.8, 0.3, 0.25))
+	if lay.has("dock"):
+		var dk: Array = lay["dock"]
+		_box(root, Vector3(float(dk[2]) - float(dk[0]), 1.2, 2.5), Vector3((float(dk[0]) + float(dk[2])) * 0.5, 0.6, -5.8), Color(0.55, 0.55, 0.55))
+		_box(root, Vector3(2.6, 2.8, 0.1), Vector3((float(dk[0]) + float(dk[2])) * 0.5, 1.6, -4.5), Color(0.4, 0.45, 0.5))
+	if lay.has("playground"):
+		var pg: Array = lay["playground"]
+		var pc: Vector3 = Vector3((float(pg[0]) + float(pg[2])) * 0.5, 0, -7.0)
+		_box(root, Vector3(0.2, 1.8, 2.0), pc + Vector3(-1.5, 0.9, 0), Color(0.9, 0.3, 0.3))
+		_box(root, Vector3(2.0, 0.15, 2.0), pc + Vector3(1.0, 0.08, 0), Color(0.9, 0.8, 0.5))
+	if feats.has("solar"):
+		_box(root, Vector3(5.0, 0.1, 3.0), Vector3(-0.5, 4.7 if not feats.has("apartments") else 7.8, -2.0), Color(0.12, 0.16, 0.3))
 
 
 ## The outdoor businesses: an outfitter with a canoe on the roof, a marina with

@@ -7,18 +7,18 @@ extends RefCounted
 const BASE_COST: Dictionary = {
 	"road_repair": 9000000, "road_patch": 3500000, "school": 52000000, "school_small": 26000000,
 	"clinic": 34000000, "clinic_small": 15000000, "park": 6000000, "apartments": 42000000,
-	"house": 22000000, "mayor_house": 30000000, "shop": 15000000, "remodel": 4000000,
+	"house": 22000000, "mayor_house": 30000000, "shop": 15000000, "remodel": 4000000, "expansion": 8000000,
 }
 const BASE_DAYS: Dictionary = {
 	"road_repair": 45, "road_patch": 20, "school": 180, "school_small": 120,
 	"clinic": 140, "clinic_small": 90, "park": 40, "apartments": 150,
-	"house": 90, "mayor_house": 120, "shop": 75, "remodel": 30,
+	"house": 90, "mayor_house": 120, "shop": 75, "remodel": 30, "expansion": 60,
 }
 const TITLES: Dictionary = {
 	"road_repair": "Rebuild %s", "road_patch": "Patch %s", "school": "Build the town school",
 	"school_small": "Build a two room schoolhouse", "clinic": "Build the town clinic",
 	"clinic_small": "Open a small health office", "park": "Build a park", "apartments": "Build a 4 unit apartment house",
-	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building", "remodel": "A remodel",
+	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building", "remodel": "A remodel", "expansion": "An addition",
 }
 const BID_DAYS: int = 14
 const OUTSIDE: Array = [
@@ -132,10 +132,10 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 				return {"ok": false, "message": "%s already has a project." % w.streets[target]["name"]}
 		p["street"] = target
 		p["title"] = TITLES[ptype] % w.streets[target]["name"]
-	elif ptype == "remodel":
-		# the family keeps living there while the builders work
+	elif ptype == "remodel" or ptype == "expansion":
+		# the family (or the business) stays open while the builders work
 		var lr: Dictionary = w.lot(target)
-		if lr.is_empty() or str(lr["use"]) != "house":
+		if lr.is_empty() or str(lr["use"]) != ("house" if ptype == "remodel" else "business"):
 			return {"ok": false, "message": "There is no house there to remodel."}
 		p["lot"] = target
 		p["title"] = TITLES[ptype]
@@ -386,7 +386,7 @@ static func cancel(w: LTWorld, pid: int) -> Dictionary:
 	p["status"] = "cancelled"
 	if str(p["ptype"]) == "road_build":
 		LTGeography.cancel_planned(w, int(p["street"]))
-	if int(p["lot"]) >= 0 and str(p["ptype"]) != "remodel":
+	if int(p["lot"]) >= 0 and not ["remodel", "expansion"].has(str(p["ptype"])):
 		w.lot(int(p["lot"]))["use"] = "empty"
 		w.lot(int(p["lot"]))["ref"] = -1
 	_event(w, p, "Cancelled by the mayor.")
@@ -558,7 +558,7 @@ static func _start(w: LTWorld, p: Dictionary, bid: Dictionary) -> void:
 	p["start_day"] = w.day
 	p["progress"] = 0.0
 	p["warranty_years"] = int(bid["warranty_years"])
-	if int(p["lot"]) >= 0 and str(p["ptype"]) != "remodel":
+	if int(p["lot"]) >= 0 and not ["remodel", "expansion"].has(str(p["ptype"])):
 		var l: Dictionary = w.lot(int(p["lot"]))
 		l["use"] = "site"
 		l["ref"] = int(p["id"])
@@ -722,7 +722,7 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		_event(w, p, "Inspection found defects: %s." % ("cracked base and thin asphalt" if is_road(str(p["ptype"])) else "a leaking roof and uneven floors"))
 	p["quality"] = q
 	p["status"] = "done"
-	if int(p["lot"]) >= 0 and str(p["ptype"]) != "remodel":
+	if int(p["lot"]) >= 0 and not ["remodel", "expansion"].has(str(p["ptype"])):
 		w.lot(int(p["lot"]))["build_quality"] = q
 	p["done_day"] = w.day
 	p["warranty_until"] = w.day + 365 * int(p["warranty_years"])
@@ -790,6 +790,8 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		_event(w, p, "At this quality the street should need repair again in about %d days." % int(p["expected_repair_days"]))
 	elif ptype == "remodel":
 		LTHomes.finish_remodel(w, p, w.lot(int(p["lot"])))
+	elif ptype == "expansion":
+		LTBuildings.finish_expansion(w, p)
 	elif ptype == "house":
 		var l2: Dictionary = w.lot(int(p["lot"]))
 		l2["use"] = "house"

@@ -259,6 +259,8 @@ func tick_day() -> void:
 		LTDevelopers.monthly(self)
 	if LTCalendar.day_of_month(day) == 14:
 		LTHomes.monthly(self)
+	if LTCalendar.day_of_month(day) == 16:
+		LTBuildings.monthly(self)
 	LTHomes.lapse(self)
 	LTProjects.daily(self)
 	LTPeople.life_events(self)

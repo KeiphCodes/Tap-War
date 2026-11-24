@@ -15,11 +15,31 @@ var _site_h: float = 0.0
 var _floor_h: Array = []
 
 
+var _parts: Array = []
+
+
+## A business building: site parts [[key, rect, label]] and floors like a house plan.
+func set_generic(l: Dictionary, parts: Array, floors: Array) -> void:
+	lot = l
+	spec = {}
+	_parts = parts
+	_lay = {}
+	for pt in parts:
+		_lay[str(pt[0])] = pt[1]
+	_plan = floors
+	_size()
+
+
 func set_plan(l: Dictionary, s: Dictionary) -> void:
 	lot = l
 	spec = LTHomes.upgrade(s)
 	_lay = LTHomes.layout(lot, spec)
 	_plan = LTHomes.plan(lot, spec)
+	_parts = []
+	_size()
+
+
+func _size() -> void:
 	var fw: float = LTGeography.lot_frontage(lot)
 	var dp: float = LTGeography.lot_depth(lot)
 	var sc: float = minf((WIDTH - 20.0) / fw, 220.0 / dp)
@@ -27,12 +47,17 @@ func set_plan(l: Dictionary, s: Dictionary) -> void:
 	_floor_h.clear()
 	var total: float = _site_h
 	for f in _plan:
-		var fs: float = (WIDTH - 20.0) / maxf(1.0, float(f["W"]))
+		var fs: float = _fs(f)
 		var h: float = float(f["D"]) * fs + 34.0
 		_floor_h.append(h)
 		total += h
 	custom_minimum_size = Vector2(WIDTH, total + 6.0)
 	queue_redraw()
+
+
+## Scale for a floor: fit the width, but never taller than about 260 pixels.
+func _fs(f: Dictionary) -> float:
+	return minf((WIDTH - 20.0) / maxf(1.0, float(f["W"])), 260.0 / maxf(1.0, float(f["D"])))
 
 
 func _font() -> Font:
@@ -59,6 +84,8 @@ func _text_c(r: Rect2, s: String, size: int = 10) -> void:
 func _draw() -> void:
 	if lot.is_empty():
 		return
+	# its own sheet of paper, so it reads on any card
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.96, 0.93, 0.85), true)
 	var fw: float = LTGeography.lot_frontage(lot)
 	var dp: float = LTGeography.lot_depth(lot)
 	var sc: float = minf((WIDTH - 20.0) / fw, 220.0 / dp)
@@ -81,22 +108,28 @@ func _draw() -> void:
 		["garden", Color(0.6, 0.48, 0.34), "garden"], ["pool", Color(0.6, 0.8, 0.95), "pool"], ["shed", Color(0.8, 0.68, 0.58), "shed"],
 		["greenhouse", Color(0.85, 0.95, 0.95), "green\nhouse"], ["shelter", Color(0.7, 0.74, 0.66), "shelter"], ["porch", Color(0.85, 0.78, 0.66), "porch"],
 		["garage", FILL, "garage"], ["house", FILL, "house"]]
+	if not _parts.is_empty():
+		parts = []
+		for pt in _parts:
+			parts.append([pt[0], {"building": FILL, "parking": Color(0.62, 0.62, 0.64), "yard": Color(0.82, 0.8, 0.74), "drive_thru": Color(0.7, 0.7, 0.7), "patio": Color(0.85, 0.78, 0.66), "dock": Color(0.75, 0.75, 0.75), "playground": Color(0.9, 0.85, 0.6)}.get(str(pt[0]), FILL), pt[2]])
 	for pt in parts:
 		if _lay.has(pt[0]):
 			var r: Rect2 = to_px.call(_lay[pt[0]])
 			draw_rect(r, pt[1], true)
-			draw_rect(r, INK, false, 1.5 if pt[0] == "house" or pt[0] == "garage" else 1.0)
+			draw_rect(r, INK, false, 1.5 if pt[0] == "house" or pt[0] == "garage" or pt[0] == "building" else 1.0)
 			if str(pt[2]) != "":
 				_text_c(r, str(pt[2]).replace("\n", ""), 9)
 	var sy: float = top + dp * sc
 	draw_line(Vector2(ox - 6, sy + 6), Vector2(ox + fw * sc + 6, sy + 6), INK, 2.0)
 	_text(Vector2(ox, sy + 20), "STREET", 10, SOFT)
-	_text(Vector2(ox, sy + 34), "house set back %d ft from the street" % int(float(_lay["house"][1]) * 3.28), 10, SOFT)
+	var main_k: String = "house" if _lay.has("house") else "building"
+	if _lay.has(main_k):
+		_text(Vector2(ox, sy + 34), "set back %d ft from the street" % int(float(_lay[main_k][1]) * 3.28), 10, SOFT)
 	# floors
 	var y: float = _site_h
 	for i in _plan.size():
 		var f: Dictionary = _plan[i]
-		var fs: float = (WIDTH - 20.0) / maxf(1.0, float(f["W"]))
+		var fs: float = _fs(f)
 		var D: float = float(f["D"])
 		_text(Vector2(10, y + 12), str(f["name"]).to_upper(), 11, SOFT)
 		var fy: float = y + 18.0
@@ -105,6 +138,6 @@ func _draw() -> void:
 			# front of the house at the bottom, like the site plan
 			var rr: Rect2 = Rect2(10.0 + float(r[0]) * fs, fy + (D - float(r[3])) * fs, (float(r[2]) - float(r[0])) * fs, (float(r[3]) - float(r[1])) * fs)
 			draw_rect(rr, INK, false, 1.0)
-			_text_c(rr, LTHomes.room_label(str(r[4])), 10)
+			_text_c(rr, str(r[4]) if bool(f.get("labels", false)) else LTHomes.room_label(str(r[4])), 10)
 		draw_rect(Rect2(10, fy, float(f["W"]) * fs, D * fs), INK, false, 2.0)
 		y += float(_floor_h[i])

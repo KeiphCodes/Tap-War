@@ -1287,6 +1287,24 @@ func _variance_card(v: Dictionary) -> PanelContainer:
 	return _paper(vb, "REQUEST FOR A ZONING VARIANCE", vid + 1, "FILED", "")
 
 
+## The plans for a business building, drawn the same way as a house.
+func _biz_plans(l: Dictionary, plan: Dictionary, title: String) -> void:
+	if plan.is_empty():
+		return
+	var t: String = "\n[b]%s[/b]\n%s.\n" % [title, LTBuildings.text(plan)]
+	for ln in LTBuildings.price_list(plan):
+		t += "%s   %s\n" % [ln[0], _money(LTMoney.dollars(float(ln[1])))]
+	t += "[b]Total about %s[/b]\n" % _money(LTBuildings.cost(plan))
+	if not plan.get("why", []).is_empty():
+		t += "\n[b]Why the owner built it this way[/b]\n"
+		for y in plan["why"]:
+			t += "- " + str(y).substr(0, 1).to_upper() + str(y).substr(1) + ".\n"
+	inspect_form.add_child(_rtl(t))
+	var fp: Control = preload("res://ui/floor_plan.gd").new()
+	inspect_form.add_child(fp)
+	fp.set_generic(l, LTBuildings.site_parts(l, plan), LTBuildings.floor_plan(l, plan))
+
+
 ## The plans for a house: what it costs, why the family chose it, and the drawing.
 func _home_plans(l: Dictionary, spec: Dictionary, title: String) -> void:
 	var sp: Dictionary = LTHomes.upgrade(spec)
@@ -1850,6 +1868,9 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 		"biz":
 			t = _biz_text(id)
 			inspect_actions.add_child(_btn("Find", func(): main.focus_lot(int(w().biz(id)["lot"]))))
+			var bz: Dictionary = w().biz(id)
+			if not typing and bz.has("bplan") and int(bz["lot"]) >= 0:
+				_biz_plans(w().lot(int(bz["lot"])), bz["bplan"], "THE BUILDING")
 		"lot":
 			t = _lot_text(id)
 			main.view.select_lot(id)
@@ -1891,6 +1912,9 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 				inspect_actions.add_child(_btn("Find", func(): main.focus_lot(int(pp["lot"]))))
 			if not typing and not pp.is_empty():
 				_contract_form(pp)
+				var pbz: Dictionary = w().biz(int(pp.get("business_id", -1)))
+				if not pbz.is_empty() and (pp.has("bplan") or pbz.has("bplan")):
+					_biz_plans(w().lot(int(pp["lot"])), pp.get("bplan", pbz.get("bplan", {})), "THE PLANS")
 				if pp.has("home") and int(pp["lot"]) >= 0:
 					_home_plans(w().lot(int(pp["lot"])), pp["home"], "THE PLANS")
 		"pet":

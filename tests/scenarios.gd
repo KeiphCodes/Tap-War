@@ -28,6 +28,7 @@ func _init() -> void:
 	_contracts_and_lot_details()
 	_sim_mayor()
 	_custom_homes()
+	_business_buildings()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -560,3 +561,28 @@ func _custom_homes() -> void:
 	var vr: Dictionary = w.apply_action({"kind": "decide_variance", "variance_id": w.city["variances"].size() - 1, "approve": true})
 	var ok: bool = houses > 0 and fitting == houses and int(after["beds"]) == int(before["beds"]) + 1 and bool(vr["ok"]) and LTHomes.home_cost(after) > 0 and not LTHomes.plan(lot, after).is_empty()
 	_check("Custom homes: families design houses room by room that fit their lots, remodel as life changes, and ask the mayor for variances", ok, "%d of %d houses fit their lots. %s family: %s became %s. Variance: %s" % [fitting, houses, head["last_name"], LTHomes.text(before), LTHomes.text(after), vr["message"]], w)
+
+
+func _business_buildings() -> void:
+	# an owner designs a cafe with seats, a hood and wishes as money allows; the
+	# seats cap how many it serves; a busy, profitable business adds on
+	var w: LTWorld = _town(5)
+	var c: Dictionary = _adult(w, func(x): return str(x["job"]["kind"]) != "owner")
+	c["traits"]["sociability"] = 80
+	var lean: Dictionary = LTBuildings.design(w, "cafe", c, 1500, 0)
+	var rich: Dictionary = LTBuildings.design(w, "cafe", c, 1500, LTMoney.dollars(200000.0))
+	var b: Dictionary = _found(w, c, "cafe", ["commercial", "mixed"])
+	var grew: bool = false
+	var before_sq: int = 0
+	if not b.is_empty() and b.has("bplan"):
+		before_sq = int(b["bplan"]["sqft"])
+		b["opened_day"] = w.day - 800
+		b["customers_avg"] = LTBuildings.capacity(b["bplan"]) * 2.0
+		_give(w, c, 0.0)
+		w.ledger.pay("outside", w.acct_b(b), LTMoney.dollars(300000.0), "test_grant")
+		LTBuildings._expand(w, b)
+		for d in 150:
+			w.tick_day()
+		grew = int(b["bplan"]["sqft"]) > before_sq
+	var ok: bool = lean["features"].has("hood") and not lean["features"].has("patio") and rich["features"].has("patio") and LTBuildings.capacity(rich) > 0.0 and not b.is_empty() and b.has("bplan") and grew
+	_check("Business buildings: owners design them room by room within their money, rooms set how many they serve, and busy ones add on", ok, "Lean cafe: %s. With money to spare: %s. %s grew from %d to %d sq ft." % [LTBuildings.text(lean), LTBuildings.text(rich), b.get("name", "?"), before_sq, int(b.get("bplan", {}).get("sqft", 0))], w)

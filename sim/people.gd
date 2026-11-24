@@ -798,7 +798,11 @@ static func _pay_rent(w: LTWorld, h: Dictionary) -> void:
 	var rent: int = int(h["rent"])
 	var to_acct: String = "outside"
 	var landlord_biz: Dictionary = {}
-	if str(l["owner_kind"]) == "business":
+	if str(l["use"]) == "business":
+		# the apartment over a shop: rent goes to the business downstairs
+		landlord_biz = w.biz(int(l["ref"]))
+		to_acct = w.acct_b(landlord_biz)
+	elif str(l["owner_kind"]) == "business":
 		landlord_biz = w.biz(int(l["owner_id"]))
 		to_acct = w.acct_b(landlord_biz)
 	var paid: int = w.household_pay(h, to_acct, rent, "rent")
@@ -880,7 +884,7 @@ static func free_unit(w: LTWorld) -> Dictionary:
 	for l in w.lots:
 		var units: Array = l["units"]
 		for i in units.size():
-			if int(units[i]) == -1 and (str(l["use"]) == "apartment" or str(l["use"]) == "house"):
+			if int(units[i]) == -1 and (str(l["use"]) == "apartment" or str(l["use"]) == "house" or str(l["use"]) == "business"):
 				if str(l["use"]) == "house" and str(l["owner_kind"]) == "sim":
 					continue
 				return {"lot": int(l["id"]), "unit": i}
@@ -890,7 +894,7 @@ static func free_unit(w: LTWorld) -> Dictionary:
 static func vacancy_count(w: LTWorld) -> int:
 	var n: int = 0
 	for l in w.lots:
-		if str(l["use"]) == "apartment":
+		if str(l["use"]) == "apartment" or str(l["use"]) == "business":
 			for u in l["units"]:
 				if int(u) == -1:
 					n += 1

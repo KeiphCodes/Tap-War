@@ -614,14 +614,22 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		open_business(w, b)
 		return
 	if bool(cs.get("existing", false)):
+		b["bplan"] = LTBuildings.design(w, btype, c, maxi(800, int(cs["sqft"])), LTMoney.dollars(40000.0))
 		b["start_reason"] = reason + " Moved into the empty building on %s." % LTGeography.lot_label(w, lot_id)
 		b["building_lease"] = true
 		open_business(w, b)
 		return
-	# a real building: hire a builder through bids, open when it is finished
+	# a real building: the owner designs it, hires a builder through bids, opens when it is finished
 	b["status"] = "building"
-	var r: Dictionary = LTProjects.define_project(w, "shop", lot_id, int(float(cs["building"]) * 1.3), -1, false,
-		{"kind": "business", "id": int(b["id"]), "name": str(b["name"]), "acct": acct}, int(cs["building"]), int(cs["sqft"]))
+	var bplan: Dictionary = LTBuildings.design(w, btype, c, int(cs["sqft"]), maxi(0, w.biz_cash(b) + w.cash(c) - int(cs["total"]) - LTMoney.dollars(20000.0)))
+	b["bplan"] = bplan
+	# the owner puts in their own money for the extras
+	var extras: int = LTBuildings.extras_cost(bplan)
+	if extras > 0:
+		w.ledger.pay(w.acct_p(c), acct, mini(extras, w.cash(c)), "owner_investment")
+	var bcost: int = maxi(int(cs["building"]), LTBuildings.cost(bplan))
+	var r: Dictionary = LTProjects.define_project(w, "shop", lot_id, int(float(bcost) * 1.3), -1, false,
+		{"kind": "business", "id": int(b["id"]), "name": str(b["name"]), "acct": acct}, bcost, int(cs["sqft"]))
 	if bool(r.get("ok", false)):
 		var pr: Dictionary = w.projects[int(r["project_id"])]
 		pr["business_id"] = int(b["id"])
@@ -649,6 +657,14 @@ static func open_business(w: LTWorld, b: Dictionary) -> void:
 		l["built_day"] = w.day
 		l["condition"] = 85.0
 		l["name"] = str(b["name"])
+		if not b.has("bplan"):
+			var sq: int = int(b.get("costs", {}).get("sqft", 0))
+			if sq <= 0:
+				sq = int(COSTS.get(btype, {"sqft": 1500})["sqft"])
+			b["bplan"] = LTBuildings.design(w, btype, c, sq, LTMoney.dollars(w.rng.randf_range(0.0, 150000.0)))
+		if b.has("bplan") and b["bplan"].get("features", []).has("apartments") and l["units"].is_empty():
+			l["units"] = [-1, -1]
+			l["unit_rent"] = LTMoney.dollars(750.0)
 	else:
 		b["free_lot"] = true
 	var need: Dictionary = w.city_needs[int(b["need_id"])] if int(b.get("need_id", -1)) >= 0 else {}
@@ -759,6 +775,13 @@ static func daily(w: LTWorld) -> void:
 	for b in w.businesses:
 		if str(b["status"]) != "open":
 			continue
+		b["customers_avg"] = lerpf(float(b.get("customers_avg", 0.0)), float(b["customers_today"]), 0.05)
+		if b.has("bplan") and int(b["sales_today"]) > 0:
+			# a drive-through or a summer patio brings in people passing through
+			var extra: int = int(float(b["sales_today"]) * (LTBuildings.revenue_factor(w, b["bplan"]) - 1.0))
+			if extra > 0:
+				w.ledger.pay("outside", w.acct_b(b), extra, "sales")
+				b["month_revenue"] = int(b["month_revenue"]) + extra
 		b["customers_today"] = 0
 		b["sales_today"] = 0
 		_receive_deliveries(w, b)
@@ -937,6 +960,10 @@ static func _service_experience(w: LTWorld, b: Dictionary, customers: int) -> fl
 	skill /= staff_n
 	mood /= staff_n
 	var capacity: float = staff_n * 45.0
+	if b.has("bplan"):
+		var bcap: float = LTBuildings.capacity(b["bplan"])
+		if bcap > 0.0:
+			capacity = minf(capacity, bcap)
 	var wait_penalty: float = clampf((float(customers) - capacity) / capacity, 0.0, 1.0) * 35.0
 	var stock_ok: float = 1.0 if float(b["stock"]) > 5.0 else 0.4
 	var exp: float = skill * 0.3 + mood * 0.25 + float(b["cleanliness"]) * 0.2 + float(b["condition"]) * 0.1 + 15.0 * stock_ok - wait_penalty

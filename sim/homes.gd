@@ -975,6 +975,11 @@ static func start_remodel(w: LTWorld, h: Dictionary, l: Dictionary, head: Dictio
 	var p: Dictionary = w.projects[int(r["project_id"])]
 	p["title"] = "The %s family: %s" % [head["last_name"], want["label"]]
 	p["home"] = spec
+	# the money for the job is set aside so the builder gets paid
+	var escrow: String = "escrow:%d" % int(p["id"])
+	w.ledger.pay(acct, escrow, int(float(cost) * 1.3), "construction_escrow")
+	p["developer"]["acct"] = escrow
+	p["developer"]["refund"] = acct
 	w.log_sim(head, "Hired builders to %s, about %s%s. Reason: %s." % [want["label"], LTMoney.fmt(cost), " on a home equity loan" if funding == "loan" else "", want["why"]], true)
 
 
@@ -987,6 +992,7 @@ static func _past(label: String) -> String:
 
 ## The builders finished.
 static func finish_remodel(w: LTWorld, p: Dictionary, l: Dictionary) -> void:
+	LTBuildings._close_escrow(w, p)
 	if not p.has("home") or str(l["use"]) != "house":
 		return
 	l["home"] = p["home"]
