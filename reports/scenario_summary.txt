@@ -1,58 +1,61 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-23T03:01:24 by tests/scenarios.gd.
+Generated 2026-11-24T01:24:03 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
-  Diane Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 91 days in the county jail. Job before: line cook, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 91 days in the county jail.
+  Lucy Brown was charged with burglary. Case status: convicted. Sentence: fined $1,000, 51 days in the county jail. Job before: truck driver, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 51 days in the county jail.
 
 [PASS] Divorce: the household splits, child support is set by income, and bankruptcy cannot erase it
-  Sara Martin and George Martin divorced. Child support: $644 a month, owed by Sara Martin, status after the payer's bankruptcy: 60 days late.
+  Sara Martin and George Martin divorced. Child support: $684 a month, owed by Sara Martin, status after the payer's bankruptcy: 60 days late.
 
 [PASS] Addiction: a heavy habit costs money and health until the Sim chooses treatment, which lowers it
-  Diane Perez started with a drinking level of 75. After 120 days: level 39, went to treatment: true, cash $16,526 to $15,754.
+  Diane Perez started with a drinking level of 75. After 120 days: level 8, went to treatment: true, cash $8,339 to $0.
 
 [PASS] Pregnancy: about nine months, prenatal visits, a birth, and maternity leave
-  Sara Martin was due Oct 11, Y1. Children 2 to 3. On leave until Nov 22, Y1.
+  Sara Martin was due Oct 12, Y1. Children 2 to 3. On leave until Nov 23, Y1.
 
 [PASS] A Sim run clinic captures doctor visits that used to leave town
-  Perez Health Center opened. Revenue so far $1,440. Medical spending kept in town recently: $687.
+  Perez Family Clinic opened. Revenue so far $1,857. Medical spending kept in town recently: $1,011.
 
 [PASS] Supply chain: farm grain to the mill, flour to the bakery, bread to the grocery, all paid through the ledger
-  Farm Perez Farm revenue $4,874. Mill Brown Grain and Feed revenue $551. Bakery Brown Bakery revenue $4,949. Grocery Perez Grocery supplier: Perez Farm and Valley Wholesale.
+  Farm Perez Acres revenue $4,246. Mill Brown Mill revenue $907. Bakery Brown Bakery revenue $4,704. Grocery Perez Market supplier: Perez Acres and Valley Wholesale.
 
 [PASS] A chartered local bank lends to townspeople and the interest stays in town
-  Perez State Bank lent $1,134 to Sara Fischer. Creditor on the record: Perez State Bank. Paid back so far: $162.
+  Perez Savings Bank lent $942 to Sara Fischer. Creditor on the record: Perez Savings Bank. Paid back so far: $135.
 
 [PASS] Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town
-  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 7.8 minutes. The new street is done, condition 62.
+  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 10.2 minutes. The new street is done, condition 46.
 
 [PASS] City bonds, bus service and the new laws all work, and a small town cannot charter a bank
-  Bonds: Sold $200,000 in bonds at 3.8%. $1,192 a month for 20 years. Bus: riders paid $1,030 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 73 people: The state will not charter a bank for a town under 120 people. The town has 73.
+  Bonds: Sold $200,000 in bonds at 3.8%. $1,191 a month for 20 years. Bus: riders paid $1,042 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 73 people: The state will not charter a bank for a town under 120 people. The town has 73.
 
 [PASS] Elections mode: a challenger runs on real grievances, Sims vote, the result stands
   Challenger: Linda Martinez. Platform: lower taxes and less waste. Mayor still in office: true.
 
 [PASS] The region: when a county employer fails, the town Sims who worked there lose their jobs
-  Great Plains Meatpacking failed. 5 town Sims worked there and all are now looking for work.
+  Dakota Window Works failed. 6 town Sims worked there and all are now looking for work.
 
 [PASS] Storms: ordinary thunderstorms only damage run down or cheap buildings, severe storms hit those far harder, owners and insurers pay real repair bills
-  Twenty ordinary thunderstorms: average loss 2.9 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 19.3 on weak, 3.1 on sound. Repairs paid: $122,304. Insurance claims: 25.
+  Twenty ordinary thunderstorms: average loss 3.0 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 21.5 on weak, 2.0 on sound. Repairs paid: $127,699. Insurance claims: 24.
 
 [PASS] Saves carry every new system (cases, region, spend book, pregnancies, addictions) and continue identically
-  Hashes after 100 more days: 1580391068 and 1580391068.
+  Hashes after 100 more days: 1015623959 and 1015623959.
 
 [PASS] Every business type opens, runs for two months, and keeps the ledger balanced
   Opened: grocery, cafe, general_store, farm, construction, clinic, pharmacy, private_school, repair_shop, factory, warehouse, trucking, hotel, bar, childcare, funeral_home, law_office, real_estate, mill, bakery, bank, outfitter, marina, campground, guide_service, sawmill, quarry, gold_mine. Could not open: none. Still open after 60 days: 28.
 
 [PASS] Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes
-  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 289. Residents after two years: 40. Election: Sam Dakota lost the election to Karen Martin, 57% to 42%. The town will go on without you, and you still live here. Milestones: ["first_settler", "home", "first_business", "incorporated", "balanced"]
+  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 406. Residents after two years: 46. Election: Sam Dakota won the town's first election with 88% of the vote against Jeffrey Schmidt. Milestones: ["first_settler", "home", "first_business", "incorporated", "balanced"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
-  Day one reads 11-23. The game day for today is 1. Forty days later it reads month 1 of 2027.
+  Day one reads 11-24. The game day for today is 1. Forty days later it reads month 1 of 2027.
 
 [PASS] Contracts and lot details: drawn roads are drafts until the mayor presses Go live; the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome
   Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $60,000, concrete avenue with sidewalks and lights $139,799, gravel lane $24,000. Built: concrete avenue quality 35, 0.1 minutes a block; gravel lane quality 22, 0.2 minutes a block. Deadline 30 days: bids promised [21, 22, 24] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $87,000. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
 
 [PASS] Sim mayor: a seeded Sim founds the town, lays roads, awards contracts and logs each reason, and the player can take over
-  Tina Martin (content, cautious, kind, greedy, outgoing) made 8 decisions in 300 days. Streets 3, projects under way or done 11, residents 13. Take over: You are the mayor now. Every decision is yours until you hand it back.
+  Tina Martin (content, cautious, kind, greedy, outgoing) made 9 decisions in 300 days. Streets 3, projects under way or done 13, residents 16. Take over: You are the mayor now. Every decision is yours until you hand it back.
+
+[PASS] Custom homes: families design houses room by room that fit their lots, remodel as life changes, and ask the mayor for variances
+  22 of 22 houses fit their lots. Perez family: Farmhouse, 3 bedrooms, 2.5 baths, 1,615 sq ft, 2 car detached garage, basement, front porch became Farmhouse, 4 bedrooms, 2.5 baths, 1,776 sq ft, 2 car detached garage, basement, front porch. Variance: Variance granted. The Perez family can build a back deck.
 
 RESULT: ALL SCENARIOS PASS
