@@ -1,64 +1,57 @@
 LIVING TOWN V1 SLICE ACCEPTANCE RUN
-Generated 2026-11-24T02:13:36 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 6185 ms.
+Generated 2026-11-24T04:25:09 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 7955 ms.
 
 [PASS] 365 daily ticks complete with the ledger balanced every day (no mystery money)
-  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 120, "transfers": 17160 }.
+  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 154, "transfers": 26156 }.
 
 [PASS] At least one business was started by a Sim decision, with its start reason readable
-  12 businesses started by Sims. First: Taylor Construction, opened day 15 by Ryan Taylor. Reason in its history: "Opened by Ryan Taylor from home on Lot 7 (Main Street, residential). Reason: the city and landlords hire outside builders for everything, construction skill is 50, expects about $16,547 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $6,887 of savings, a $42,192 SBA 7(a) loan at 11.4%. Run from home: a used truck, a trailer and tools, run from home."
+  22 businesses started by Sims. First: Taylor and Sons Building, opened day 29 by Ryan Taylor. Reason in its history: "Opened by Ryan Taylor from home on Lot 7 (Main Street, residential). Reason: the city and landlords hire outside builders for everything, construction skill is 50, expects about $2,271 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $9,078 of savings, a $40,001 SBA 7(a) loan at 11.4%. Run from home: a used truck, a trailer and tools, run from home."
 
 [PASS] At least one debt spiral reached a realistic resolution (repaying the arrears, bankruptcy, charge off, or estate) with its paper trail
-  Debt #13: mortgage owed by Donald Brown to Prairie State Bank. Status: paid off.
-    Day 0: Opened: $104,210 of mortgage, secured by the house owed to Prairie State Bank at 5.8%.
-    Day 39: Missed payment. Paid $264 of $611. Late fee added. Now 30 days late.
-    Day 67: Missed payment. Paid $0 of $611. Late fee added. Now 60 days late.
-    Day 98: Missed payment. Paid $143 of $611. Late fee added. Now 90 days late.
-    Day 128: Missed payment. Paid $129 of $611. Late fee added. Now in collections.
-    Day 159: Missed payment. Paid $200 of $611. Late fee added. Now in collections.
-    Day 159: Foreclosed. The house sold for $117,442.
+  Debt #21: credit card owed by Diane Perez to Prairie State Bank. Status: unpaid when the estate ran out.
+    Day 0: Opened: $8,471 of credit card, unsecured owed to Prairie State Bank at 22.9%.
+    Day 189: Missed payment. Paid $0 of $325. Late fee added. Now 30 days late.
+    Day 220: Missed payment. Paid $75 of $333. Late fee added. Now 60 days late.
+    Day 244: The estate ran out. $7,514 went unpaid and the creditor took the loss. Heirs do not owe it.
 
 [PASS] A petition came from real unmet need data, and the mayor's response measurably changed what happened next
-  Petition: "We need a grocery store in town". Why: 30 of 30 households drive to the next town for groceries, about 73 minutes round trip, and the gas money leaves town. Started by Ryan Taylor, 16 signatures, suggested site Lot 26 (Main Street, commercial).
-    With the response (run A): groceries: Ramirez Grocery opened day 297. Petition status: published. Signers' trust in the city: 63.5.
-    Without a response (run B, same seed): groceries: none. Petition status: submitted. Signers' trust in the city: 58.1.
+  Petition: "We need a grocery store in town". Why: 30 of 30 households drive to the next town for groceries, about 73 minutes round trip, and the gas money leaves town. Started by Walt Rodriguez, 19 signatures, suggested site Lot 26 (Main Street, commercial).
+    With the response (run A): groceries: Martinez Grocery opened day 288 on the incentive lot; Thompson Market opened day 343 on the incentive lot; Thompson Foods opened day 304 on the incentive lot; Anderson Grocery opened day 306 on the incentive lot; Brown Foods opened day 219; Harris Grocery opened day 332 on the incentive lot; Ramirez Market opened day 234; Martin Fresh Market opened day 249; Anderson Fresh Market opened day 252; Clark Foods opened day 255; Carol's Grocery opened day 257; Jones Grocery opened day 269; Nelson Market opened day 282. Petition status: resolved. Signers' trust in the city: 68.3.
+    Without a response (run B, same seed): groceries: none. Petition status: submitted. Signers' trust in the city: 59.4.
 
 [PASS] A contract was bid, awarded, and built in stages, and its quality persists and sets the next repair need
-  Run A awarded the cheapest bid: Riverbend Contractors, quality 21, finished day 80, expected to need repair about 179 days later; it actually needed repair on day 273.
-    Run C awarded the best record instead: Prairie Road Builders, quality 67, finished day 78, expected to need repair about 950 days later.
-    The street segments store the finished quality (0.22) and wear at a rate set by it. Paper trail of run A:
+  Run A awarded the cheapest bid: Riverbend Contractors, quality 44, finished day 83, expected to need repair about 386 days later.
+    Run C awarded the best record instead: Prairie Road Builders, quality 73, finished day 74, expected to need repair about 1212 days later.
+    The street segments store the finished quality (0.45) and wear at a rate set by it. Paper trail of run A:
       Day 3: The mayor sent it out to bid for 14 days on these terms: Standard. Budget ceiling $130,500.
-      Day 17: Bidding closed with 4 bids.
-      Day 17: Awarded to Riverbend Contractors for $93,155, 51 days promised. It was the cheapest bid.
+      Day 17: Bidding closed with 3 bids.
+      Day 17: Awarded to Riverbend Contractors for $92,646, 52 days promised. It was the cheapest bid.
       Day 18: Stage: tearing out old pavement.
-      Day 30: Stage: laying the road base.
-      Day 37: Riverbend Contractors offered city clerk Kevin Perez a $2,413 "thank you". The clerk refused and wrote it down.
-      Day 50: Stage: paving.
-      Day 50: Change order for $12,053 from Riverbend Contractors: "unexpected ground conditions". It fits under the ceiling and was paid.
-      Day 75: Stage: striping and cleanup.
-      Day 80: Inspection found defects: cracked base and thin asphalt.
-      Day 80: Finished. Quality 21 of 100 (grade F). Finished 12 days late. Cost $12,053 over the bid in change orders.
-      Day 80: At this quality the street should need repair again in about 179 days.
-      Day 273: County Road 12 needs repair again, 193 days after Riverbend Contractors finished it at quality 21. It is still under warranty, so Riverbend Contractors must fix it at its own cost.
-      Day 273: Warranty repair done by Riverbend Contractors at its own cost.
+      Day 32: Stage: laying the road base.
+      Day 52: Stage: paving.
+      Day 52: Change order for $17,832 from Riverbend Contractors: "unexpected ground conditions". It fits under the ceiling and was paid.
+      Day 77: Stage: striping and cleanup.
+      Day 83: Finished. Quality 44 of 100 (grade D). Finished 14 days late. Cost $17,832 over the bid in change orders.
+      Day 83: At this quality the street should need repair again in about 386 days.
   
 
 [PASS] Replaying the seed plus the logged mayor actions gives the same town
-  Run A hash 231158952, replay hash 231158952, 3 actions replayed.
+  Run A hash 2730551901, replay hash 2730551901, 3 actions replayed.
 
 [PASS] Saving on day 180 and loading the save reaches the same day 365 town
-  Save OK, load OK, loaded run hash 231158952, straight run hash 231158952.
+  Save OK, load OK, loaded run hash 2730551901, straight run hash 2730551901.
 
 [PASS] No em dashes in generated player facing text
   0 lines checked problems: []
 
 [PASS] Estate scenario: the estate pays in legal order, joint debt passes to the joint borrower, the mortgage travels with the house, children inherit no debt
-  Diane Perez died owing a $17,446 loan beyond their cash, a joint card with Kevin, and a mortgage.
-    Estate record: assets $2,446, paid to creditors $0, unpaid $25,698, to heirs $0, the house and its $90,225 mortgage went to Kevin
-    Unsecured loan: unpaid when the estate ran out. Joint card now owed by Kevin Perez. Mortgage now owed by Kevin Perez. Children's cash unchanged. Spouse cash before $3,722, after $800.
+  Diane Perez died owing a $17,561 loan beyond their cash, a joint card with Kevin, and a mortgage.
+    Estate record: assets $2,561, paid to creditors $0, unpaid $25,813, to heirs $0, the house and its $90,225 mortgage went to Kevin
+    Unsecured loan: unpaid when the estate ran out. Joint card now owed by Kevin Perez. Mortgage now owed by Kevin Perez. Children's cash unchanged. Spouse cash before $4,084, after $800.
     
 
 [PASS] Bankruptcy scenario: liquidation discharges the card, the tax debt survives, the bank books the loss, and new credit is refused
-  June Harris filed. Card: discharged in bankruptcy. Tax debt: current. Bank losses grew by $13,510. Credit now 502 (very poor). A new loan request: a bankruptcy less than two years old is on the record.
+  June Harris filed. Card: discharged in bankruptcy. Tax debt: current. Bank losses grew by $12,809. Credit now 502 (very poor). A new loan request: a bankruptcy less than two years old is on the record.
 
 Not checked by this script: independent review by a team member who did not write the system (a human gate).
 
@@ -66,128 +59,167 @@ LIVING TOWN RUN SUMMARY
 Town: Prairie Hollow. Seed 20261120. Day 365 (Monday, December 31, Year 1).
 
 PEOPLE
-  Population: 73 at start, 92 now.
-  Births 1, deaths 1, moved in 21, moved out 2, marriages 1.
-  Working age adults 55, employed 47, unemployment 14%, local jobs 21 (was 0).
-  Hires 251, layoffs 12, quits 266. Homeless now: 1. Evictions: 0.
-  Average happiness 81.6, approval of the city 68.4.
+  Population: 73 at start, 94 now.
+  Births 0, deaths 1, moved in 22, moved out 0, marriages 1.
+  Working age adults 57, employed 53, unemployment 7%, local jobs 19 (was 0).
+  Hires 122, layoffs 14, quits 123. Homeless now: 0. Evictions: 0.
+  Average happiness 83.4, approval of the city 71.0.
 
 BUSINESSES
-  Opened 11, closed 3, open now 10. Founding attempts that could not raise money: 6. Times a Sim looked and said no: 182.
-  - Taylor Construction (construction, sole), opened day 15 by Ryan Taylor. Closed day 171: the owner's bankruptcy. The trustee sold what it had.
-      Start reason: the city and landlords hire outside builders for everything, construction skill is 50, expects about $16,547 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $6,887 of savings, a $42,192 SBA 7(a) loan at 11.4%. Run from home: a used truck, a trailer and tools, run from home.
-  - Brown Child Care (childcare, sole), opened day 16 by Donald Brown. Open, 2 staff, cash $663, reputation 63.
-      Start reason: people here need child care and nobody local offers it, teaching skill is 40, expects about $2,227 a month after costs. It cost $6,980 in all: equipment $5,000, opening stock $1,000, three months of cash to get started $780, license $200. Funded with $2,352 of savings, a $4,627 bank loan at 9.4%. Run from home: a licensed home daycare.
-  - Harris Lodge (hotel, llc), opened day 174 by William Harris. Open, 2 staff, cash $26,138, reputation 57.
-      Start reason: people here need rooms for visiting crews and travelers and nobody local offers it, management skill is 76, expects about $6,018 a month after costs. It cost $444,850 in all: a 2100 square foot building $346,500, equipment $81,000, opening stock $1,750, three months of cash to get started $15,300, license $300. Funded with $10,873 of savings, $433,976 from outside investors for a 97% share.
-  - Brown Inn (hotel, sole), opened day 226 by William Brown. Open, 2 staff, cash $0, reputation 56.
-      Start reason: people here need rooms for visiting crews and travelers and nobody local offers it, management skill is 65, expects about $6,382 a month after costs. It cost $444,850 in all: a 2100 square foot building $346,500, equipment $81,000, opening stock $1,750, three months of cash to get started $15,300, license $300. Funded with $6,271 of savings, $438,578 from outside investors for a 98% share.
-  - Anderson Auto and Repair (repair_shop, sole), opened day 48 by Beth Anderson. Closed day 201: the owner's bankruptcy. The trustee sold what it had.
-      Start reason: the town spent $3,694 last month on car and home repairs out of town, repair skill is 64, expects about $1,305 a month after costs. It cost $24,980 in all: equipment $20,000, opening stock $4,000, three months of cash to get started $780, license $200. Funded with $3,761 of savings, a $21,218 SBA 7(a) loan at 10.6%. Run from home: tools and a lift in the home garage.
-  - Rodriguez Hauling (trucking, sole), opened day 124 by Walt Rodriguez. Open, 0 staff, cash $0, reputation 56.
-      Start reason: people here need freight and nobody local offers it, logistics skill is 48, expects about $906 a month after costs. It cost $123,080 in all: equipment $120,000, opening stock $2,000, three months of cash to get started $780, license $300. Funded with $11,919 of savings, $111,160 from outside investors for a 90% share. Run from home: one used semi parked in the yard.
-  - Fischer Contracting (construction, sole), opened day 149 by Sara Fischer. Open, 2 staff, cash $33,994, reputation 41.
-      Start reason: the city and landlords hire outside builders for everything, construction skill is 74, expects about $1,786 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $25,044 of savings, a $24,035 bank loan at 9.7%. Run from home: a used truck, a trailer and tools, run from home.
-  - Perez Little Ones (childcare, sole), opened day 196 by Diane Perez. Closed day 354: the owner's bankruptcy. The trustee sold what it had.
-      Start reason: the town spent $2,010 last month on child care out of town, teaching skill is 41, expects about $1,510 a month after costs. It cost $6,980 in all: equipment $5,000, opening stock $1,000, three months of cash to get started $780, license $200. Funded with $1,992 of savings, a $4,987 SBA microloan at 12.7%. Run from home: a licensed home daycare.
-  - Taylor Contracting (construction, sole), opened day 283 by Ruth Taylor. Open, 2 staff, cash $0, reputation 55.
-      Start reason: the city and landlords hire outside builders for everything, construction skill is 28, expects about $13,799 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $5,536 of savings, a $43,543 SBA 7(a) loan at 11.2%. Run from home: a used truck, a trailer and tools, run from home.
-  - Ramirez Grocery (grocery, sole), opened day 297 by Timothy Ramirez. Open, 0 staff, cash $53,386, reputation 55.
-      Start reason: 34 of 34 households drive about 74 minutes round trip for groceries, retail skill is 100, expects about -$1,585 a month after costs, the city published this need with incentives. It cost $341,422 in all: a 1400 square foot building $231,000, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $15,658 of savings, a $10,000 city grant, a $315,763 bank loan with a city guarantee at 10.5%.
-  - Thompson Repair (repair_shop, sole), opened day 316 by Gary Thompson. Open, 1 staff, cash $2,452, reputation 55.
-      Start reason: the town spent $5,682 last month on car and home repairs out of town, repair skill is 88, expects about $1,949 a month after costs. It cost $24,980 in all: equipment $20,000, opening stock $4,000, three months of cash to get started $780, license $200. Funded with $2,809 of savings, a $22,170 SBA 7(a) loan at 11.2%. Run from home: tools and a lift in the home garage.
-  - Smith Little Ones (childcare, sole), opened day 349 by Robert Smith. Open, 2 staff, cash $0, reputation 55.
-      Start reason: the town spent $792 last month on child care out of town, teaching skill is 46, expects about $1,088 a month after costs. It cost $6,980 in all: equipment $5,000, opening stock $1,000, three months of cash to get started $780, license $200. Funded with $6,980 of savings. Run from home: a licensed home daycare.
+  Opened 14, closed 3, open now 13. Founding attempts that could not raise money: 18. Times a Sim looked and said no: 106.
+  - Taylor and Sons Building (construction, sole), opened day 29 by Ryan Taylor. Closed day 171: the owner's bankruptcy. The trustee sold what it had.
+      Start reason: the city and landlords hire outside builders for everything, construction skill is 50, expects about $2,271 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $9,078 of savings, a $40,001 SBA 7(a) loan at 11.4%. Run from home: a used truck, a trailer and tools, run from home.
+  - Miller Day Care (childcare, sole), opened day 34 by Linda Miller. Closed day 244: Linda decided to cut losses after 7 losing months.
+      Start reason: the town spent $4,340 last month on child care out of town, teaching skill is 65, expects about $3,795 a month after costs. It cost $6,980 in all: equipment $5,000, opening stock $1,000, three months of cash to get started $780, license $200. Funded with $3,202 of savings, a $3,777 bank loan at 9.4%. Run from home: a licensed home daycare.
+  - Harris Inn (hotel, llc), opened day 202 by William Harris. Open, 2 staff, cash $22,433, reputation 58.
+      Start reason: people here need rooms for visiting crews and travelers and nobody local offers it, management skill is 76, expects about $4,654 a month after costs. It cost $479,500 in all: a 2100 square foot building $381,150, equipment $81,000, opening stock $1,750, three months of cash to get started $15,300, license $300. Funded with $11,434 of savings, $468,065 from outside investors for a 97% share.
+  - Brown Inn (hotel, sole), opened day 251 by William Brown. Open, 2 staff, cash $23,785, reputation 55.
+      Start reason: people here need rooms for visiting crews and travelers and nobody local offers it, management skill is 65, expects about $34,878 a month after costs. It cost $479,500 in all: a 2100 square foot building $381,150, equipment $81,000, opening stock $1,750, three months of cash to get started $15,300, license $300. Funded with $8,646 of savings, $470,853 from outside investors for a 98% share.
+  - Taylor Cafe (cafe, llc), opened day 279 by Lucy Taylor. Open, 0 staff, cash $8,119, reputation 70.
+      Start reason: there is nowhere in town to sit down and eat, cooking skill is 45, expects about $6,622 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $14,479 of savings, $133,114 from outside investors for a 90% share.
+  - Fischer Cafe (cafe, sole), opened day 293 by Sara Fischer. Open, 0 staff, cash $6,081, reputation 68.
+      Start reason: there is nowhere in town to sit down and eat, cooking skill is 48, expects about $6,590 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $26,784 of savings, a $120,809 SBA 7(a) loan at 11.0%.
+  - Martinez Grocery (grocery, sole), opened day 288 by Linda Martinez. Open, 0 staff, cash $20,733, reputation 57.
+      Start reason: 32 of 32 households drive about 72 minutes round trip for groceries, retail skill is 33, expects about $946 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $21,520 of savings, a $10,000 city grant, a $333,001 bank loan with a city guarantee at 10.3%.
+  - Brown Diner (cafe, sole), opened day 223 by Lucy Brown. Open, 1 staff, cash $6,326, reputation 82.
+      Start reason: there is nowhere in town to sit down and eat, cooking skill is 32, expects about $3,992 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $17,729 of savings, a $129,864 SBA 7(a) loan at 11.3%.
+  - Rodriguez Diner (cafe, sole), opened day 332 by Walt Rodriguez. Open, 1 staff, cash $6,827, reputation 59.
+      Start reason: there is nowhere in town to sit down and eat, cooking skill is 37, expects about $2,348 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $14,522 of savings, $133,071 from outside investors for a 90% share.
+  - Thompson Market (grocery, sole), opened day 343 by Linda Thompson. Open, 1 staff, cash $25,355, reputation 54.
+      Start reason: 32 of 32 households drive about 72 minutes round trip for groceries, retail skill is 34, expects about $1,984 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $13,956 of savings, a $10,000 city grant, a $340,565 bank loan with a city guarantee at 10.3%.
+  - Smith and Sons Building (construction, sole), opened day 167 by Robert Smith. Closed day 324: the owner's bankruptcy. The trustee sold what it had.
+      Start reason: the city and landlords hire outside builders for everything, construction skill is 39, expects about $19,595 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $6,834 of savings, a $42,245 SBA 7(a) loan at 11.6%. Run from home: a used truck, a trailer and tools, run from home.
+  - Thompson Foods (grocery, sole), opened day 304 by Gary Thompson. Open, 0 staff, cash $20,169, reputation 54.
+      Start reason: 34 of 34 households drive about 81 minutes round trip for groceries, retail skill is 40, expects about $1,226 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $5,833 of savings, a $10,000 city grant, a $348,688 bank loan with a city guarantee at 10.4%.
+  - Anderson Grocery (grocery, sole), opened day 306 by Beth Anderson. Open, 1 staff, cash $17,460, reputation 60.
+      Start reason: 36 of 36 households drive about 73 minutes round trip for groceries, retail skill is 30, expects about $1,746 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $13,896 of savings, a $10,000 city grant, a $340,625 bank loan with a city guarantee at 10.4%.
+  - Brown Foods (grocery, sole), opened day 219 by Donald Brown. Open, 0 staff, cash $29,172, reputation 55.
+      Start reason: 36 of 36 households drive about 75 minutes round trip for groceries, retail skill is 32, expects about $1,111 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $18,459 of savings, a $10,000 city grant, a $336,062 bank loan with a city guarantee at 10.4%.
+  - Harris Grocery (grocery, sole), opened day 332 by June Harris. Open, 1 staff, cash $22,143, reputation 56.
+      Start reason: 36 of 36 households drive about 73 minutes round trip for groceries, retail skill is 24, expects about $779 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $27,540 of savings, a $10,000 city grant, a $326,981 bank loan with a city guarantee at 10.4%.
+  - Ramirez Market (grocery, sole), opened day 234 by Timothy Ramirez. Open, 0 staff, cash $29,172, reputation 55.
+      Start reason: 36 of 36 households drive about 81 minutes round trip for groceries, retail skill is 84, expects about $1,133 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $17,422 of savings, a $10,000 city grant, a $337,099 bank loan with a city guarantee at 10.4%.
+  - Martin Fresh Market (grocery, sole), opened day 249 by Sara Martin. Open, 0 staff, cash $0, reputation 55.
+      Start reason: 37 of 37 households drive about 74 minutes round trip for groceries, retail skill is 40, expects about $1,720 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $13,597 of savings, a $10,000 city grant, a $340,924 bank loan with a city guarantee at 10.3%.
+  - Anderson Fresh Market (grocery, sole), opened day 252 by Joshua Anderson. Open, 0 staff, cash $0, reputation 55.
+      Start reason: 37 of 37 households drive about 74 minutes round trip for groceries, retail skill is 37, expects about $2,805 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $13,397 of savings, a $10,000 city grant, a $341,124 bank loan with a city guarantee at 10.3%.
+  - Clark Foods (grocery, sole), opened day 255 by Timothy Clark. Open, 0 staff, cash $0, reputation 55.
+      Start reason: 37 of 37 households drive about 74 minutes round trip for groceries, retail skill is 33, expects about $434 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $10,949 of savings, a $10,000 city grant, a $343,572 bank loan with a city guarantee at 10.3%.
+  - Carol's Grocery (grocery, sole), opened day 257 by Carol Brown. Open, 0 staff, cash $0, reputation 55.
+      Start reason: 37 of 37 households drive about 74 minutes round trip for groceries, retail skill is 85, expects about $1,127 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $11,146 of savings, a $10,000 city grant, a $343,375 bank loan with a city guarantee at 10.3%.
+  - Jones Grocery (grocery, sole), opened day 269 by Harriet Jones. Open, 0 staff, cash $0, reputation 55.
+      Start reason: 37 of 37 households drive about 74 minutes round trip for groceries, retail skill is 31, expects about $848 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $11,217 of savings, a $10,000 city grant, a $343,304 bank loan with a city guarantee at 10.3%.
+  - Nelson Market (grocery, sole), opened day 282 by David Nelson. Open, 0 staff, cash $0, reputation 55.
+      Start reason: 37 of 37 households drive about 76 minutes round trip for groceries, retail skill is 44, expects about $804 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $24,776 of savings, a $10,000 city grant, a $329,745 bank loan with a city guarantee at 10.3%.
 
 DEBT AND CREDIT
-  Debt records: 105 total, 90 active, $4,926,359 owed now.
-  By status: current 83, paid off 1, discharged in bankruptcy 7, under a court judgment 1, 90 days late 1, 60 days late 4, in collections 1, followed the debtor out of town 7.
-  Loans made 9, denied 21. Paid off 0. Charged off 0. Repossessions 5. Foreclosures 1.
-  Bankruptcies 3 (liquidation 3, repayment plan 0). Estates settled 1.
-  Prairie State Bank: lending tightness 0.24, losses in the last year about $19,339.
+  Debt records: 127 total, 117 active, $9,269,179 owed now.
+  By status: assumed by an heir 1, current 114, unpaid when the estate ran out 1, discharged in bankruptcy 5, paid off 3, in collections 1, 60 days late 1, charged off 1.
+  Loans made 18, denied 24. Paid off 2. Charged off 1. Repossessions 5. Foreclosures 2.
+  Bankruptcies 2 (liquidation 2, repayment plan 0). Estates settled 1.
+  Prairie State Bank: lending tightness 0.28, losses in the last year about $92,046.
 
 CITY
-  City cash $250,387 (was $150,000). Income last 12 months $343,825, spending $236,995. Credit standing A.
-  Petitions 7. Projects finished 13. Protests 0. Thefts 0.
-  - Petition "We need a grocery store in town": 16 signers, status published.
+  City cash $174,780 (was $150,000). Income last 12 months $353,713, spending $366,665. Credit standing A.
+  Petitions 5. Projects finished 23. Protests 0. Thefts 0.
+  - Petition "We need a grocery store in town": 19 signers, status resolved.
   - Petition "Build a school here so our kids stop riding the bus for an hour": 11 signers, status submitted.
-  - Petition "We need a clinic close to home": 11 signers, status submitted.
+  - Petition "We need a clinic close to home": 12 signers, status submitted.
   - Petition "Fix Main Street": 26 signers, status submitted.
-  - Petition "Bring jobs to town": 7 signers, status submitted.
-  - Petition "We need more places to live that people can afford": 1 signers, status gathering.
-  - Petition "Give the kids a park": 11 signers, status submitted.
-  - Project "Rebuild County Road 12": done, quality 21.
-  - Project "The Taylor family's house": done, quality 19.
-  - Project "Harris Lodge: a 2100 square foot building": done, quality 18.
+  - Petition "Give the kids a park": 13 signers, status submitted.
+  - Project "Rebuild County Road 12": done, quality 44.
+  - Project "The Rodriguez family's house": done, quality 27.
+  - Project "The Rodriguez family's house": done, quality 22.
+  - Project "Harris Inn: a 2100 square foot building": done, quality 23.
+  - Project "The Anderson family: add a bathroom": done, quality 72.
   - Project "Brown Inn: a 2100 square foot building": done, quality 22.
-  - Project "The Anderson family: add a bathroom": done, quality 45.
-  - Project "The Perez family's house": done, quality 41.
-  - Project "The Smith family's house": done, quality 24.
-  - Project "The Weber family's house": done, quality 47.
-  - Project "The Brown family: put in central air": done, quality 70.
+  - Project "The White family's house": done, quality 32.
+  - Project "The Schmidt family's house": done, quality 23.
+  - Project "Taylor Cafe: a 500 square foot building": done, quality 30.
+  - Project "Fischer Cafe: a 500 square foot building": done, quality 39.
+  - Project "The Sanchez family's house": done, quality 36.
+  - Project "Martinez Grocery: a 1400 square foot building": done, quality 18.
+  - Project "Brown Diner: a 500 square foot building": done, quality 73.
+  - Project "Rodriguez Diner: a 500 square foot building": done, quality 22.
+  - Project "The Clark family's house": done, quality 23.
+  - Project "The Hernandez family's house": done, quality 60.
+  - Project "Thompson Market: a 1400 square foot building": done, quality 18.
+  - Project "The Weber family's house": done, quality 45.
+  - Project "The Ramirez family's house": building.
+  - Project "Thompson Foods: a 1400 square foot building": done, quality 66.
+  - Project "Anderson Grocery: a 1400 square foot building": done, quality 63.
   - Project "The Schmidt family's house": building.
-  - Project "The Olson family's house": done, quality 24.
-  - Project "The Smith family's house": done, quality 33.
-  - Project "The Larson family's house": done, quality 47.
-  - Project "The Lewis family's house": done, quality 25.
-  - Project "The Robinson family: build a back deck": building.
-  - Project "Ramirez Grocery: a 1400 square foot building": building.
-  - Project "The Jones family's house": building.
-  - Project "Plains Property Group: 4 unit apartment house": building.
+  - Project "Brown Foods: a 1400 square foot building": building.
+  - Project "Harris Grocery: a 1400 square foot building": done, quality 55.
+  - Project "Ramirez Market: a 1400 square foot building": building.
+  - Project "Martin Fresh Market: a 1400 square foot building": building.
+  - Project "Anderson Fresh Market: a 1400 square foot building": building.
+  - Project "Clark Foods: a 1400 square foot building": building.
+  - Project "Carol's Grocery: a 1400 square foot building": building.
+  - Project "The Smith family: add a home office": done, quality 68.
+  - Project "Jones Grocery: a 1400 square foot building": building.
+  - Project "Nelson Market: a 1400 square foot building": building.
+  - Project "The Robinson family: build a back deck": done, quality 68.
+  - Project "The Fischer family's house": building.
+  - Project "The Hanson family's house": building.
+  - Project "The Lund family's house": building.
 
 MONEY CHECK
-  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 17160.
-  Across the town line this run: $1,827,346 more left town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
+  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 26156.
+  Across the town line this run: $3,848,290 more left town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
 
 SAMPLE LIVES (last entries of their history logs)
-Diane Perez, adult ordinary, 50. alive.
-  Day 312: Missed the credit card payment to Prairie State Bank (paid $0 of $323). The debt is now 90 days late.
-  Day 312: Missed the business loan payment to Prairie State Bank (paid $0 of $99). The debt is now 90 days late.
-  Day 342: Missed the credit card payment to Prairie State Bank (paid $0 of $331). The debt is now in collections.
-  Day 342: Missed the business loan payment to Prairie State Bank (paid $0 of $99). The debt is now in collections.
-  Day 342: The equipment was repossessed by Prairie State Bank. The sale covered $1,745 of the debt.
-  Day 354: Filed for bankruptcy under liquidation (like Chapter 7). Trigger: a business that is not making it. Unsecured debt of $11,104 could not be repaid in any realistic time.
-  Day 354: Perez Little Ones closed. Reason: the owner's bankruptcy. The trustee sold what it had. $3,549 of business debt is still owed personally, since a sole proprietor and the business are one pocket.
-  Day 354: The bankruptcy court discharged 2 debts. Kept exempt basics. The filing stays on the credit record for about 10 years, new credit will be slow and expensive.
-  Day 357: Hired at Taylor Contracting as a construction worker. Reason: kept looking and the owner picked them from the applicants.
-  Day 362: Paycheck from Taylor Contracting came up short: $0 of $720.
-  Day 362: Left the job as construction worker. Reason: the paychecks stopped coming in full.
-  Day 364: Hired at Taylor Contracting as a construction worker. Reason: kept looking and the owner picked them from the applicants.
+Diane Perez, adult ordinary, 49. died.
+  Day 189: Missed the credit card payment to Prairie State Bank (paid $0 of $325). The debt is now 30 days late.
+  Day 194: Started getting $75 a week in city unemployment support.
+  Day 196: Looked at starting a motel and decided against it. Reason: 1 like it closed here in the last three years.
+  Day 203: Hired at Smith and Sons Building as a construction worker. Reason: kept looking and the owner picked them from the applicants.
+  Day 208: Paycheck from Smith and Sons Building came up short: $0 of $720.
+  Day 208: Left the job as construction worker. Reason: the paychecks stopped coming in full.
+  Day 210: Applied for work again with no luck. Unemployed for 2 days.
+  Day 215: Started getting $75 a week in city unemployment support.
+  Day 220: Missed the credit card payment to Prairie State Bank (paid $75 of $333). The debt is now 60 days late.
+  Day 224: Hired at Brown Diner as a cafe worker. Reason: kept looking and the owner picked them from the applicants.
+  Day 244: Died at age 49 of an accident.
+  Day 244: Estate settled. Cash and assets in: $1,061. Paid to creditors: $0. Unpaid debt that died with the estate: $7,514. To heirs: $0. Also: the house and its $89,461 mortgage went to Kevin.
 
 Sara Fischer, adult ordinary, 62. alive.
-  Day 58: Looked at starting a trucking and decided against it. Reason: not enough customers in a town this size.
-  Day 72: Looked at starting a trucking and decided against it. Reason: not enough customers in a town this size.
-  Day 121: Got seriously ill and needed care at County Medical Center, 37 minutes away.
-  Day 128: Looked at starting a guides and decided against it. Reason: not enough customers in a town this size.
-  Day 135: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 74, expects about $13,623 a month after costs. Will look at the numbers again for a few weeks before deciding.
-  Day 149: The storm damaged the house. Repairs cost $3,853; insurance paid all but the $1,500 deductible.
-  Day 149: Left the job as construction laborer. Reason: started a business.
-  Day 149: Opened Fischer Contracting. the city and landlords hire outside builders for everything, construction skill is 74, expects about $1,786 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $25,044 of savings, a $24,035 bank loan at 9.7%. Run from home: a used truck, a trailer and tools, run from home.
-  Day 152: Asked for a loan to keep Fischer Contracting afloat and was refused: payments would take 51% of income, the bank allows 40%.
-  Day 173: Paid $395 of Fischer Contracting's loan from personal savings. As a sole owner, the business debt is theirs too.
-  Day 255: Charged with fraud: billed George Taylor $643 for work never done at Fischer Contracting. Court date Oct 2, Y1.
-  Day 275: Found not guilty of fraud.
+  Day 0: Owns the house on Lot 1 (Prairie Street, residential) with a mortgage of $34,475 from Prairie State Bank.
+  Day 0: Works outside town as a construction laborer and drives 36 minutes each way. Reason: there are no local jobs yet.
+  Day 25: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 72, expects about $4,046 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 30: Started planning to open a cafe. Reason: there is nowhere in town to sit down and eat, cooking skill is 48, expects about $2,520 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 58: Started planning to open a trucking. Reason: people here need freight and nobody local offers it, logistics skill is 43, expects about $2,507 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 65: Started planning to open a cafe. Reason: there is nowhere in town to sit down and eat, cooking skill is 48, expects about $4,883 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 79: Decided to start Fischer Cafe and hired builders for the building. Reason: there is nowhere in town to sit down and eat, cooking skill is 48, expects about $6,590 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $26,784 of savings, a $120,809 SBA 7(a) loan at 11.0%.
+  Day 209: The storm damaged the house. Repairs cost $3,395; insurance paid all but the $1,500 deductible.
+  Day 261: Joined meals for shut in seniors. Reason: the old folks should not eat alone.
+  Day 293: Left the job as construction laborer. Reason: started a business.
+  Day 293: Opened Fischer Cafe. there is nowhere in town to sit down and eat, cooking skill is 48, expects about $6,590 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $26,784 of savings, a $120,809 SBA 7(a) loan at 11.0%.
+  Day 318: Spent the weekends doing it themselves: build a back deck, $7,500 in materials. Reason: summer evenings with friends.
 
-Ryan Taylor, adult pillar, 62. alive.
-  Day 334: Started getting $75 a week in city unemployment support.
-  Day 337: Hired at Perez Little Ones as a child care worker. Reason: kept looking and the owner picked them from the applicants.
-  Day 341: Paycheck from Perez Little Ones came up short: $0 of $550.
-  Day 341: Left the job as child care worker. Reason: the paychecks stopped coming in full.
-  Day 344: Looked at starting a child care and decided against it. Reason: 1 like it closed here in the last three years.
-  Day 344: Hired at Perez Little Ones as a child care worker. Reason: kept looking and the owner picked them from the applicants.
-  Day 348: Paycheck from Perez Little Ones came up short: $0 of $550.
-  Day 348: Left the job as child care worker. Reason: the paychecks stopped coming in full.
-  Day 351: Hired at Perez Little Ones as a child care worker. Reason: kept looking and the owner picked them from the applicants.
-  Day 354: Laid off from Perez Little Ones. Reason given: Perez Little Ones closed.
-  Day 358: Applied for work again with no luck. Unemployed for 4 days.
-  Day 362: Started getting $75 a week in city unemployment support.
-
-June Smith, adult ordinary, 48. alive.
-  Day 0: Owns Smith Rentals, an apartment building on Lot 37 (Main Street, residential), with a commercial mortgage of $228,473.
-  Day 0: Starts with no job. Reason: no employer in reach has hired them yet.
+Lucy Brown, adult gambler, 49. alive.
+  Day 0: Works outside town as a truck driver and drives 36 minutes each way. Reason: there are no local jobs yet.
   Day 24: The mayor answered the petition "We need a grocery store in town": Published a need for a grocery on Lot 26 (Main Street, commercial) with a free lot, no business tax for 2 years, a $10,000 start up grant, a city loan guarantee. A Sim still has to decide to take it.
-  Day 26: Applied for work again with no luck. Unemployed for 143 days.
-  Day 54: Applied for work again with no luck. Unemployed for 171 days.
-  Day 68: Found work outside town as a warehouse worker after 185 days of looking. Reason: no local opening fit, so took the commute.
+  Day 25: Started planning to open a construction. Reason: the city and landlords hire outside builders for everything, construction skill is 42, expects about $3,956 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 88: Started planning to open a cafe. Reason: there is nowhere in town to sit down and eat, cooking skill is 32, expects about $5,466 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 116: Decided to start Brown Diner and hired builders for the building. Reason: there is nowhere in town to sit down and eat, cooking skill is 32, expects about $3,992 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $17,729 of savings, a $129,864 SBA 7(a) loan at 11.3%.
+  Day 187: Fell into depression after months of pressure. Low energy, hard to keep going.
+  Day 187: Came out of the depression. Life feels manageable again.
+  Day 223: Left the job as truck driver. Reason: started a business.
+  Day 223: Opened Brown Diner. there is nowhere in town to sit down and eat, cooking skill is 32, expects about $3,992 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $17,729 of savings, a $129,864 SBA 7(a) loan at 11.3%.
+
+Linda Martinez, adult pillar, 56. alive.
+  Day 38: Started planning to open a cafe. Reason: there is nowhere in town to sit down and eat, cooking skill is 33, expects about $4,723 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 49: Joined youth sports as a coach. Reason: the kids need someone to show up.
+  Day 52: Tried to start a cafe and could not raise the money. The bank said no: a bank loan needs 20% down, $29,518; a SBA 7(a) loan needs 10% down, $14,759. The banker's advice: put in $2,366 more of their own money.
+  Day 64: Started a petition: "Fix Main Street". Reason: Main Street is in poor shape, condition 39 of 100. Trips are slower and cars take a beating.
+  Day 66: Looked at starting a grocery and decided against it. Reason: the start up cost is more than the savings and the bank would lend.
+  Day 73: Started planning to open a trucking. Reason: people here need freight and nobody local offers it, logistics skill is 90, expects about $3,942 a month after costs. Will look at the numbers again for a few weeks before deciding.
+  Day 87: Looked at starting a trucking and decided against it. Reason: the start up cost of $123,080 is more than savings, family money, and what the bank would lend.
+  Day 101: Started planning to open a grocery. Reason: 31 of 31 households drive about 72 minutes round trip for groceries, retail skill is 33, expects about $298 a month after costs, the city published this need with incentives. Will look at the numbers again for a few weeks before deciding.
+  Day 115: Decided to start Martinez Grocery and hired builders for the building. Reason: 32 of 32 households drive about 72 minutes round trip for groceries, retail skill is 33, expects about $946 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $21,520 of savings, a $10,000 city grant, a $333,001 bank loan with a city guarantee at 10.3%.
+  Day 288: Left the job as truck driver. Reason: started a business.
+  Day 288: Opened Martinez Grocery. 32 of 32 households drive about 72 minutes round trip for groceries, retail skill is 33, expects about $946 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $21,520 of savings, a $10,000 city grant, a $333,001 bank loan with a city guarantee at 10.3%.
+  Day 352: Hiked to the top of Iron Hill.
 
 RESULT: ALL GATES PASS
