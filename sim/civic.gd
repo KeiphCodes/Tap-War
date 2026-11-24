@@ -24,11 +24,12 @@ const LAWS: Dictionary = {
 	"late_fee_cap": {"label": "Most a lender may charge as a late fee", "min": 1000, "max": 3500, "step": 500, "money": true},
 	"bus_service": {"label": "Bus to the county seat (0 none, 1 weekdays)", "min": 0.0, "max": 1.0, "step": 1.0},
 	"bank_charter": {"label": "Charter a local bank (0 no, 1 yes, needs 120 people)", "min": 0.0, "max": 1.0, "step": 1.0},
+	"lot_coverage": {"label": "Most of a lot that buildings may cover", "min": 0.25, "max": 0.7, "step": 0.05, "pct": true},
 	"transfer_tax": {"label": "Tax on every property sale, paid by the seller", "min": 0.0, "max": 0.03, "step": 0.005, "pct": true},
 	"hunting_season": {"label": "Hunting season (0 closed, 1 open in season)", "min": 0.0, "max": 1.0, "step": 1.0},
 	"mining": {"label": "Mining (0 banned, 1 quarries only, 2 gold mines too)", "min": 0.0, "max": 2.0, "step": 1.0},
 }
-const DEFAULT_LAWS: Dictionary = {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005, "hunting_season": 1.0, "mining": 1.0}
+const DEFAULT_LAWS: Dictionary = {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005, "lot_coverage": 0.4, "hunting_season": 1.0, "mining": 1.0}
 const DENY_REASONS: Array = ["no money in the budget this year", "this is not the city's job", "the need is not as big as the petition says", "maybe next year"]
 const PETITION_KINDS: Dictionary = {
 	"grocery": {"title": "We need a grocery store in town", "civic": false},
@@ -1118,6 +1119,8 @@ static func law_estimate(w: LTWorld, key: String, value: float) -> Dictionary:
 			hits = "Hunters, guides and outfitters, and the visitors who come for deer and pheasant in the fall. Closing it keeps the wildlife undisturbed and the woods quiet."
 		"mining":
 			hits = "Quarries and gold mines bring good wages and work for the region, and dust, noise, runoff and injuries with them. A gold mine is a boom: the ore runs out and the price swings."
+		"lot_coverage":
+			hits = "Families adding on to their houses and businesses expanding. A tight limit keeps yards open and light between houses; more families will need a variance from you to add a bedroom or a garage. A loose one lets them build out."
 		"transfer_tax":
 			var sold: int = int(w.city.get("sales_12m", 0))
 			yearly = int(float(sold) * (value - old))

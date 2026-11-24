@@ -200,7 +200,8 @@ static func tornado(w: LTWorld) -> void:
 			if int(u) >= 0:
 				for m in w.household_members(w.hh(int(u))):
 					m["needs"]["safety"] = float(m["needs"]["safety"]) - 40.0
-					if d == 0 and w.rng.randf() < 0.05:
+					var safe: bool = str(l["use"]) == "house" and LTHomes.has_shelter(LTHomes.upgrade(l.get("home", {}))) if l.has("home") else false
+					if d == 0 and w.rng.randf() < (0.01 if safe else 0.05):
 						m["sick_days"] = maxi(int(m["sick_days"]), w.rng.randi_range(5, 30))
 						m["health_cond"] = "hurt in the tornado"
 						people.append(m["id"])

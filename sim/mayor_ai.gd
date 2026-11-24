@@ -74,6 +74,7 @@ static func daily(w: LTWorld) -> void:
 		_plan_town(w, t)
 		_contracts(w, t)
 		_answer_petitions(w, t)
+		_variances(w, t)
 		_mayors_house(w, t)
 	if w.day % 7 == 5:
 		_award(w, t)
@@ -357,3 +358,14 @@ static func _budget(w: LTWorld, t: Dictionary) -> void:
 	if float(laws.get("mining", 1.0)) != want_mining and LTCalendar.month_index(w.day) == 3:
 		_act(w, {"kind": "set_law", "law": "mining", "value": want_mining})
 		_say(w, "set mining to %s." % ["banned", "quarries only", "gold mines allowed"][int(want_mining)])
+
+
+## Zoning exceptions: kind and outgoing mayors bend the rules for families, orderly
+## ones hold the line, and everyone listens to the neighbors.
+static func _variances(w: LTWorld, t: Dictionary) -> void:
+	for v in LTHomes.pending_variances(w):
+		var score: float = float(t["kindness"]) * 0.5 + float(t["sociability"]) * 0.3 - float(t["discipline"]) * 0.4 + float(int(v["for"]) - int(v["against"])) * 12.0 + 10.0
+		var yes: bool = score > 20.0
+		var r: Dictionary = _act(w, {"kind": "decide_variance", "variance_id": int(v["id"]), "approve": yes})
+		if bool(r.get("ok", false)):
+			_say(w, "%s the %s family's variance to %s. Reason: %s." % ["granted" if yes else "denied", v["family"], v["want"]["label"], ("the family needs it and the neighbors can live with it" if int(v["against"]) == 0 else "the family's need outweighs the neighbors' worries") if yes else ("the rules are there for everyone" if int(v["against"]) == 0 else "the neighbors objected")])

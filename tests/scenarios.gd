@@ -27,6 +27,7 @@ func _init() -> void:
 	_real_calendar()
 	_contracts_and_lot_details()
 	_sim_mayor()
+	_custom_homes()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -522,3 +523,40 @@ func _sim_mayor() -> void:
 	var r: Dictionary = w.apply_action({"kind": "take_over", "on": true})
 	var ok: bool = str(a["name"]) == str(b["name"]) and a["traits"] == b["traits"] and str(w.player["name"]) == str(a["name"]) and moves >= 5 and built >= 2 and w.streets.size() >= 3 and bool(r["ok"]) and not LTMayorAI.is_on(w) and w.action_log.size() == 1
 	_check("Sim mayor: a seeded Sim founds the town, lays roads, awards contracts and logs each reason, and the player can take over", ok, "%s (%s) made %d decisions in 300 days. Streets %d, projects under way or done %d, residents %d. Take over: %s" % [w.player["name"], LTMayorAI.describe(w.player), moves, w.streets.size(), built, w.residents(), r["message"]], w)
+
+
+func _custom_homes() -> void:
+	# a family designs its house from its life, it fits the lot facing the street,
+	# it remodels when life changes, and a variance goes to the mayor
+	var w: LTWorld = _town(5)
+	var fitting: int = 0
+	var houses: int = 0
+	for l in w.lots:
+		if str(l["use"]) == "house" and l.has("home"):
+			houses += 1
+			if bool(LTHomes.layout(l, l["home"])["fits"]):
+				fitting += 1
+	var lot: Dictionary = {}
+	var h: Dictionary = {}
+	for hh in w.households:
+		if str(hh["tenure"]) == "own" and int(hh["lot"]) >= 0 and str(w.lot(int(hh["lot"]))["use"]) == "house":
+			h = hh
+			lot = w.lot(int(hh["lot"]))
+			break
+	var before: Dictionary = LTHomes.upgrade(lot["home"])
+	var head: Dictionary = w.household_adults(h)[0]
+	var r: Array = LTHomes.apply_want(before, "bedroom")
+	_give(w, head, 200000.0)
+	LTHomes.start_remodel(w, h, lot, head, {"key": "bedroom", "label": "add a bedroom", "why": "a new baby"}, r[0], int(r[1]), "cash")
+	for d in 200:
+		w.tick_day()
+	var after: Dictionary = LTHomes.upgrade(lot["home"])
+	# a variance: the mayor grants it
+	if not w.city.has("variances"):
+		w.city["variances"] = []
+	w.city["variances"].append({"id": w.city["variances"].size(), "lot": int(lot["id"]), "hh": int(h["id"]), "cid": int(head["id"]), "family": str(head["last_name"]),
+		"want": {"key": "deck", "label": "build a back deck", "why": "summer evenings"}, "home": LTHomes.apply_want(after, "deck")[0], "cost": LTMoney.dollars(15000.0), "funding": "cash",
+		"rule": "test", "day": w.day, "status": "pending", "for": 1, "against": 0, "voices": []})
+	var vr: Dictionary = w.apply_action({"kind": "decide_variance", "variance_id": w.city["variances"].size() - 1, "approve": true})
+	var ok: bool = houses > 0 and fitting == houses and int(after["beds"]) == int(before["beds"]) + 1 and bool(vr["ok"]) and LTHomes.home_cost(after) > 0 and not LTHomes.plan(lot, after).is_empty()
+	_check("Custom homes: families design houses room by room that fit their lots, remodel as life changes, and ask the mayor for variances", ok, "%d of %d houses fit their lots. %s family: %s became %s. Variance: %s" % [fitting, houses, head["last_name"], LTHomes.text(before), LTHomes.text(after), vr["message"]], w)

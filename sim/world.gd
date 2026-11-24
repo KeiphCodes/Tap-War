@@ -257,6 +257,9 @@ func tick_day() -> void:
 		LTChoices.monthly(self)
 	if LTCalendar.day_of_month(day) == 22:
 		LTDevelopers.monthly(self)
+	if LTCalendar.day_of_month(day) == 14:
+		LTHomes.monthly(self)
+	LTHomes.lapse(self)
 	LTProjects.daily(self)
 	LTPeople.life_events(self)
 	if LTCalendar.day_of_month(day) == 25:
@@ -328,6 +331,8 @@ func apply_action(a: Dictionary) -> Dictionary:
 			if bool(act["on"]) and int(city["next_election_day"]) <= day:
 				city["next_election_day"] = day + 365
 			result = {"ok": true, "message": "Elections are %s. %s" % ["on" if bool(act["on"]) else "off", "The next one is %s." % LTCalendar.short(int(city["next_election_day"])) if bool(act["on"]) else "You stay mayor for as long as you like."]}
+		"decide_variance":
+			result = LTHomes.decide(self, int(act["variance_id"]), bool(act["approve"]))
 		"take_over":
 			if not bool(mode.get("autonomous", false)):
 				result = {"ok": false, "message": "You already run this town."}

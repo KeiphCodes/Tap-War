@@ -98,7 +98,7 @@ static func _spec_builders(w: LTWorld) -> void:
 			return
 		var l: Dictionary = lots[0]
 		var land: int = LTGeography.asking_price(w, int(l["id"]))
-		var spec: Dictionary = LTGeography.choose_home(w, 2, 2, LTMoney.dollars(85000.0), float(owner["traits"]["ambition"]), float(owner["traits"]["discipline"]))
+		var spec: Dictionary = LTGeography.choose_home(w, 2, 2, LTMoney.dollars(85000.0), float(owner["traits"]["ambition"]), float(owner["traits"]["discipline"]), l)
 		var cost: int = LTGeography.home_cost(spec)
 		var acct: String = w.acct_b(b)
 		# the bank lends about 80% of land and building; the builder puts up the rest

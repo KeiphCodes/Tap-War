@@ -22,7 +22,6 @@ const FREEZE_HOUR: float = 12.5
 ## In Watch a trip lasts at least this many real seconds, so it can be followed.
 const MIN_TRIP_REAL_S: float = 1.2
 ## Yard furniture on every lived in house, in the lot's own coordinates.
-const CHAIRS: Array = [Vector3(-4.7, 0, 4.2), Vector3(-3.6, 0, 4.2)]
 const FLOWER_X: float = 2.0
 const SOUND_FADE: float = 20.0
 const SKIN: Array = [Color(0.96, 0.8, 0.69), Color(0.87, 0.67, 0.5), Color(0.76, 0.55, 0.38), Color(0.6, 0.42, 0.28), Color(0.45, 0.31, 0.2), Color(0.33, 0.22, 0.15)]
@@ -299,16 +298,17 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, c: Color, glow: bool = fa
 	return mi
 
 
-func _roof(parent: Node3D, size: Vector3, pos: Vector3, c: Color) -> MeshInstance3D:
+func _roof(parent: Node3D, size: Vector3, pos: Vector3, c: Color, yaw: float = 0.0) -> MeshInstance3D:
 	if _snow:
 		c = c.lerp(Color(0.93, 0.95, 0.98), 0.8)
 	if _batching:
-		_batch_add(PrismMesh.new(), "prism", Transform3D(Basis().scaled(size), pos), c, false)
+		_batch_add(PrismMesh.new(), "prism", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(size), pos), c, false)
 		return null
 	var mi: MeshInstance3D = MeshInstance3D.new()
 	var pm: PrismMesh = PrismMesh.new()
 	pm.size = size
 	mi.mesh = pm
+	mi.rotation.y = yaw
 	mi.position = pos
 	mi.material_override = _mat(c)
 	parent.add_child(mi)
@@ -1153,79 +1153,183 @@ func _home_biz_name(lot_id: int) -> String:
 	return ""
 
 
-## A house drawn from what the family built: wider with more bedrooms, a second
-## floor, and a garage with a stall per car.
+## A house drawn from what the family built, where they put it on their lot. It
+## always faces the street. Lot coordinates from LTHomes (x along the front, d back
+## from the street) become kit coordinates: x the same, z = KIT_BACK - d.
+func _kr(r: Array, y: float, h: float) -> Array:
+	return [Vector3(float(r[2]) - float(r[0]), h, float(r[3]) - float(r[1])), Vector3((float(r[0]) + float(r[2])) * 0.5, y + h * 0.5, KIT_BACK - (float(r[1]) + float(r[3])) * 0.5)]
+
+
+func _flat(root: Node3D, r: Array, y: float, h: float, c: Color) -> void:
+	var k: Array = _kr(r, y, h)
+	_box(root, k[0], k[1], c)
+
+
+const SIDING: Dictionary = {
+	"vinyl": [Color(0.92, 0.88, 0.78), Color(0.75, 0.82, 0.9), Color(0.82, 0.9, 0.8), Color(0.95, 0.95, 0.95), Color(0.86, 0.8, 0.7), Color(0.7, 0.74, 0.7)],
+	"wood": [Color(0.66, 0.48, 0.32), Color(0.55, 0.36, 0.24), Color(0.74, 0.6, 0.42), Color(0.5, 0.56, 0.5), Color(0.62, 0.3, 0.24), Color(0.85, 0.82, 0.72)],
+	"brick": [Color(0.62, 0.3, 0.24), Color(0.55, 0.27, 0.22), Color(0.68, 0.38, 0.3), Color(0.5, 0.3, 0.26), Color(0.7, 0.45, 0.36), Color(0.58, 0.34, 0.28)],
+	"stone": [Color(0.66, 0.63, 0.58), Color(0.72, 0.68, 0.6), Color(0.6, 0.58, 0.55), Color(0.7, 0.64, 0.55), Color(0.62, 0.6, 0.56), Color(0.75, 0.72, 0.66)],
+}
+const ROOFS: Dictionary = {
+	"shingle": [Color(0.35, 0.2, 0.18), Color(0.25, 0.27, 0.3), Color(0.45, 0.3, 0.2), Color(0.3, 0.3, 0.28)],
+	"metal": [Color(0.3, 0.42, 0.32), Color(0.55, 0.2, 0.18), Color(0.45, 0.48, 0.52), Color(0.2, 0.25, 0.35)],
+}
+
+
 func _house(root: Node3D, l: Dictionary, cond: float) -> void:
-	var walls: Array = [Color(0.92, 0.88, 0.78), Color(0.75, 0.82, 0.9), Color(0.9, 0.78, 0.66), Color(0.82, 0.9, 0.8), Color(0.95, 0.95, 0.95), Color(0.7, 0.62, 0.55)]
-	var roofs: Array = [Color(0.35, 0.2, 0.18), Color(0.25, 0.27, 0.3), Color(0.45, 0.3, 0.2), Color(0.3, 0.35, 0.25)]
-	var wc: Color = _wear(_hash_color(int(l["id"]), walls), cond)
-	var rc: Color = _hash_color(int(l["id"]) + 3, roofs)
-	var spec: Dictionary = l.get("home", {"beds": 3, "baths": 2.0, "stories": 1, "garage": 1, "basement": false})
-	var beds: int = int(spec["beds"])
-	var dims: Array = _house_dims(l)
-	var hw: float = float(dims[0])
+	var spec: Dictionary = LTHomes.upgrade(l.get("home", {}))
+	if spec.is_empty():
+		spec = LTHomes.upgrade({"beds": 3, "baths": 2.0, "stories": 1, "garage": 1, "basement": false})
+	var lay: Dictionary = _lay(l) if l.has("home") else LTHomes.layout(l, spec)
+	var ci: int = int(spec.get("color", int(l["id"])))
+	var wc: Color = _wear((SIDING[str(spec["siding"])] as Array)[ci % 6], cond)
+	var rc: Color = (ROOFS[str(spec["roof"])] as Array)[ci % 4]
+	var trim: Color = Color(0.96, 0.95, 0.92)
+	var style: String = str(spec["style"])
 	var floors: int = int(spec["stories"])
-	var wall_h: float = 3.2 if floors == 1 else 6.0
-	var stalls: int = int(spec["garage"])
-	var gw: float = float(dims[1])
-	if gw < 2.6:
-		stalls = 0
+	var hr: Array = lay["house"]
+	var W: float = float(lay["W"])
+	var D: float = float(lay["D"])
+	var hx: float = (float(hr[0]) + float(hr[2])) * 0.5
+	var front_z: float = KIT_BACK - float(hr[1])
+	var cz: float = front_z - D * 0.5
+	var wall_h: float = 3.0 if floors == 1 else 5.8
+	# the drive and walk first, so the house sits on top
+	if lay.has("drive"):
+		_flat(root, lay["drive"], 0.0, 0.06, Color(0.62, 0.62, 0.6))
+	_box(root, Vector3(1.2, 0.05, KIT_BACK - front_z + 0.5), Vector3(float(lay["door_x"]), 0.05, (KIT_BACK + front_z) * 0.5), Color(0.7, 0.68, 0.64))
+	if style == "split_level":
+		# two halves a half story apart
+		var half: float = W * 0.5
+		_box(root, Vector3(half, 3.0, D), Vector3(hx - half * 0.5, 1.5, cz), wc)
+		_box(root, Vector3(half, 4.4, D), Vector3(hx + half * 0.5, 2.2 + 0.6, cz), wc)
+		_roof(root, Vector3(D + 0.6, 1.6, half + 0.5), Vector3(hx - half * 0.5, 3.8, cz), rc, PI * 0.5)
+		_roof(root, Vector3(D + 0.6, 1.6, half + 0.5), Vector3(hx + half * 0.5, 6.0, cz), rc, PI * 0.5)
+		wall_h = 3.0
 	else:
-		stalls = mini(stalls, int(gw / 2.6))
-	var hx: float = float(dims[2])
-	_box(root, Vector3(hw, wall_h, 6.0), Vector3(hx, wall_h * 0.5, -0.5), wc)
-	_roof(root, Vector3(hw + 0.6, 2.2, 6.6), Vector3(hx, wall_h + 1.1, -0.5), rc)
+		_box(root, Vector3(W, wall_h, D), Vector3(hx, wall_h * 0.5, cz), wc)
+		var pitch: float = {"ranch": 1.6, "two_story": 2.2, "farmhouse": 3.0, "craftsman": 2.0}.get(style, 2.0)
+		if style == "farmhouse" or style == "craftsman":
+			# gable to the street
+			_roof(root, Vector3(W + 0.6, pitch, D + 0.6), Vector3(hx, wall_h + pitch * 0.5, cz), rc)
+		else:
+			# ridge along the street
+			_roof(root, Vector3(D + 0.6, pitch, W + 0.6), Vector3(hx, wall_h + pitch * 0.5, cz), rc, PI * 0.5)
+		if bool(spec["solar"]):
+			_box(root, Vector3(minf(W * 0.6, 7.0), 0.08, D * 0.35), Vector3(hx, wall_h + pitch * 0.55, cz + D * 0.2), Color(0.12, 0.16, 0.3), false, Vector3(-0.45, 0, 0))
+	# chimney for a fireplace or wood stove
+	if bool(spec["fireplace"]) or str(spec["heat"]) == "wood_stove":
+		_box(root, Vector3(0.8, wall_h + 3.0, 0.8), Vector3(float(hr[0]) + 0.6, (wall_h + 3.0) * 0.5, cz), Color(0.55, 0.32, 0.26) if str(spec["siding"]) != "stone" else Color(0.6, 0.58, 0.55))
+	# windows on the front, lit when someone is home
 	var occupied: bool = int(l["units"][0]) >= 0
-	var lit: bool = occupied
-	var win_c: Color = Color(1.0, 0.86, 0.5) if lit else Color(0.25, 0.3, 0.35)
-	var n_win: int = clampi(beds, 2, 4)
-	for f in floors:
+	var win_c: Color = Color(1.0, 0.86, 0.5) if occupied else Color(0.25, 0.3, 0.35)
+	var n_win: int = clampi(int(W / 2.6), 2, 6)
+	var door_x: float = float(lay["door_x"])
+	for f in (floors if style != "split_level" else 1):
 		for i in n_win:
-			var x: float = hx - hw * 0.5 + hw * (float(i) + 0.5) / float(n_win)
-			if f == 0 and absf(x - hx) < 0.7:
+			var x: float = float(hr[0]) + W * (float(i) + 0.5) / float(n_win)
+			if f == 0 and absf(x - door_x) < 0.9:
 				continue
-			_box(root, Vector3(1.0, 1.0, 0.1), Vector3(x, 1.9 + f * 2.8, 2.55), win_c, lit)
-	_box(root, Vector3(1.0, 2.0, 0.1), Vector3(hx, 1.0, 2.55), Color(0.4, 0.25, 0.15))
-	if stalls > 0 and gw > 1.0:
-		var gx: float = hx + hw * 0.5 + gw * 0.5
-		_box(root, Vector3(gw, 2.8, 5.6), Vector3(gx, 1.4, -0.3), wc.darkened(0.08))
-		_roof(root, Vector3(gw + 0.3, 1.2, 5.9), Vector3(gx, 3.4, -0.3), rc)
+			_box(root, Vector3(1.0, 1.1, 0.1), Vector3(x, 1.7 + f * 2.8, front_z + 0.05), win_c, occupied)
+	_box(root, Vector3(1.0, 2.0, 0.12), Vector3(door_x, 1.0, front_z + 0.06), Color(0.4, 0.25, 0.15))
+	# porch: a floor, posts and a shed roof
+	if lay.has("porch"):
+		var pr: Array = lay["porch"]
+		_flat(root, pr, 0.0, 0.35, Color(0.7, 0.62, 0.52))
+		var pk: Array = _kr(pr, 2.7, 0.2)
+		_box(root, (pk[0] as Vector3) + Vector3(0.3, 0, 0.3), pk[1], rc)
+		var pz: float = KIT_BACK - float(pr[1]) - 0.2
+		var nposts: int = clampi(int((float(pr[2]) - float(pr[0])) / 2.5) + 1, 2, 6)
+		for i in nposts:
+			var px: float = lerpf(float(pr[0]) + 0.2, float(pr[2]) - 0.2, float(i) / float(nposts - 1))
+			_box(root, Vector3(0.18, 2.4, 0.18), Vector3(px, 1.55, pz), trim)
+	# garage, with a door per stall facing the street (or the alley behind)
+	if lay.has("garage"):
+		var gr: Array = lay["garage"]
+		var gk: Array = _kr(gr, 0.0, 2.9)
+		_box(root, gk[0], gk[1], wc.darkened(0.06))
+		var gwid: float = float(gr[2]) - float(gr[0])
+		var gdep: float = float(gr[3]) - float(gr[1])
+		_roof(root, Vector3(gdep + 0.4, 1.2, gwid + 0.4), (gk[1] as Vector3) + Vector3(0, 2.05, 0), rc, PI * 0.5)
+		var stalls: int = int(spec["garage"])
+		var rear_door: bool = bool(lay.get("garage_rear", false)) and LTHomes.alley_behind(w, l)
+		var door_z: float = (KIT_BACK - float(gr[3]) - 0.06) if rear_door else (KIT_BACK - float(gr[1]) + 0.06)
+		var sw: float = 3.3
 		for i in stalls:
-			_box(root, Vector3(gw / float(stalls) - 0.4, 2.0, 0.1), Vector3(gx - gw * 0.5 + (float(i) + 0.5) * gw / float(stalls), 1.0, 2.5), Color(0.85, 0.85, 0.85))
-		_box(root, Vector3(gw, 0.05, 4.0), Vector3(gx, 0.07, 4.5), Color(0.6, 0.6, 0.6))
-	else:
-		_box(root, Vector3(1.2, 0.05, 4.0), Vector3(hx, 0.07, 4.5), Color(0.6, 0.6, 0.6))
+			_box(root, Vector3(sw - 0.6, 2.1, 0.1), Vector3(float(gr[0]) + (float(i) + 0.5) * sw, 1.05, door_z), Color(0.88, 0.88, 0.86))
+		if bool(spec["workshop"]):
+			_box(root, Vector3(0.9, 2.0, 0.1), Vector3(float(gr[2]) - 1.5, 1.0, door_z), Color(0.45, 0.3, 0.2))
+		if bool(lay.get("garage_rear", false)) and not rear_door:
+			# a long drive down the side to the garage out back
+			_box(root, Vector3(3.0, 0.06, float(gr[1])), Vector3((float(gr[0]) + float(gr[2])) * 0.5, 0.04, KIT_BACK - float(gr[1]) * 0.5), Color(0.62, 0.62, 0.6))
+	# the back yard
+	if lay.has("fence"):
+		var fr: Array = lay["fence"]
+		var fc: Color = Color(0.85, 0.82, 0.75)
+		var z0: float = KIT_BACK - float(fr[1])
+		var z1: float = KIT_BACK - float(fr[3])
+		_box(root, Vector3(0.08, 1.2, z0 - z1), Vector3(float(fr[0]), 0.6, (z0 + z1) * 0.5), fc)
+		_box(root, Vector3(0.08, 1.2, z0 - z1), Vector3(float(fr[2]), 0.6, (z0 + z1) * 0.5), fc)
+		_box(root, Vector3(float(fr[2]) - float(fr[0]), 1.2, 0.08), Vector3((float(fr[0]) + float(fr[2])) * 0.5, 0.6, z1), fc)
+	if lay.has("deck"):
+		_flat(root, lay["deck"], 0.0, 0.6, Color(0.6, 0.45, 0.3))
+	if lay.has("patio"):
+		_flat(root, lay["patio"], 0.0, 0.08, Color(0.72, 0.7, 0.66))
+	if lay.has("shed"):
+		var sk: Array = _kr(lay["shed"], 0.0, 2.3)
+		_box(root, sk[0], sk[1], Color(0.6, 0.35, 0.25))
+		_roof(root, (sk[0] as Vector3) * Vector3(1.1, 0.4, 1.1), (sk[1] as Vector3) + Vector3(0, 1.6, 0), rc)
+	if lay.has("garden") and _season != "Winter":
+		_flat(root, lay["garden"], 0.0, 0.12, Color(0.35, 0.25, 0.17))
+		var gr2: Array = lay["garden"]
+		for i in 5:
+			_box(root, Vector3(float(gr2[2]) - float(gr2[0]) - 0.6, 0.35, 0.25), Vector3((float(gr2[0]) + float(gr2[2])) * 0.5, 0.25, KIT_BACK - float(gr2[1]) - 0.4 - float(i) * 0.55), Color(0.3, 0.55, 0.25))
+	if lay.has("greenhouse"):
+		var gh: Array = _kr(lay["greenhouse"], 0.0, 2.4)
+		_box(root, gh[0], gh[1], Color(0.8, 0.92, 0.95, 0.6), true)
+	if lay.has("pool"):
+		_flat(root, lay["pool"], 0.0, 0.12, Color(0.92, 0.9, 0.85))
+		var pk2: Array = _kr(lay["pool"], 0.05, 0.1)
+		_box(root, (pk2[0] as Vector3) - Vector3(0.6, 0, 0.6), pk2[1], Color(0.25, 0.6, 0.85) if _season != "Winter" else Color(0.6, 0.65, 0.7))
+	if lay.has("shelter"):
+		var shk: Array = _kr(lay["shelter"], 0.0, 0.5)
+		_box(root, shk[0], shk[1], Color(0.45, 0.5, 0.4))
+		_box(root, Vector3(1.0, 0.1, 1.0), (shk[1] as Vector3) + Vector3(0, 0.3, 0), Color(0.5, 0.5, 0.52))
 	if not occupied:
-		var s: Label3D = _sign(root, "For sale", Vector3(3.5, 1.5, 4.5), 28)
+		var s: Label3D = _sign(root, "For sale", Vector3(_chair_x(l, 0), 1.5, KIT_BACK - 1.5), 28)
 		s.pixel_size = 0.04
 	else:
-		# two lawn chairs facing the street and a flower bed by the front wall
-		for cp in CHAIRS:
-			var cv: Vector3 = cp
+		# two lawn chairs on the side away from the drive, and a flower bed by the front wall
+		for i in 2:
+			var cv: Vector3 = _chair(l, i)
 			_box(root, Vector3(0.7, 0.12, 0.7), cv + Vector3(0, 0.45, 0), Color(0.85, 0.85, 0.8))
 			_box(root, Vector3(0.7, 0.7, 0.1), cv + Vector3(0, 0.8, -0.33), Color(0.85, 0.85, 0.8))
 			for lx in [-0.3, 0.3]:
 				_box(root, Vector3(0.06, 0.45, 0.6), cv + Vector3(lx, 0.22, 0), Color(0.5, 0.5, 0.5))
-		var bed: Vector3 = Vector3(hx + FLOWER_X, 0, 3.0)
+		var bed: Vector3 = Vector3(door_x + FLOWER_X, 0, front_z + 0.6)
 		_box(root, Vector3(1.8, 0.25, 0.7), bed + Vector3(0, 0.12, 0), Color(0.35, 0.25, 0.18))
 		if _season != "Winter":
 			for i in 4:
 				_ball(root, 0.16, bed + Vector3(-0.6 + i * 0.4, 0.35, 0), [Color(0.9, 0.3, 0.4), Color(0.95, 0.85, 0.3), Color(0.6, 0.4, 0.85), Color(0.95, 0.6, 0.3)][i])
 	if cond < 0.4:
-		_box(root, Vector3(1.4, 0.1, 1.1), Vector3(hx + 2.0, 2.1, 2.62), Color(0.4, 0.3, 0.2))
+		_box(root, Vector3(1.4, 0.1, 1.1), Vector3(hx + 2.0, wall_h - 0.9, front_z + 0.12), Color(0.4, 0.3, 0.2))
 	# a business run from home: a yard sign, and the work truck in the drive
 	var hb: String = _home_biz_name(int(l["id"]))
 	if hb != "":
 		var nm: String = hb.get_slice("|", 0)
 		var bt: String = hb.get_slice("|", 1)
-		_box(root, Vector3(0.12, 1.2, 0.12), Vector3(-5.2, 0.6, 5.2), Color(0.35, 0.25, 0.15))
-		_box(root, Vector3(2.2, 0.9, 0.1), Vector3(-5.2, 1.5, 5.2), Color(0.95, 0.93, 0.85))
-		var bs: Label3D = _sign(root, nm, Vector3(-5.2, 2.6, 5.2), 26, Color(1.0, 0.95, 0.7))
+		var sx: float = _chair_x(l, 0)
+		_box(root, Vector3(0.12, 1.2, 0.12), Vector3(sx, 0.6, KIT_BACK - 1.0), Color(0.35, 0.25, 0.15))
+		_box(root, Vector3(2.2, 0.9, 0.1), Vector3(sx, 1.5, KIT_BACK - 1.0), Color(0.95, 0.93, 0.85))
+		var bs: Label3D = _sign(root, nm, Vector3(sx, 2.6, KIT_BACK - 1.0), 26, Color(1.0, 0.95, 0.7))
 		bs.pixel_size = 0.035
-		if bt == "construction" or bt == "trucking" or bt == "repair_shop":
+		if (bt == "construction" or bt == "trucking" or bt == "repair_shop") and lay.has("drive"):
+			var dr: Array = lay["drive"]
+			var tx: float = (float(dr[0]) + float(dr[2])) * 0.5
 			var tc: Color = Color(0.85, 0.65, 0.1) if bt == "construction" else (Color(0.6, 0.15, 0.1) if bt == "trucking" else Color(0.3, 0.3, 0.35))
-			_box(root, Vector3(1.8, 1.0, 3.6), Vector3(4.8, 0.8, 5.0), tc)
-			_box(root, Vector3(1.7, 0.8, 1.4), Vector3(4.8, 1.6, 4.0), Color(0.6, 0.75, 0.85))
+			_box(root, Vector3(1.8, 1.0, 3.6), Vector3(tx, 0.8, KIT_BACK - 3.0), tc)
+			_box(root, Vector3(1.7, 0.8, 1.4), Vector3(tx, 1.6, KIT_BACK - 4.0), Color(0.6, 0.75, 0.85))
 
 
 func _apartment(root: Node3D, l: Dictionary, cond: float) -> void:
@@ -1907,19 +2011,53 @@ func _outdoor_plan(c: Dictionary, hour: float) -> Dictionary:
 	return {}
 
 
-## Where the front of the house sits on its lot (the garage pushes it left).
+## The front door's x on the lot.
 func _house_hx(l: Dictionary) -> float:
 	return float(_house_dims(l)[2])
 
 
-## [house width, garage width, house x] for a house on its lot: it keeps about
-## 1.5 meters from each side line, so a narrow lot gets a narrower house.
+var _lay_cache: Dictionary = {}
+
+
+## A lot's house layout, cached until the family changes the house.
+func _lay(l: Dictionary) -> Dictionary:
+	var c = _lay_cache.get(int(l["id"]))
+	if c != null and is_same(c[0], l["home"]):
+		return c[1]
+	var lay: Dictionary = LTHomes.layout(l, l["home"])
+	_lay_cache[int(l["id"])] = [l["home"], lay]
+	return lay
+
+
+## [house width, garage width, door x] from the family's own layout.
 func _house_dims(l: Dictionary) -> Array:
-	var spec: Dictionary = l.get("home", {"beds": 3, "garage": 1})
-	var avail: float = maxf(6.0, LTGeography.lot_frontage(l) - 3.0)
-	var hw: float = clampf(5.6 + float(int(spec["beds"])) * 0.85, 6.0, minf(11.0, avail))
-	var gw: float = clampf(float(int(spec.get("garage", 1))) * 2.8, 0.0, maxf(0.0, avail - hw))
-	return [hw, gw, -gw * 0.5]
+	if not l.has("home"):
+		return [8.0, 0.0, 0.0]
+	var lay: Dictionary = _lay(l)
+	return [float(lay["W"]), float(lay["gw"]), float(lay["door_x"])]
+
+
+## The kit z of the house front.
+func _front_z(l: Dictionary) -> float:
+	if not l.has("home"):
+		return 2.5
+	return KIT_BACK - float(_lay(l)["house"][1])
+
+
+## Lawn chairs sit in the front yard on the side away from the driveway.
+func _chair_x(l: Dictionary, i: int) -> float:
+	var side: float = -1.0
+	if l.has("home"):
+		var lay: Dictionary = _lay(l)
+		if lay.has("drive"):
+			var dr: Array = lay["drive"]
+			side = 1.0 if (float(dr[0]) + float(dr[2])) * 0.5 < float(lay["door_x"]) else -1.0
+	var fw: float = LTGeography.lot_frontage(l)
+	return side * minf(fw * 0.5 - 2.0, 4.7) + (1.1 if side < 0.0 else -1.1) * float(i)
+
+
+func _chair(l: Dictionary, i: int) -> Vector3:
+	return Vector3(_chair_x(l, i), 0, minf(KIT_BACK - 2.5, _front_z(l) + 3.0))
 
 
 ## Free time at home. Most of it is spent indoors, out of sight, as real people
@@ -1950,10 +2088,10 @@ func _at_home(c: Dictionary, home: int, home_p: Vector3, hour: float, window: bo
 	var sit_p: float = 0.4 if age >= 60 else 0.22
 	if roll < sit_p:
 		var hh: Dictionary = w.hh(int(c["household"]))
-		var idx: int = maxi(0, hh["members"].find(cid)) % CHAIRS.size()
-		return {"pos": kx * ((CHAIRS[idx] as Vector3) + Vector3(0, 0, 0.1)), "visible": true, "car": false, "moving": false, "pose": "sit", "face": face0}
+		var idx: int = maxi(0, hh["members"].find(cid)) % 2
+		return {"pos": kx * (_chair(w.lot(home), idx) + Vector3(0, 0, 0.1)), "visible": true, "car": false, "moving": false, "pose": "sit", "face": face0}
 	if roll < sit_p + 0.12 and _season != "Winter":
-		return {"pos": kx * Vector3(_house_hx(w.lot(home)) + FLOWER_X, 0, 3.75), "visible": true, "car": false, "moving": false, "pose": "kneel", "face": face0 + PI}
+		return {"pos": kx * Vector3(_house_hx(w.lot(home)) + FLOWER_X, 0, _front_z(w.lot(home)) + 1.35), "visible": true, "car": false, "moving": false, "pose": "kneel", "face": face0 + PI}
 	if roll < sit_p + 0.25:
 		# a walk down the sidewalk and back
 		var walk_t: float = fmod(minute, block_min) / block_min

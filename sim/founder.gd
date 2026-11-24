@@ -126,7 +126,7 @@ static func _settlers(w: LTWorld) -> void:
 		elif roll >= 0.78 and roll < 0.9:
 			kids = w.rng.randi_range(1, 2)
 		var income: int = LTMoney.dollars(w.rng.randf_range(38000.0, 62000.0) * (1.6 if adults == 2 else 1.0))
-		var spec: Dictionary = LTGeography.choose_home(w, adults, kids, income, w.rng.randf_range(25.0, 80.0), w.rng.randf_range(25.0, 80.0))
+		var spec: Dictionary = LTGeography.choose_home(w, adults, kids, income, w.rng.randf_range(25.0, 80.0), w.rng.randf_range(25.0, 80.0), l)
 		var cost: int = LTGeography.home_cost(spec)
 		var r: Dictionary = LTProjects.define_project(w, "house", int(l["id"]), int(float(cost) * 1.3), -1, false,
 			{"kind": "settler", "id": -1, "name": "the %s family" % family, "acct": "bank", "family": family, "adults": adults, "kids": kids, "home": spec},

@@ -963,12 +963,11 @@ const BASEMENT: float = 35000.0
 
 
 static func home_sqft(spec: Dictionary) -> int:
-	return 500 + int(spec["beds"]) * 280 + int(float(spec["baths"]) * 90.0) + (150 if int(spec["stories"]) == 2 else 0)
+	return LTHomes.sqft(spec)
 
 
 static func home_cost(spec: Dictionary) -> int:
-	var d: float = float(home_sqft(spec)) * HOME_PER_SQFT + float(spec["garage"]) * GARAGE_STALL + (BASEMENT if bool(spec["basement"]) else 0.0)
-	return LTMoney.dollars(d)
+	return LTHomes.home_cost(spec)
 
 
 static func _thousands(n: int) -> String:
@@ -977,17 +976,7 @@ static func _thousands(n: int) -> String:
 
 
 static func home_text(spec: Dictionary) -> String:
-	if spec.is_empty():
-		return ""
-	var baths: float = float(spec["baths"])
-	var parts: Array = ["%d bedroom%s" % [int(spec["beds"]), "" if int(spec["beds"]) == 1 else "s"],
-		"%s bath%s" % [("%d" % int(baths)) if baths == floor(baths) else ("%.1f" % baths), "" if baths == 1.0 else "s"],
-		"%s square feet" % _thousands(home_sqft(spec)), "two story" if int(spec["stories"]) == 2 else "one story"]
-	if int(spec["garage"]) > 0:
-		parts.append("%d car garage" % int(spec["garage"]))
-	if bool(spec["basement"]):
-		parts.append("basement")
-	return ", ".join(parts)
+	return "" if spec.is_empty() else LTHomes.text(spec)
 
 
 ## A family decides what to build from who they are and what they can carry:
@@ -996,36 +985,16 @@ static func home_text(spec: Dictionary) -> String:
 ## long, a basement for storm shelter if they can afford it. Ambitious or proud
 ## families reach for more, careful ones build what they need. The bank lends up
 ## to about four times the family's yearly income.
-static func choose_home(w: LTWorld, adults: int, kids: int, yearly_income: int, ambition: float, discipline: float) -> Dictionary:
-	var beds: int = clampi(1 + (1 if adults >= 2 else 0) + int(ceil(float(kids) / 1.5)), 1, 5)
-	if adults >= 2 and kids == 0 and w.rng.randf() < 0.6:
-		beds += 1   # a spare room or a nursery to come
-	var reach: float = (ambition - discipline) / 100.0 + w.rng.randf_range(-0.2, 0.2)
-	if reach > 0.25:
-		beds += 1
-	beds = clampi(beds, 1, 5)
-	var baths: float = 1.0 if beds <= 2 else (2.0 if beds <= 4 else 2.5)
-	if reach > 0.15 and beds >= 3:
-		baths += 0.5
-	var spec: Dictionary = {"beds": beds, "baths": baths, "stories": 2 if beds >= 4 and w.rng.randf() < 0.55 else 1,
-		"garage": 2 if adults >= 2 else 1, "basement": w.rng.randf() < 0.6}
-	if reach > 0.3 and w.rng.randf() < 0.5:
-		spec["garage"] = 3
-	# trim to what the bank will lend
-	var budget: int = maxi(LTMoney.dollars(180000.0), yearly_income * 4)
-	var guard: int = 0
-	while home_cost(spec) > budget and guard < 12:
-		guard += 1
-		if bool(spec["basement"]):
-			spec["basement"] = false
-		elif int(spec["garage"]) > 1:
-			spec["garage"] = int(spec["garage"]) - 1
-		elif float(spec["baths"]) > 1.5:
-			spec["baths"] = float(spec["baths"]) - 0.5
-		elif int(spec["stories"]) == 2:
-			spec["stories"] = 1
-		elif int(spec["beds"]) > maxi(1, beds - 1):
-			spec["beds"] = int(spec["beds"]) - 1
-		else:
-			break
-	return spec
+static func choose_home(w: LTWorld, adults: int, kids: int, yearly_income: int, ambition: float, discipline: float, lot: Dictionary = {}, budget: int = 0) -> Dictionary:
+	var tr: Dictionary = {}
+	for k in LTPeople.TRAIT_KEYS:
+		tr[k] = w.rng.randf_range(25.0, 75.0)
+	tr["ambition"] = ambition
+	tr["discipline"] = discipline
+	var ctx: Dictionary = {"adults": adults, "kids": kids, "income": yearly_income, "traits": tr, "head_age": w.rng.randi_range(25, 60),
+		"cook": w.rng.randf() < 0.12, "builder": w.rng.randf() < 0.1, "hunter": w.rng.randf() < 0.2, "works_home": w.rng.randf() < 0.1}
+	if not lot.is_empty():
+		ctx["lot"] = lot
+	if budget > 0:
+		ctx["budget"] = budget
+	return LTHomes.design(w, ctx)

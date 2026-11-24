@@ -1262,10 +1262,58 @@ func _law_row(key: String) -> VBoxContainer:
 
 # ================================================================ Requests inbox
 
+func _variance_card(v: Dictionary) -> PanelContainer:
+	var ww: LTWorld = w()
+	var vb: VBoxContainer = VBoxContainer.new()
+	var head: Dictionary = ww.cit(int(v["cid"]))
+	var t: String = "%s asks to [b]%s[/b] at %s.\n" % [sim_link(int(v["cid"])) if not head.is_empty() else "The %s family" % v["family"], v["want"]["label"], lot_link(int(v["lot"]))]
+	t += "Their reason: %s.\nThe rule it breaks: %s.\nCost to them: %s.\n" % [v["want"]["why"], v["rule"], _money(int(v["cost"]))]
+	t += "Neighbors: %d for, %d against.\n" % [int(v["for"]), int(v["against"])]
+	for vo in v["voices"]:
+		t += "- %s\n" % vo
+	t += "Asked %s. Lapses %s." % [LTCalendar.short(int(v["day"])), LTCalendar.short(int(v["day"]) + 60)]
+	vb.add_child(_rtl(t))
+	var hb: HBoxContainer = HBoxContainer.new()
+	var vid: int = int(v["id"])
+	hb.add_child(_big(_btn("Grant", func():
+		var r: Dictionary = main.act({"kind": "decide_variance", "variance_id": vid, "approve": true})
+		show_toast(str(r["message"]))
+		refresh_all(), "Let them build it. The family will remember; neighbors against it may not like it.")))
+	hb.add_child(_big(_btn("Deny", func():
+		var r: Dictionary = main.act({"kind": "decide_variance", "variance_id": vid, "approve": false})
+		show_toast(str(r["message"]))
+		refresh_all(), "The rule stands. The family keeps the house as it is.")))
+	vb.add_child(hb)
+	return _paper(vb, "REQUEST FOR A ZONING VARIANCE", vid + 1, "FILED", "")
+
+
+## The plans for a house: what it costs, why the family chose it, and the drawing.
+func _home_plans(l: Dictionary, spec: Dictionary, title: String) -> void:
+	var sp: Dictionary = LTHomes.upgrade(spec)
+	var t: String = "\n[b]%s[/b]\n%s.\n" % [title, LTHomes.text(sp)]
+	for ln in LTHomes.price_list(sp):
+		t += "%s   %s\n" % [ln[0], _money(LTMoney.dollars(float(ln[1])))]
+	t += "[b]Total about %s[/b]\n" % _money(LTHomes.home_cost(sp))
+	if not sp.get("why", []).is_empty():
+		t += "\n[b]Why they built it this way[/b]\n"
+		for y in sp["why"]:
+			t += "- " + str(y).substr(0, 1).to_upper() + str(y).substr(1) + ".\n"
+	var lab: RichTextLabel = _rtl(t)
+	inspect_form.add_child(lab)
+	var fp: Control = preload("res://ui/floor_plan.gd").new()
+	inspect_form.add_child(fp)
+	fp.set_plan(l, sp)
+
 func _tab_requests() -> void:
 	var box: VBoxContainer = tab_boxes["Requests"]
 	_clear(box)
 	var ww: LTWorld = w()
+	var vars: Array = LTHomes.pending_variances(ww)
+	if not vars.is_empty():
+		box.add_child(_h("Zoning variances"))
+		box.add_child(_lbl("A family wants to build something the zoning rules do not allow. Ordinary permits that meet the code are issued by the building inspector; only exceptions come to you. Unanswered requests lapse after 60 days.", 13, Color(0.7, 0.75, 0.8)))
+		for v in vars:
+			box.add_child(_variance_card(v))
 	box.add_child(_h("Requests from citizens"))
 	box.add_child(_lbl("Petitions come from real needs Sims feel. They gather signatures over time. Answer them here.", 13, Color(0.7, 0.75, 0.8)))
 	var sort: OptionButton = OptionButton.new()
@@ -1821,6 +1869,8 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 				inspect_actions.add_child(z)
 			if not typing:
 				_lot_form(id)
+				if str(l["use"]) == "house" and l.has("home"):
+					_home_plans(l, l["home"], "THE HOUSE AS BUILT")
 		"road":
 			t = _road_text(id)
 			main.view.select_lot(-1)
@@ -1841,6 +1891,8 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 				inspect_actions.add_child(_btn("Find", func(): main.focus_lot(int(pp["lot"]))))
 			if not typing and not pp.is_empty():
 				_contract_form(pp)
+				if pp.has("home") and int(pp["lot"]) >= 0:
+					_home_plans(w().lot(int(pp["lot"])), pp["home"], "THE PLANS")
 		"pet":
 			t = _pet_text(id)
 		"debt":

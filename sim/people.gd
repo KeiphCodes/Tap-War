@@ -82,7 +82,7 @@ static func generate_town(w: LTWorld) -> void:
 			# what the house is: built long ago, roughly for the family living there
 			var ad: int = w.household_adults(h).size()
 			var kids: int = w.household_members(h).size() - ad
-			l["home"] = LTGeography.choose_home(w, maxi(1, ad), kids, LTMoney.dollars(w.rng.randf_range(35000.0, 90000.0)), w.rng.randf_range(20.0, 80.0), w.rng.randf_range(20.0, 80.0))
+			l["home"] = LTGeography.choose_home(w, maxi(1, ad), kids, LTMoney.dollars(w.rng.randf_range(35000.0, 90000.0)), w.rng.randf_range(20.0, 80.0), w.rng.randf_range(20.0, 80.0), l, LTMoney.dollars(w.rng.randf_range(260000.0, 450000.0)))
 		else:
 			h["tenure"] = "rent"
 			h["rent"] = int(l["unit_rent"])
@@ -640,7 +640,10 @@ static func evening(w: LTWorld) -> void:
 			fed = pantry / maxf(eat_need, 1.0)
 			h["pantry"] = 0.0
 		var housed: bool = int(h["lot"]) >= 0
-		var crowd: float = float(members.size()) / (4.0 if str(w.lot(int(h["lot"])).get("use", "")) == "house" else 3.0) if housed else 2.0
+		var hspec: Dictionary = LTHomes.of(w, h) if housed else {}
+		var crowd: float = (float(members.size()) / (LTHomes.capacity(hspec) if not hspec.is_empty() else (4.0 if str(w.lot(int(h["lot"])).get("use", "")) == "house" else 3.0))) if housed else 2.0
+		if not hspec.is_empty():
+			LTHomes.evening(w, h, members)
 		var bills: int = monthly_bills(w, h)
 		var cash_total: int = w.household_cash(h)
 		for m in members:
@@ -733,7 +736,7 @@ static func utilities(w: LTWorld, h: Dictionary) -> int:
 		base = LTMoney.dollars(260.0)
 	elif LTCalendar.season(w.day) == "Summer":
 		base = LTMoney.dollars(180.0)
-	return base + w.household_members(h).size() * LTMoney.dollars(15.0)
+	return int(float(base) * LTHomes.utility_factor(w, LTHomes.of(w, h))) + w.household_members(h).size() * LTMoney.dollars(15.0)
 
 
 static func _monthly_household(w: LTWorld, h: Dictionary) -> void:
