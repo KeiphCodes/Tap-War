@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-24T01:38:02 by tests/scenarios.gd.
+Generated 2026-11-24T02:14:21 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Lucy Brown was charged with burglary. Case status: convicted. Sentence: fined $1,000, 51 days in the county jail. Job before: truck driver, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 51 days in the county jail.
@@ -8,25 +8,25 @@ Generated 2026-11-24T01:38:02 by tests/scenarios.gd.
   Sara Martin and George Martin divorced. Child support: $684 a month, owed by Sara Martin, status after the payer's bankruptcy: 60 days late.
 
 [PASS] Addiction: a heavy habit costs money and health until the Sim chooses treatment, which lowers it
-  Diane Perez started with a drinking level of 75. After 120 days: level 9, went to treatment: true, cash $8,339 to $4,339.
+  Diane Perez started with a drinking level of 75. After 120 days: level 18, went to treatment: true, cash $8,339 to $5,920.
 
 [PASS] Pregnancy: about nine months, prenatal visits, a birth, and maternity leave
   Sara Martin was due Oct 12, Y1. Children 2 to 3. On leave until Nov 23, Y1.
 
 [PASS] A Sim run clinic captures doctor visits that used to leave town
-  Perez Family Clinic opened. Revenue so far $2,740. Medical spending kept in town recently: $1,709.
+  Perez Family Clinic opened. Revenue so far $1,936. Medical spending kept in town recently: $1,200.
 
 [PASS] Supply chain: farm grain to the mill, flour to the bakery, bread to the grocery, all paid through the ledger
-  Farm Perez Acres revenue $4,380. Mill Brown Mill revenue $898. Bakery Brown Bakery revenue $5,039. Grocery Perez Fresh Market supplier: Perez Acres and Valley Wholesale.
+  Farm Perez Acres revenue $4,361. Mill Brown Mill revenue $929. Bakery Brown Bakery revenue $4,368. Grocery Perez Fresh Market supplier: Perez Acres and Valley Wholesale.
 
 [PASS] A chartered local bank lends to townspeople and the interest stays in town
   Perez Savings Bank lent $942 to Sara Fischer. Creditor on the record: Perez Savings Bank. Paid back so far: $135.
 
 [PASS] Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town
-  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 8.4 minutes. The new street is done, condition 43.
+  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 7.8 minutes. The new street is done, condition 53.
 
 [PASS] City bonds, bus service and the new laws all work, and a small town cannot charter a bank
-  Bonds: Sold $200,000 in bonds at 3.8%. $1,191 a month for 20 years. Bus: riders paid $1,042 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 73 people: The state will not charter a bank for a town under 120 people. The town has 73.
+  Bonds: Sold $200,000 in bonds at 3.8%. $1,191 a month for 20 years. Bus: riders paid $1,095 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 73 people: The state will not charter a bank for a town under 120 people. The town has 73.
 
 [PASS] Elections mode: a challenger runs on real grievances, Sims vote, the result stands
   Challenger: Linda Martinez. Platform: lower taxes and less waste. Mayor still in office: true.
@@ -38,13 +38,13 @@ Generated 2026-11-24T01:38:02 by tests/scenarios.gd.
   Twenty ordinary thunderstorms: average loss 3.0 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 21.5 on weak, 2.0 on sound. Repairs paid: $127,699. Insurance claims: 24.
 
 [PASS] Saves carry every new system (cases, region, spend book, pregnancies, addictions) and continue identically
-  Hashes after 100 more days: 3646472129 and 3646472129.
+  Hashes after 100 more days: 108294662 and 108294662.
 
 [PASS] Every business type opens, runs for two months, and keeps the ledger balanced
   Opened: grocery, cafe, general_store, farm, construction, clinic, pharmacy, private_school, repair_shop, factory, warehouse, trucking, hotel, bar, childcare, funeral_home, law_office, real_estate, mill, bakery, bank, outfitter, marina, campground, guide_service, sawmill, quarry, gold_mine. Could not open: none. Still open after 60 days: 28.
 
 [PASS] Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes
-  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 406. Residents after two years: 46. Election: Sam Dakota won the town's first election with 88% of the vote against Jeffrey Schmidt. Milestones: ["first_settler", "home", "first_business", "incorporated", "balanced"]
+  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 305. Residents after two years: 41. Election: Sam Dakota won the town's first election with 83% of the vote against Jeffrey Schmidt. Milestones: ["first_settler", "home", "first_business", "incorporated", "balanced", "pop_50"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
   Day one reads 11-24. The game day for today is 1. Forty days later it reads month 1 of 2027.
@@ -60,5 +60,8 @@ Generated 2026-11-24T01:38:02 by tests/scenarios.gd.
 
 [PASS] Business buildings: owners design them room by room within their money, rooms set how many they serve, and busy ones add on
   Lean cafe: 1,500 sq ft, 55 seats, 4 parking spaces. With money to spare: 1,500 sq ft, 55 seats, outdoor patio seating, 5 parking spaces. Perez Kitchen grew from 800 to 1200 sq ft.
+
+[PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
+  Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 21% of income. FHA: FHA loan: $8,750 down, credit 590, payments 27% of income. Business: SBA 7(a) loan at 11.8%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
 
 RESULT: ALL SCENARIOS PASS
