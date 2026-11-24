@@ -230,19 +230,39 @@ static func _fires(w: LTWorld) -> void:
 	var code: float = float(w.city["laws"].get("building_code", 1.0))
 	var prevent: float = clampf(1.25 - code * 0.25, 0.7, 1.2) * clampf(1.1 - float(w.city["laws"].get("fire_funding", 1.0)) * 0.1, 0.85, 1.05)
 	for l in w.lots:
-		var use: String = str(l["use"])
-		var rate: float = 0.0
-		if use == "house" or use == "apartment" or use == "mayor_house":
-			rate = HOME_FIRE_PER_YEAR * maxf(1.0, float(l["units"].size()) * 0.7)
-		elif use == "business":
-			rate = BUSINESS_FIRE_PER_YEAR
-		else:
+		var rate: float = lot_fire_rate(w, l)
+		if rate <= 0.0:
 			continue
-		if weak(w, l):
-			rate *= 1.6
 		if w.rng.randf() >= rate * season * prevent / 365.0:
 			continue
 		_fire(w, l)
+
+
+## Chance a year that this building catches fire, before season and prevention.
+static func lot_fire_rate(w: LTWorld, l: Dictionary) -> float:
+	var use: String = str(l["use"])
+	var rate: float = 0.0
+	if use == "house" or use == "apartment" or use == "mayor_house":
+		rate = HOME_FIRE_PER_YEAR * maxf(1.0, float(l["units"].size()) * 0.7)
+	elif use == "business":
+		rate = BUSINESS_FIRE_PER_YEAR
+	else:
+		return 0.0
+	if weak(w, l):
+		rate *= 1.6
+	return rate
+
+
+## Fires a year the town should expect as it stands today: the model's own rate,
+## averaged over the seasons, without the luck of a few years' draws.
+static func expected_fires_per_year(w: LTWorld) -> float:
+	var code: float = float(w.city["laws"].get("building_code", 1.0))
+	var prevent: float = clampf(1.25 - code * 0.25, 0.7, 1.2) * clampf(1.1 - float(w.city["laws"].get("fire_funding", 1.0)) * 0.1, 0.85, 1.05)
+	var season_avg: float = (3.0 * 1.35 + 4.0 * 0.85 + 5.0 * 1.0) / 12.0
+	var t: float = 0.0
+	for l in w.lots:
+		t += lot_fire_rate(w, l)
+	return t * season_avg * prevent
 
 
 static func _fire(w: LTWorld, l: Dictionary) -> void:
