@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-24T21:31:26 by tests/scenarios.gd.
+Generated 2026-11-27T02:24:21 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 82 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 82 days in the county jail.
@@ -47,7 +47,7 @@ Generated 2026-11-24T21:31:26 by tests/scenarios.gd.
   Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 563. Residents after two years: 39. Election: Sam Dakota won the town's first election with 82% of the vote against Kevin Johnson. Milestones: ["home", "first_settler", "first_business", "incorporated", "balanced"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
-  Day one reads 11-24. The game day for today is 1. Forty days later it reads month 1 of 2027.
+  Day one reads 11-27. The game day for today is 1. Forty days later it reads month 1 of 2027.
 
 [PASS] Contracts and lot details: drawn roads are drafts until the mayor presses Go live; the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome
   Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $60,000, concrete avenue with sidewalks and lights $139,799, gravel lane $24,000. Built: concrete avenue quality 31, 0.1 minutes a block; gravel lane quality 22, 0.2 minutes a block. Deadline 30 days: bids promised [21, 22, 24] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $87,000. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
