@@ -627,6 +627,9 @@ func _build_right() -> void:
 	var body: VBoxContainer = VBoxContainer.new()
 	body.custom_minimum_size = Vector2(RIGHT_W - 80, 0)
 	sc.add_child(body)
+	inspect_top = VBoxContainer.new()
+	inspect_top.add_theme_constant_override("separation", 8)
+	body.add_child(inspect_top)
 	inspect_text = _rtl("")
 	inspect_text.custom_minimum_size = Vector2(RIGHT_W - 80, 0)
 	body.add_child(inspect_text)
@@ -635,6 +638,7 @@ func _build_right() -> void:
 	right.visible = false
 
 
+var inspect_top: VBoxContainer
 var tool_btns: Dictionary = {}
 var tool_bar: PanelContainer
 var zone_opt: OptionButton
@@ -1348,6 +1352,32 @@ func _variance_card(v: Dictionary) -> PanelContainer:
 	return _paper(vb, "REQUEST FOR A ZONING VARIANCE", vid + 1, "FILED", "")
 
 
+## The numbers at the top of a business's page: tiles and its monthly trends.
+func _biz_charts(b: Dictionary) -> void:
+	var inf: Dictionary = _biz_info(b)
+	var cash: Callable = func(v): return _short_money(int(v))
+	var tiles: GridContainer = GridContainer.new()
+	tiles.columns = 2
+	tiles.add_theme_constant_override("h_separation", 8)
+	tiles.add_theme_constant_override("v_separation", 8)
+	inspect_top.add_child(tiles)
+	var rows: Array = [["Sales last month", inf["revenue"], true, 0], ["Profit last month", inf["profit"], true, 2],
+		["Cash on hand", [w().biz_cash(b)], true, 2], ["Customers today", [int(b.get("customers_today", 0))], true, 0]]
+	for r in rows:
+		var tile: Control = DashScript.new()
+		tiles.add_child(tile)
+		tile.as_kpi(str(r[0]), r[1] if not r[1].is_empty() else [0], cash if r[0] != "Customers today" else func(v): return str(int(v)), bool(r[2]), DashScript.SERIES[int(r[3])])
+	var months: Array = []
+	var n: int = inf["revenue"].size()
+	for i in n:
+		months.append("%d month%s ago" % [n - 1 - i, "" if n - 1 - i == 1 else "s"] if i < n - 1 else "Last month")
+	for lr in [["Sales by month", inf["revenue"], 0], ["Profit by month", inf["profit"], 2]]:
+		var ch: Control = DashScript.new()
+		inspect_top.add_child(ch)
+		var lbs: Array = months if lr[1].size() == n else []
+		ch.as_line(str(lr[0]), lr[1], lbs, cash, DashScript.SERIES[int(lr[2])])
+
+
 ## The plans for a business building, drawn the same way as a house.
 func _biz_plans(l: Dictionary, plan: Dictionary, title: String) -> void:
 	if plan.is_empty():
@@ -1689,24 +1719,132 @@ func _people_list() -> void:
 	list_box.add_child(_rtl("%d shown\n" % lines.size() + "\n".join(lines)))
 
 
+var biz_filter: String = "open"
+var biz_sort: int = 0
+
+
+## A business's numbers for the cards and the detail panel.
+func _biz_info(b: Dictionary) -> Dictionary:
+	var ww: LTWorld = w()
+	var owner: Dictionary = ww.cit(int(b["owners"][0]))
+	var st: String = str(b["status"])
+	var since: String = "Open since %s" % LTCalendar.short(maxi(1, int(b["opened_day"])))
+	if st == "closed":
+		since = "Closed %s" % LTCalendar.short(maxi(1, int(b["closed_day"])))
+	elif st == "building":
+		since = "Opening when the building is done"
+	var where: String = "run from home" if bool(b.get("home_based", false)) else str(LTGeography.lot_street(ww, int(b["lot"])).get("name", ""))
+	return {"name": str(b["name"]), "kind": "%s, %s" % [str(LTEconomy.tcfg(b["type"])["display"]), where], "status": st,
+		"owner": ww.full_name(owner) if not owner.is_empty() else "nobody", "revenue": b.get("customers_hist", []).duplicate(),
+		"profit": b.get("month_profit_hist", []).duplicate(), "staff": b["staff"].size(), "target": int(b.get("target_staff", 0)),
+		"reputation": float(b.get("reputation", 50.0)), "since": since, "fmt": func(v): return _short_money(int(v))}
+
+
 func _tab_business() -> void:
 	var box: VBoxContainer = tab_boxes["Business"]
 	_clear(box)
 	var ww: LTWorld = w()
+	var wide: bool = left_w >= 900
 	box.add_child(_h("Businesses"))
-	box.add_child(_lbl("Every business here was started by a Sim. You cannot place, run or close one.", 13, Color(0.7, 0.75, 0.8)))
-	var lines: Array = []
+	box.add_child(_lbl("Every business here was started by a Sim. You cannot place, run or close one. Tap a card for everything about it.", 13, Color("93a1b5")))
+	# the totals
+	var open_n: int = 0
+	var rev: Array = [0, 0]
+	var prof: Array = [0, 0]
+	var paying: int = 0
+	var jobs: int = 0
 	for b in ww.businesses:
-		if str(b["status"]) == "never_opened":
+		if str(b["status"]) != "open" or str(b["type"]) == "landlord":
 			continue
-		var owner: Dictionary = ww.cit(int(b["owners"][0]))
-		var st: String = "open" if str(b["status"]) == "open" else "closed %s" % LTCalendar.short(int(b["closed_day"]))
-		var profit: String = ""
-		var ph: Array = b["month_profit_hist"]
-		if not ph.is_empty():
-			profit = ", last month %s" % _money(int(ph[ph.size() - 1]))
-		lines.append("%s (%s), %s. Owner %s. Staff %d%s." % [biz_link(int(b["id"])), str(LTEconomy.tcfg(b["type"])["display"]).to_lower(), st, sim_link(int(owner.get("id", -1))), b["staff"].size(), profit])
-	box.add_child(_rtl("\n".join(lines) if not lines.is_empty() else "No businesses yet."))
+		open_n += 1
+		jobs += b["staff"].size() + 1
+		var rh: Array = b.get("customers_hist", [])
+		var ph: Array = b.get("month_profit_hist", [])
+		if rh.size() >= 1:
+			rev[1] += int(rh[rh.size() - 1])
+		if rh.size() >= 2:
+			rev[0] += int(rh[rh.size() - 2])
+		if ph.size() >= 1:
+			prof[1] += int(ph[ph.size() - 1])
+			if int(ph[ph.size() - 1]) > 0:
+				paying += 1
+		if ph.size() >= 2:
+			prof[0] += int(ph[ph.size() - 2])
+	var latent: int = 0
+	for k in ww.spend_book:
+		latent += int(ww.spend_book[k].get("last_latent", 0)) + int(ww.spend_book[k].get("last_outside", 0))
+	var opened: Array = []
+	for h in ww.stats_history:
+		opened.append(int(h.get("businesses_open", 0)))
+	opened.append(open_n)
+	var num: Callable = func(v): return str(int(round(float(v))))
+	var cash: Callable = func(v): return _short_money(int(v))
+	var tiles: GridContainer = GridContainer.new()
+	tiles.columns = 4 if wide else 2
+	tiles.add_theme_constant_override("h_separation", 8)
+	tiles.add_theme_constant_override("v_separation", 8)
+	box.add_child(tiles)
+	for kr in [["Businesses open", opened, num, true, 0], ["Jobs they give", [jobs], num, true, 2],
+			["Sales last month", rev, cash, true, 0], ["Profit last month", prof, cash, true, 2],
+			["Making money", [paying], func(v): return "%d of %d" % [int(v), open_n], true, 2], ["Spent out of town a month", [latent], cash, false, 1]]:
+		var tile: Control = DashScript.new()
+		tiles.add_child(tile)
+		tile.as_kpi(str(kr[0]), kr[1], kr[2], bool(kr[3]), DashScript.SERIES[int(kr[4])])
+	# filters and sort in one row above the cards
+	var bar: HBoxContainer = HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 6)
+	box.add_child(bar)
+	for f in [["open", "Open"], ["building", "Being built"], ["closed", "Closed"], ["all", "All"]]:
+		var fb: Button = _btn(str(f[1]), func():
+			biz_filter = str(f[0])
+			_tab_business())
+		fb.toggle_mode = true
+		fb.button_pressed = biz_filter == str(f[0])
+		bar.add_child(fb)
+	var sp: Control = Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(sp)
+	var sort: OptionButton = _opt(["Sort: most sales", "Sort: most profit", "Sort: newest", "Sort: name"], biz_sort, func(i):
+		biz_sort = i
+		_tab_business())
+	sort.custom_minimum_size = Vector2(210, 0)
+	bar.add_child(sort)
+	# the cards
+	var list: Array = []
+	for b in ww.businesses:
+		var st: String = str(b["status"])
+		if st == "never_opened" or str(b["type"]) == "landlord":
+			continue
+		if biz_filter != "all" and st != biz_filter:
+			continue
+		list.append(b)
+	var last: Callable = func(b: Dictionary, key: String) -> int:
+		var a2: Array = b.get(key, [])
+		return int(a2[a2.size() - 1]) if not a2.is_empty() else 0
+	match biz_sort:
+		0:
+			list.sort_custom(func(x, y): return last.call(x, "customers_hist") > last.call(y, "customers_hist"))
+		1:
+			list.sort_custom(func(x, y): return last.call(x, "month_profit_hist") > last.call(y, "month_profit_hist"))
+		2:
+			list.sort_custom(func(x, y): return int(x["opened_day"]) > int(y["opened_day"]))
+		3:
+			list.sort_custom(func(x, y): return str(x["name"]) < str(y["name"]))
+	if list.is_empty():
+		box.add_child(_lbl({"open": "No businesses open yet.", "building": "Nothing being built.", "closed": "None have closed.", "all": "No businesses yet."}[biz_filter], 14, Color("93a1b5")))
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 3 if left_w >= 1150 else (2 if wide else 1)
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	box.add_child(grid)
+	for b in list:
+		var card: Control = DashScript.new()
+		grid.add_child(card)
+		card.as_biz(_biz_info(b))
+		var bid: int = int(b["id"])
+		card.pressed.connect(func():
+			inspect("biz", bid)
+			main.focus_lot(int(w().biz(bid)["lot"])))
 	box.add_child(_sep())
 	box.add_child(_h("Contractors"))
 	var cl: Array = []
@@ -1974,6 +2112,7 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 	_clear(inspect_actions)
 	if not typing:
 		_clear(inspect_form)
+		_clear(inspect_top)
 	var t: String = ""
 	match kind:
 		"sim":
@@ -1987,6 +2126,8 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 			t = _biz_text(id)
 			inspect_actions.add_child(_btn("Find", func(): main.focus_lot(int(w().biz(id)["lot"]))))
 			var bz: Dictionary = w().biz(id)
+			if not typing and not bz.is_empty():
+				_biz_charts(bz)
 			if not typing and bz.has("bplan") and int(bz["lot"]) >= 0:
 				_biz_plans(w().lot(int(bz["lot"])), bz["bplan"], "THE BUILDING")
 		"lot":

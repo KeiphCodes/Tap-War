@@ -27,6 +27,9 @@ var higher_is_better: bool = true
 var color: Color = SERIES[0]
 var _hover: int = -1
 var _plot: Rect2 = Rect2()
+var info: Dictionary = {}     # biz card: everything it shows
+signal pressed
+var _press_at: Vector2 = Vector2(-1, -1)
 
 
 func _ready() -> void:
@@ -110,9 +113,39 @@ func as_bars(p_title: String, rows: Array, p_series: Array, p_fmt: Callable) -> 
 	queue_redraw()
 
 
+## A clickable card for one business. info: name, kind, where, status, owner,
+## revenue (last months), profit (last months), staff, target, reputation, since.
+func as_biz(p_info: Dictionary) -> void:
+	kind = "biz"
+	info = p_info
+	values = info.get("revenue", [])
+	fmt = info.get("fmt", Callable())
+	color = SERIES[0]
+	custom_minimum_size = Vector2(0, 184)
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	tooltip_text = "Open everything about %s" % info.get("name", "this business")
+	queue_redraw()
+
+
 # ---------------------------------------------------------------- hover
 
 func _gui_input(ev: InputEvent) -> void:
+	if kind == "biz":
+		# a tap opens it; a drag scrolls the list instead
+		if ev is InputEventMouseButton and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			var mb: InputEventMouseButton = ev
+			if mb.pressed:
+				_press_at = mb.position
+			elif _press_at.x >= 0.0 and mb.position.distance_to(_press_at) < 14.0:
+				_press_at = Vector2(-1, -1)
+				pressed.emit()
+		elif ev is InputEventMouseMotion:
+			var hv: int = 0 if Rect2(Vector2.ZERO, size).has_point((ev as InputEventMouseMotion).position) else -1
+			if hv != _hover:
+				_hover = hv
+				queue_redraw()
+		return
 	if ev is InputEventMouseMotion:
 		var h: int = -1
 		var p: Vector2 = (ev as InputEventMouseMotion).position
@@ -157,6 +190,8 @@ func _draw() -> void:
 			_draw_donut()
 		"bars":
 			_draw_bars()
+		"biz":
+			_draw_biz()
 
 
 func _draw_kpi() -> void:
@@ -180,8 +215,9 @@ func _draw_kpi() -> void:
 			_text(Vector2(30, 85), "%s%s vs last month" % ["+" if up else "-", _f(absf(d))], 12, TEXT_2)
 		else:
 			_text(Vector2(14, 85), "no change vs last month", 12, TEXT_2)
-	# a sparkline of the last year along the right
-	if values.size() >= 3:
+	# a sparkline of the last year along the right, when it clears the number
+	var vw: float = _font().get_string_size(_f(now), HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x
+	if values.size() >= 3 and 14.0 + vw + 10.0 < size.x - 96.0:
 		var n: int = mini(12, values.size())
 		var vs: Array = values.slice(values.size() - n)
 		var lo: float = 1e18
@@ -321,3 +357,69 @@ func _draw_bars() -> void:
 	if _hover >= 0 and _hover < parts.size():
 		var hy: float = 52.0 + 30.0 * _hover
 		_tooltip(Vector2(14.0 + name_w + bw * 0.5, hy + 14), [str(labels[_hover]), "%s: %s" % [part_names[0], _f(parts[_hover][0])], "%s: %s" % [part_names[1], _f(parts[_hover][1])]])
+
+
+func _draw_biz() -> void:
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = SURFACE.lightened(0.04) if _hover == 0 else SURFACE
+	sb.border_color = SERIES[0] if _hover == 0 else BORDER
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	draw_style_box(sb, Rect2(Vector2.ZERO, size))
+	var st: String = str(info.get("status", "open"))
+	# status pill: a colored dot and the word, never the color alone
+	var pill_txt: String = {"open": "Open", "building": "Being built", "closed": "Closed"}.get(st, st.capitalize())
+	var pill_c: Color = {"open": GOOD, "building": SERIES[3], "closed": TEXT_2}.get(st, TEXT_2)
+	var pw: float = _font().get_string_size(pill_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 26.0
+	var pill: StyleBoxFlat = StyleBoxFlat.new()
+	pill.bg_color = Color("0f141c")
+	pill.set_corner_radius_all(10)
+	draw_style_box(pill, Rect2(size.x - pw - 12, 12, pw, 22))
+	draw_circle(Vector2(size.x - pw - 1, 23), 4.0, pill_c)
+	_text(Vector2(size.x - pw + 8, 28), pill_txt, 12, TEXT)
+	_text(Vector2(14, 28), str(info.get("name", "")), 16, TEXT, HORIZONTAL_ALIGNMENT_LEFT, size.x - pw - 34)
+	_text(Vector2(14, 48), str(info.get("kind", "")), 12, TEXT_2, HORIZONTAL_ALIGNMENT_LEFT, size.x - 28)
+	_text(Vector2(14, 66), "Owner %s" % info.get("owner", ""), 12, TEXT_2, HORIZONTAL_ALIGNMENT_LEFT, size.x - 28)
+	# three numbers across
+	var rev: Array = info.get("revenue", [])
+	var prof: Array = info.get("profit", [])
+	var cols: Array = [
+		["Revenue", _f(rev[rev.size() - 1]) if not rev.is_empty() else "-", rev],
+		["Profit", _f(prof[prof.size() - 1]) if not prof.is_empty() else "-", prof],
+		["Staff", "Owner only" if int(info.get("staff", 0)) == 0 and int(info.get("target", 0)) == 0 else "%d of %d" % [int(info.get("staff", 0)), int(info.get("target", 0))], []],
+	]
+	var cw: float = (size.x - 28.0) / 3.0
+	for i in 3:
+		var x: float = 14.0 + cw * float(i)
+		_text(Vector2(x, 92), str(cols[i][0]), 11, TEXT_2)
+		_text(Vector2(x, 116), str(cols[i][1]), 18, TEXT, HORIZONTAL_ALIGNMENT_LEFT, cw - 6)
+		var arr: Array = cols[i][2]
+		if arr.size() >= 2:
+			var d: float = float(arr[arr.size() - 1]) - float(arr[arr.size() - 2])
+			if absf(d) > 0.5:
+				var tri: PackedVector2Array = PackedVector2Array([Vector2(x, 130), Vector2(x + 8, 130), Vector2(x + 4, 124)]) if d > 0.0 else PackedVector2Array([Vector2(x, 124), Vector2(x + 8, 124), Vector2(x + 4, 130)])
+				draw_colored_polygon(tri, GOOD if d > 0.0 else BAD)
+				_text(Vector2(x + 12, 131), "vs month before", 10, TEXT_2)
+	# reputation bar and a revenue sparkline along the bottom
+	var rep: float = clampf(float(info.get("reputation", 50.0)) / 100.0, 0.0, 1.0)
+	_text(Vector2(14, 156), "Reputation", 11, TEXT_2)
+	var bar: Rect2 = Rect2(84, 148, size.x * 0.38 - 70, 8)
+	draw_rect(bar, GRID)
+	if rep > 0.0:
+		draw_rect(Rect2(bar.position, Vector2(bar.size.x * rep, bar.size.y)), SERIES[0])
+	_text(Vector2(14, 174), str(info.get("since", "")), 11, TEXT_2, HORIZONTAL_ALIGNMENT_LEFT, size.x * 0.55)
+	if rev.size() >= 3:
+		var vs: Array = rev.slice(maxi(0, rev.size() - 12))
+		var lo: float = 1e18
+		var hi: float = -1e18
+		for v in vs:
+			lo = minf(lo, float(v))
+			hi = maxf(hi, float(v))
+		if hi - lo < 0.0001:
+			hi = lo + 1.0
+		var r: Rect2 = Rect2(size.x * 0.58, 142, size.x * 0.42 - 16, 30)
+		var pts: PackedVector2Array = PackedVector2Array()
+		for i in vs.size():
+			pts.append(Vector2(r.position.x + r.size.x * float(i) / float(vs.size() - 1), r.end.y - (float(vs[i]) - lo) / (hi - lo) * r.size.y))
+		draw_polyline(pts, SERIES[0], 2.0, true)
+		draw_circle(pts[pts.size() - 1], 3.0, SERIES[0])
