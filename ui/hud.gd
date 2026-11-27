@@ -4,6 +4,7 @@ extends CanvasLayer
 ## Names in any text are links: click one to open that Sim, business, lot or project.
 
 const ChartScript = preload("res://ui/chart.gd")
+const DashScript = preload("res://ui/dash.gd")
 const TABS: Array = ["Mayor", "Requests", "Projects", "People", "Business", "City", "News", "Help"]
 const LEFT_W: int = 480
 const RIGHT_W: int = 440
@@ -95,25 +96,30 @@ func w() -> LTWorld:
 func _make_theme() -> Theme:
 	var t: Theme = Theme.new()
 	var panel: StyleBoxFlat = StyleBoxFlat.new()
-	panel.bg_color = Color(0.09, 0.105, 0.13, 0.93)
-	panel.border_color = Color(0.25, 0.3, 0.36)
+	panel.bg_color = Color("121822f2")
+	panel.border_color = Color("2a3446")
 	panel.set_border_width_all(1)
-	panel.set_corner_radius_all(6)
-	panel.set_content_margin_all(8)
+	panel.set_corner_radius_all(12)
+	panel.set_content_margin_all(10)
 	t.set_stylebox("panel", "PanelContainer", panel)
 	var btn: StyleBoxFlat = StyleBoxFlat.new()
-	btn.bg_color = Color(0.2, 0.26, 0.33)
-	btn.set_corner_radius_all(4)
+	btn.bg_color = Color("1f2836")
+	btn.border_color = Color("2a3446")
+	btn.set_border_width_all(1)
+	btn.set_corner_radius_all(8)
 	btn.set_content_margin_all(5)
 	var btn_h: StyleBoxFlat = btn.duplicate()
-	btn_h.bg_color = Color(0.28, 0.36, 0.46)
+	btn_h.bg_color = Color("2a3648")
 	var btn_p: StyleBoxFlat = btn.duplicate()
-	btn_p.bg_color = Color(0.85, 0.65, 0.2)
+	btn_p.bg_color = Color("338ced")
+	btn_p.border_color = Color("338ced")
 	t.set_stylebox("normal", "Button", btn)
 	t.set_stylebox("hover", "Button", btn_h)
 	t.set_stylebox("pressed", "Button", btn_p)
-	t.set_color("font_color", "Label", Color(0.88, 0.9, 0.93))
-	t.set_color("default_color", "RichTextLabel", Color(0.88, 0.9, 0.93))
+	t.set_color("font_color", "Label", Color("e8edf4"))
+	t.set_color("default_color", "RichTextLabel", Color("d6dde8"))
+	t.set_color("font_pressed_color", "Button", Color.WHITE)
+	t.set_color("font_hover_pressed_color", "Button", Color.WHITE)
 	t.set_font_size("font_size", "Label", 17)
 	t.set_font_size("font_size", "Button", 17)
 	t.set_font_size("font_size", "OptionButton", 17)
@@ -159,21 +165,23 @@ func _big(b: Button, min_w: float = 0.0) -> Button:
 	b.add_theme_font_size_override("font_size", 17)
 	# the game's own colors: slate, lighter on hover, gold when selected
 	var looks: Dictionary = {
-		"normal": Color(0.2, 0.26, 0.33), "hover": Color(0.28, 0.36, 0.46),
-		"pressed": Color(0.85, 0.65, 0.2), "hover_pressed": Color(0.92, 0.72, 0.28),
-		"disabled": Color(0.16, 0.18, 0.21),
+		"normal": Color("1f2836"), "hover": Color("2a3648"),
+		"pressed": Color("338ced"), "hover_pressed": Color("4a9cf0"),
+		"disabled": Color("161c26"),
 	}
 	for st in looks:
 		var sb: StyleBoxFlat = StyleBoxFlat.new()
 		sb.bg_color = looks[st]
-		sb.set_corner_radius_all(6)
+		sb.border_color = Color("2a3446") if st != "pressed" and st != "hover_pressed" else looks[st]
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(10)
 		sb.content_margin_left = 14
 		sb.content_margin_right = 14
 		sb.content_margin_top = 8
 		sb.content_margin_bottom = 8
 		b.add_theme_stylebox_override(st, sb)
-	b.add_theme_color_override("font_pressed_color", Color(0.1, 0.08, 0.04))
-	b.add_theme_color_override("font_hover_pressed_color", Color(0.1, 0.08, 0.04))
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
 	return b
 
 
@@ -341,7 +349,9 @@ func _clear(box: Node) -> void:
 
 
 func _h(text: String) -> Label:
-	return _lbl(text, 17, Color(1.0, 0.85, 0.45))
+	var l: Label = _lbl(text, 18, Color("e8edf4"))
+	l.add_theme_constant_override("line_spacing", 2)
+	return l
 
 
 func sim_link(cid: int) -> String:
@@ -408,7 +418,7 @@ func _build_top() -> void:
 	var hb: HBoxContainer = HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
 	top_bar.add_child(hb)
-	var tg: Button = _big(_btn("Panels", _toggle_panels, "Show or hide the side panels"))
+	var tg: Button = _big(_btn("Dashboard", _toggle_panels, "Show or hide the dashboard and the detail panel"))
 	hb.add_child(tg)
 	lbl_town = _lbl("", 18, Color(1.0, 0.85, 0.45))
 	lbl_town.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -560,7 +570,17 @@ func _build_left() -> void:
 		var tb: Button = _btn(str(TABS[i]), func(): _show_tab(str(TABS[i])))
 		tb.toggle_mode = true
 		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tb.custom_minimum_size = Vector2(0, 46)
+		tb.custom_minimum_size = Vector2(0, 44)
+		for st in ["normal", "hover", "pressed", "hover_pressed"]:
+			var ps: StyleBoxFlat = StyleBoxFlat.new()
+			ps.bg_color = {"normal": Color("182030"), "hover": Color("243046"), "pressed": Color("338ced"), "hover_pressed": Color("4a9cf0")}[st]
+			ps.set_corner_radius_all(22)
+			ps.content_margin_left = 8
+			ps.content_margin_right = 8
+			tb.add_theme_stylebox_override(st, ps)
+		tb.add_theme_color_override("font_color", Color("93a1b5"))
+		tb.add_theme_color_override("font_pressed_color", Color.WHITE)
+		tb.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
 		tab_btns.append(tb)
 		grid.add_child(tb)
 	tabs = TabContainer.new()
@@ -1692,41 +1712,67 @@ func _tab_city() -> void:
 	var ww: LTWorld = w()
 	var s: Dictionary = ww.snapshot()
 	var c: Dictionary = ww.counters
-	box.add_child(_h("City dashboard"))
-	box.add_child(_rtl("Population [b]%d[/b]. Births %d, deaths %d, moved in %d, moved out %d.\nWorking age adults %d, employed %d (%d in town), unemployment [b]%d%%[/b]. Average day's pay %s.\nBusinesses opened %d, closed %d. Bankruptcies %d. Evictions %d. Homeless now %d. Thefts %d.\nHappiness %d, approval %d. Safety %d.\nServices: %s." % [s["population"], c["births"], c["deaths"], c["moved_in"], c["moved_out"], s["adults"], s["employed"], s["local_jobs"], int(float(s["unemployment"]) * 100.0), _money(int(s["avg_daily_wage"])), c["businesses_opened"], c["businesses_closed"], c["bankruptcies"], c["evictions"], s["homeless"], c["thefts"], int(s["happiness"]), int(s["approval"]), int(LTCivic.safety_level(ww)), _services_text()]))
-	var hist: Array = ww.stats_history
-	var series: Array = [
-		["Population", "population", Color(0.45, 0.75, 1.0), func(v): return str(int(v))],
-		["Unemployment", "unemployment", Color(1.0, 0.55, 0.4), func(v): return "%d%%" % int(float(v) * 100.0)],
-		["City cash", "city_cash", Color(0.5, 0.9, 0.5), func(v): return LTMoney.fmt(int(v))],
-		["Happiness", "happiness", Color(1.0, 0.85, 0.4), func(v): return str(int(v))],
-		["Businesses open", "businesses_open", Color(0.8, 0.6, 1.0), func(v): return str(int(v))],
-	]
-	for se in series:
-		var ch: Control = ChartScript.new()
-		ch.custom_minimum_size = Vector2(LEFT_W - 40, 84)
-		var vals: Array = []
+	box.add_child(_h("Town overview"))
+	box.add_child(_lbl("%s. Hover a chart to read any month." % LTCalendar.text(ww.day), 13, Color("93a1b5")))
+	var hist: Array = ww.stats_history.duplicate()
+	hist.append(s)
+	var col: Callable = func(key: String) -> Array:
+		var out: Array = []
 		for h in hist:
-			vals.append(h[se[1]])
-		ch.set_data(se[0], vals, se[2], se[3])
+			out.append(h.get(key, 0))
+		return out
+	var months: Array = []
+	for h in hist:
+		months.append(LTCalendar.short(int(h.get("day", ww.day))))
+	var num: Callable = func(v): return str(int(round(float(v))))
+	var pct: Callable = func(v): return "%d%%" % int(round(float(v) * 100.0))
+	var cash: Callable = func(v): return _short_money(int(v))
+	# headline numbers, each with the change since last month and a sparkline
+	var tiles: GridContainer = GridContainer.new()
+	tiles.columns = 2
+	tiles.add_theme_constant_override("h_separation", 8)
+	tiles.add_theme_constant_override("v_separation", 8)
+	box.add_child(tiles)
+	var k_rows: Array = [
+		["Population", "population", num, true, 0], ["Unemployment", "unemployment", pct, false, 1],
+		["City cash", "city_cash", cash, true, 2], ["Approval", "approval", num, true, 0],
+		["Happiness", "happiness", num, true, 2], ["Businesses open", "businesses_open", num, true, 0],
+		["Average day's pay", "avg_daily_wage", cash, true, 2], ["Homeless", "homeless", num, false, 1],
+	]
+	for kr in k_rows:
+		var tile: Control = DashScript.new()
+		tiles.add_child(tile)
+		tile.as_kpi(str(kr[0]), col.call(str(kr[1])), kr[2], bool(kr[3]), DashScript.SERIES[int(kr[4])])
+	# trends
+	for lr in [["Population", "population", num, 0], ["City cash", "city_cash", cash, 2], ["Unemployment", "unemployment", pct, 1]]:
+		var ch: Control = DashScript.new()
 		box.add_child(ch)
+		ch.as_line(str(lr[0]), col.call(str(lr[1])), months, lr[2], DashScript.SERIES[int(lr[3])])
+	# where working age adults work
+	var outside_jobs: int = int(s["employed"]) - int(s["local_jobs"])
+	var donut: Control = DashScript.new()
+	box.add_child(donut)
+	donut.as_donut("Working age adults (18 to 64)", [int(s["local_jobs"]), outside_jobs, int(s["adults"]) - int(s["employed"])], ["Work in town", "Work out of town", "Not working"], num)
+	# where the money goes, the biggest categories first
+	var spend_rows: Array = []
+	for k in ww.spend_book:
+		var e2: Dictionary = ww.spend_book[k]
+		var loc: int = int(e2["last_local"])
+		var outv: int = int(e2["last_outside"]) + int(e2["last_latent"])
+		if loc + outv > 0:
+			spend_rows.append([{"lodging": "Lodging", "real_estate": "Realtors", "camping": "Camping", "outdoor_gear": "Outdoor gear", "repairs": "Repairs", "childcare": "Child care", "medical": "Doctor visits", "guiding": "Guides", "boating": "Boating", "pharmacy": "Pharmacy", "tuition": "Private school", "storage": "Storage", "freight": "Freight", "bar": "Nights out", "funeral": "Funerals", "legal": "Lawyers"}.get(str(k), str(k).replace("_", " ").capitalize()), loc, outv])
+	spend_rows.sort_custom(func(x, y): return int(x[1]) + int(x[2]) > int(y[1]) + int(y[2]))
+	var bars: Control = DashScript.new()
+	box.add_child(bars)
+	bars.as_bars("Monthly spending by category", spend_rows.slice(0, 8), ["In town", "Out of town"], cash)
+	box.add_child(_h("Since the town began"))
+	box.add_child(_rtl("Births %d, deaths %d, moved in %d, moved out %d.\nBusinesses opened %d, closed %d. Bankruptcies %d. Evictions %d. Thefts %d.\nSafety %d. Services: %s." % [c["births"], c["deaths"], c["moved_in"], c["moved_out"], c["businesses_opened"], c["businesses_closed"], c["bankruptcies"], c["evictions"], c["thefts"], int(LTCivic.safety_level(ww)), _services_text()]))
 	box.add_child(_h("The county around town"))
 	var r: Dictionary = ww.region
 	var emps: Array = []
 	for e in r["employers"]:
 		emps.append("%s%s" % [e["name"], "" if bool(e["open"]) else " (closed)"])
 	box.add_child(_rtl("Economy: [b]%s[/b], index %.2f. County unemployment %d%%. Storms this game %d.\nEmployers: %s.%s" % [r["phase"], float(r["index"]), int(float(r["unemployment"]) * 100.0), r["storms"], ", ".join(emps), _shortage_text()]))
-	box.add_child(_h("Where the town spends"))
-	var sl: Array = []
-	for k in ww.spend_book:
-		var e2: Dictionary = ww.spend_book[k]
-		var loc: int = int(e2["last_local"])
-		var outv: int = int(e2["last_outside"])
-		var lat: int = int(e2["last_latent"])
-		if loc + outv + lat == 0:
-			continue
-		sl.append("%s: %s in town, %s out of town%s" % [LTServices._cat_words(str(k)).capitalize(), _money(loc), _money(outv), ", %s wanted with nobody to sell it" % _money(lat) if lat > 0 else ""])
-	box.add_child(_rtl("A month, on average:\n" + ("\n".join(sl) if not sl.is_empty() else "Shows after the first month.")))
 	box.add_child(_h("Health"))
 	var preg: int = 0
 	var dep: int = 0
@@ -1794,6 +1840,20 @@ func _tab_city() -> void:
 	for st in ww.streets:
 		rd.append("%s: %s" % [st["name"], _bar(LTGeography.street_condition(ww, int(st["id"])))])
 	box.add_child(_rtl("\n".join(rd)))
+
+
+## Money in a few characters for chart labels: $950, $12.4K, $4.3M.
+func _short_money(cents: int) -> String:
+	var d: float = float(cents) / 100.0
+	var sign: String = "-" if d < 0.0 else ""
+	d = absf(d)
+	if d >= 1000000.0:
+		return "%s$%.1fM" % [sign, d / 1000000.0]
+	if d >= 10000.0:
+		return "%s$%dK" % [sign, int(round(d / 1000.0))]
+	if d >= 1000.0:
+		return "%s$%.1fK" % [sign, d / 1000.0]
+	return "%s$%d" % [sign, int(round(d))]
 
 
 func _services_text() -> String:
