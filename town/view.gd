@@ -42,6 +42,9 @@ var truck_nodes: Array = []
 var mats: Dictionary = {}
 var ground_mi: MeshInstance3D
 var sun: DirectionalLight3D
+## How strong the sun and the sky light are, against the time of day curve.
+var sun_scale: float = 0.9
+var amb_scale: float = 0.85
 var env: Environment
 var cam: Camera3D
 var target: Vector3 = Vector3.ZERO
@@ -212,14 +215,28 @@ func _batch_begin() -> void:
 	_gi = PackedInt32Array()
 
 
-func _batch_end(parent: Node3D) -> MeshInstance3D:
+var _flat_mat: StandardMaterial3D
+## Batched shapes carry their colors per vertex; the renderer treats those as
+## linear light, so they are converted from the sRGB colors used everywhere else.
+var batch_linear: bool = true
+
+
+func _batch_end(parent: Node3D, flat: bool = false) -> MeshInstance3D:
 	_batching = false
+	if flat and _flat_mat == null:
+		_flat_mat = StandardMaterial3D.new()
+		_flat_mat.vertex_color_use_as_albedo = true
+		_flat_mat.vertex_color_is_srgb = true
+		_flat_mat.roughness = 0.9
+		_flat_mat.disable_receive_shadows = true
 	if _batch_mat == null:
 		_batch_mat = StandardMaterial3D.new()
 		_batch_mat.vertex_color_use_as_albedo = true
+		_batch_mat.vertex_color_is_srgb = true
 		_batch_mat.roughness = 0.85
 		_glow_mat = StandardMaterial3D.new()
 		_glow_mat.vertex_color_use_as_albedo = true
+		_glow_mat.vertex_color_is_srgb = true
 		_glow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	var am: ArrayMesh = ArrayMesh.new()
 	if not _bv.is_empty():
@@ -230,7 +247,7 @@ func _batch_end(parent: Node3D) -> MeshInstance3D:
 		a[Mesh.ARRAY_COLOR] = _bc
 		a[Mesh.ARRAY_INDEX] = _bi
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
-		am.surface_set_material(am.get_surface_count() - 1, _batch_mat)
+		am.surface_set_material(am.get_surface_count() - 1, _flat_mat if flat else _batch_mat)
 	if not _gv.is_empty():
 		var g: Array = []
 		g.resize(Mesh.ARRAY_MAX)
@@ -255,19 +272,22 @@ var _ld: float = 40.0
 
 func _batch_add(pm: PrimitiveMesh, key: String, xf: Transform3D, c: Color, glow: bool) -> void:
 	xf = _bxf * xf
+	if batch_linear:
+		c = c.srgb_to_linear()
 	if not _prim_cache.has(key):
 		_prim_cache[key] = pm.get_mesh_arrays()
 	var arrs: Array = _prim_cache[key]
 	var verts: PackedVector3Array = arrs[Mesh.ARRAY_VERTEX]
 	var norms: PackedVector3Array = arrs[Mesh.ARRAY_NORMAL]
 	var idx: PackedInt32Array = arrs[Mesh.ARRAY_INDEX]
+	var nb: Basis = xf.basis.inverse().transposed()
 	if glow:
 		var base_g: int = _gv.size()
 		for v in verts:
 			_gv.append(xf * v)
 			_gc.append(c)
 		for nn in norms:
-			_gn.append((xf.basis * nn).normalized())
+			_gn.append((nb * nn).normalized())
 		for k in idx:
 			_gi.append(base_g + k)
 	else:
@@ -276,7 +296,7 @@ func _batch_add(pm: PrimitiveMesh, key: String, xf: Transform3D, c: Color, glow:
 			_bv.append(xf * v)
 			_bc.append(c)
 		for nn in norms:
-			_bn.append((xf.basis * nn).normalized())
+			_bn.append((nb * nn).normalized())
 		for k in idx:
 			_bi.append(base + k)
 
@@ -385,14 +405,28 @@ func _build_env() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.75, 0.78, 0.85)
 	env.ambient_light_energy = 0.5
-	env.fog_enabled = false
+	# filmic tone so bright roofs and snow keep detail, a touch more color, and a
+	# light haze that gives distance
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.05
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.0
+	env.adjustment_contrast = 1.03
+	env.fog_enabled = true
 	env.fog_light_color = Color(0.7, 0.8, 0.9)
-	env.fog_density = 0.0007
+	env.fog_density = 0.0002
+	env.fog_sky_affect = 0.0
 	we.environment = env
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 260.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_blend_splits = true
+	sun.shadow_bias = 0.12
+	sun.shadow_normal_bias = 2.5
+	sun.shadow_blur = 1.5
+	sun.light_color = Color(1.0, 0.97, 0.9)
 	sun.light_energy = 1.15
 	sun.rotation = Vector3(deg_to_rad(-50.0), deg_to_rad(35.0), 0.0)
 	add_child(sun)
@@ -411,7 +445,15 @@ func _update_camera() -> void:
 	dist = maxf(dist, 14.0)
 	var dir: Vector3 = Vector3(cos(pitch) * sin(yaw), -sin(pitch), cos(pitch) * cos(yaw))
 	cam.position = target + dir * dist
+	# never under the hills
+	var gh: float = LTTerrain.height(w, cam.position.x, cam.position.z) + 4.0
+	if cam.position.y < gh:
+		cam.position.y = gh
 	cam.look_at(target, Vector3.UP)
+	cam.near = clampf(dist * 0.02, 0.25, 8.0)
+	cam.far = maxf(3000.0, dist * 8.0)
+	# shadows cover what is on screen: sharp up close, wider and softer far out
+	sun.directional_shadow_max_distance = clampf(dist * 2.2, 120.0, 1200.0)
 
 
 func _build_ground() -> void:
@@ -482,17 +524,32 @@ func _rebuild_road_mesh() -> void:
 		if str(p["status"]) == "draft" and str(p["ptype"]) == "road_build":
 			drafts[int(p["street"])] = true
 	_batch_begin()
+	var node_pads: Dictionary = {}
 	for s in w.roads:
 		if bool(s.get("removed", false)):
 			continue
 		var a: Dictionary = w.road_nodes[int(s["a"])]
 		var b: Dictionary = w.road_nodes[int(s["b"])]
-		var pa: Vector3 = Vector3(float(a["x"]) * CELL, 0.03, float(a["y"]) * CELL)
-		var pb: Vector3 = Vector3(float(b["x"]) * CELL, 0.03, float(b["y"]) * CELL)
+		# each street a hair apart so two crossing streets never fight for the same pixel
+		var ry: float = 0.08 + 0.004 * float(int(s["street"]) % 5)
+		var pa: Vector3 = Vector3(float(a["x"]) * CELL, ry, float(a["y"]) * CELL)
+		var pb: Vector3 = Vector3(float(b["x"]) * CELL, ry, float(b["y"]) * CELL)
 		var horiz: bool = absf(pa.z - pb.z) < 0.01
 		var st: Dictionary = w.streets[int(s["street"])]
 		var rw: float = ROAD_W if str(st["kind"]) == "highway" else _road_width(int(s["street"]))
-		var size: Vector3 = Vector3(CELL + rw, 0.06, rw) if horiz else Vector3(rw, 0.06, CELL + rw)
+		# exactly one survey step long: neighbors meet edge to edge instead of
+		# overlapping (overlaps of slightly different grays flickered as stripes);
+		# streets running north and south sit a hair higher where they cross
+		var size: Vector3 = Vector3(CELL, 0.08, rw) if horiz else Vector3(rw, 0.08, CELL)
+		if not horiz:
+			pa.y += 0.012
+			pb.y += 0.012
+		for nd in [a, b]:
+			var nk: int = int(nd["x"]) * 100000 + int(nd["y"])
+			if not node_pads.has(nk):
+				node_pads[nk] = [Vector3(float(nd["x"]) * CELL, ry - 0.006, float(nd["y"]) * CELL), rw, bool(s.get("planned", false))]
+			elif rw > float(node_pads[nk][1]):
+				node_pads[nk][1] = rw
 		var cnd: float = float(s["condition"]) / 100.0
 		var planned: bool = bool(s.get("planned", false))
 		if not planned and str(st.get("surface", "")) == "gravel":
@@ -502,14 +559,14 @@ func _rebuild_road_mesh() -> void:
 		if not planned and bool(st.get("sidewalks", false)):
 			var off: float = rw * 0.5 + 0.7
 			for sgn in [-1.0, 1.0]:
-				var o: Vector3 = Vector3(0, 0.05, off * sgn) if horiz else Vector3(off * sgn, 0.05, 0)
-				_box(road_root, Vector3(CELL, 0.1, 1.0) if horiz else Vector3(1.0, 0.1, CELL), (pa + pb) * 0.5 + o, Color(0.72, 0.71, 0.68))
+				var o: Vector3 = Vector3(0, 0.06, off * sgn) if horiz else Vector3(off * sgn, 0.06, 0)
+				_box(road_root, Vector3(CELL, 0.14, 1.0) if horiz else Vector3(1.0, 0.14, CELL), (pa + pb) * 0.5 + o, Color(0.74, 0.73, 0.7))
 		if not planned and bool(st.get("lights", false)):
 			var o2: Vector3 = Vector3(0, 0, rw * 0.5 + 1.4) if horiz else Vector3(rw * 0.5 + 1.4, 0, 0)
 			var lp: Vector3 = (pa + pb) * 0.5 + o2
 			_box(road_root, Vector3(0.15, 3.2, 0.15), lp + Vector3(0, 1.6, 0), Color(0.25, 0.26, 0.28))
 			_box(road_root, Vector3(0.5, 0.25, 0.5), lp + Vector3(0, 3.3, 0), Color(1.0, 0.9, 0.6), _is_night())
-		var col: Color = Color(0.24, 0.24, 0.26).lerp(Color(0.5, 0.44, 0.36), clampf(1.0 - cnd, 0.0, 1.0) * 0.9)
+		var col: Color = Color(0.22, 0.23, 0.25).lerp(Color(0.5, 0.44, 0.36), clampf(1.0 - cnd, 0.0, 1.0) * 0.9)
 		if _snow:
 			col = col.lerp(Color(0.85, 0.87, 0.9), 0.5)
 		if not planned and str(st.get("surface", "")) == "concrete":
@@ -521,7 +578,17 @@ func _rebuild_road_mesh() -> void:
 			col = Color(0.47, 0.33, 0.2) if not drafts.has(int(s["street"])) else Color(0.86, 0.84, 0.74)
 			size.y = 0.03
 		_box(road_root, size, (pa + pb) * 0.5, col)
-	road_mi = _batch_end(road_root)
+		# a dashed center line on paved two way streets
+		if not planned and not _snow and str(st["kind"]) != "alley" and str(st.get("surface", "")) != "gravel" and cnd > 0.3:
+			var dash: Vector3 = Vector3(3.0, 0.02, 0.18) if horiz else Vector3(0.18, 0.02, 3.0)
+			_box(road_root, dash, (pa + pb) * 0.5 + Vector3(0, 0.05, 0), Color(0.93, 0.78, 0.25) if str(st["kind"]) == "highway" else Color(0.9, 0.9, 0.86))
+	# a square under every corner and crossing, so the pieces join without notches
+	for nk in node_pads:
+		var np: Array = node_pads[nk]
+		var ncol: Color = Color(0.47, 0.33, 0.2) if bool(np[2]) else (Color(0.24, 0.25, 0.27) if not _snow else Color(0.62, 0.64, 0.68))
+		_box(road_root, Vector3(float(np[1]), 0.08, float(np[1])), np[0], ncol)
+	road_mi = _batch_end(road_root, true)
+	road_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_road_labels()
 
 
@@ -672,6 +739,7 @@ func _rebuild_overlay() -> void:
 		return
 	var m: StandardMaterial3D = StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.no_depth_test = true
@@ -773,9 +841,11 @@ func _build_land() -> void:
 	land_mi.mesh = st.commit()
 	var lm: StandardMaterial3D = StandardMaterial3D.new()
 	lm.vertex_color_use_as_albedo = true
+	lm.vertex_color_is_srgb = true
 	lm.roughness = 0.95
 	lm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	land_mi.material_override = lm
+	land_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ground_root.add_child(land_mi)
 	if ground_mi != null:
 		ground_mi.visible = false
@@ -2251,7 +2321,7 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 	var elev: float = sin(clampf(day_t, 0.0, 1.0) * PI)
 	sun.rotation = Vector3(-deg_to_rad(8.0 + 62.0 * elev), deg_to_rad(-60.0 + 120.0 * clampf(day_t, 0.0, 1.0)), 0.0)
 	var night: bool = hour < 6.0 or hour > 19.5
-	sun.light_energy = 0.05 if night else 0.35 + elev * 0.9
+	sun.light_energy = (0.05 if night else 0.35 + elev * 0.9) * sun_scale
 	var sky: Color = Color(0.62, 0.78, 0.92)
 	if w.weather == "Rain" or w.weather == "Storm":
 		sky = Color(0.5, 0.55, 0.6)
@@ -2262,7 +2332,8 @@ func animate(delta: float, hour: float, watch: bool) -> void:
 	elif hour < 7.5 or hour > 18.0:
 		sky = sky.lerp(Color(0.95, 0.6, 0.4), 0.45)
 	env.background_color = env.background_color.lerp(sky, clampf(delta * 2.0, 0.0, 1.0))
-	env.ambient_light_energy = 0.25 if night else 0.55
+	env.fog_light_color = env.background_color
+	env.ambient_light_energy = (0.25 if night else 0.55) * amb_scale
 	people_root.visible = dist < PEOPLE_DIST
 	_tier_timer += delta
 	if _tier_timer > 1.5:
