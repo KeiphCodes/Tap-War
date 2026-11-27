@@ -226,8 +226,12 @@ static func _incorporate(w: LTWorld) -> void:
 # ---------------------------------------------------------------- milestones
 
 static func _milestones(w: LTWorld) -> void:
-	if not w.city.has("milestones"):
+	# a town saved by the version that mixed up this record gets a clean one, and
+	# what it has already reached is not announced again
+	var repair: bool = w.city.has("milestones") and not (w.city["milestones"] is Dictionary)
+	if not w.city.has("milestones") or repair:
 		w.city["milestones"] = {}
+	w.city.erase("goals_seen")
 	var got: Dictionary = w.city["milestones"]
 	var pop: int = w.residents()
 	var checks: Dictionary = {
@@ -247,7 +251,8 @@ static func _milestones(w: LTWorld) -> void:
 		var id: String = m[0]
 		if not got.has(id) and bool(checks.get(id, false)):
 			got[id] = w.day
-			w.chronicle_add("Milestone: %s." % m[1], "milestone", true, [])
+			if not repair:
+				w.chronicle_add("Milestone: %s." % m[1], "milestone", true, [])
 
 
 ## The next things to do, worked out from the town as it is right now: the first
@@ -289,7 +294,8 @@ static func next_steps(w: LTWorld) -> Array:
 		]
 		for st in steps:
 			out.append({"text": st[0], "done": bool(st[1])})
-	var got: Dictionary = w.city.get("milestones", {})
+	var gm = w.city.get("milestones", {})
+	var got: Dictionary = gm if gm is Dictionary else {}
 	for m in MILESTONES:
 		if founder and ["home", "first_settler", "incorporated"].has(str(m[0])):
 			continue

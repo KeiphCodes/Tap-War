@@ -273,8 +273,6 @@ func tick_day() -> void:
 	LTCivic.elections_daily(self)
 	LTFounder.daily(self)
 	LTMayorAI.daily(self)
-	if day % 7 == 0:
-		_milestones()
 	LTEconomy.analyze_market(self)
 	if LTCalendar.day_of_month(day) == LTCalendar.MONTH_DAYS[LTCalendar.month_index(day)]:
 		stats_history.append(snapshot())
@@ -289,22 +287,6 @@ func run_days(n: int) -> void:
 
 # ---------------------------------------------------------------- player actions
 ## Every mayor verb goes through here so a run can be replayed from seed plus this log.
-
-## A goal on the next steps list reached for the first time is a milestone, noted
-## once in the chronicle (and big enough to stop fast time).
-func _milestones() -> void:
-	if not city.has("milestones"):
-		# goals already met when this starts do not count as news
-		city["milestones"] = []
-		for st in LTFounder.next_steps(self):
-			if bool(st["done"]):
-				city["milestones"].append(str(st["text"]))
-		return
-	for st in LTFounder.next_steps(self):
-		if bool(st["done"]) and not city["milestones"].has(str(st["text"])):
-			city["milestones"].append(str(st["text"]))
-			chronicle_add("Milestone: %s." % str(st["text"]).trim_suffix("."), "milestone", true, [])
-
 
 func apply_action(a: Dictionary) -> Dictionary:
 	var act: Dictionary = a.duplicate(true)
