@@ -6,7 +6,9 @@ extends CanvasLayer
 const ChartScript = preload("res://ui/chart.gd")
 const DashScript = preload("res://ui/dash.gd")
 const TABS: Array = ["Mayor", "Requests", "Projects", "People", "Business", "City", "News", "Help"]
-const LEFT_W: int = 480
+const LEFT_W: int = 480   # the dashboard's narrowest
+## The dashboard grows to most of the screen; the town view is a tap away.
+var left_w: int = LEFT_W
 const RIGHT_W: int = 440
 const TOP_H: int = 64
 const TOOL_H: int = 66
@@ -503,7 +505,7 @@ func refresh_steps() -> void:
 		lines.append("Every goal reached. The town is yours to keep growing.")
 	steps_text.text = "\n".join(lines) + "\n[color=#6f8090][font_size=12]%d of %d done[/font_size][/color]" % [done_n, all.size()]
 	steps_card.visible = not steps_hidden
-	steps_card.offset_left = (LEFT_W + 16) if left.visible else 8
+	steps_card.offset_left = (left_w + 16) if left.visible else 8
 	steps_card.offset_right = steps_card.offset_left + 380
 
 
@@ -555,7 +557,7 @@ func _build_left() -> void:
 	left.offset_top = TOP_H + 6
 	left.offset_bottom = -8
 	left.offset_left = 8
-	left.offset_right = 8 + LEFT_W
+	left.offset_right = 8 + left_w
 	root.add_child(left)
 	var lv: VBoxContainer = VBoxContainer.new()
 	lv.add_theme_constant_override("separation", 8)
@@ -753,8 +755,8 @@ func _build_feed() -> void:
 	feed_box.anchor_right = 0.0
 	feed_box.anchor_top = 1.0
 	feed_box.anchor_bottom = 1.0
-	feed_box.offset_left = LEFT_W + 24
-	feed_box.offset_right = LEFT_W + 24 + 600
+	feed_box.offset_left = 24
+	feed_box.offset_right = 24 + 600
 	feed_box.offset_top = -170
 	feed_box.offset_bottom = -10
 	feed_box.alignment = BoxContainer.ALIGNMENT_END
@@ -823,14 +825,26 @@ func _process(delta: float) -> void:
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		toast.modulate.a = clampf(_toast_t, 0.0, 1.0)
-	# keep panels usable on narrow screens
+	# the dashboard takes about 60% of the screen, less when the detail panel is open
 	var vw: float = root.size.x
-	if vw < LEFT_W + RIGHT_W + TOOL_COL_W + 200 and right.visible and left.visible:
+	var avail: int = int(vw) - TOOL_COL_W - 40 - ((RIGHT_W + 8) if right.visible else 0)
+	if avail < LEFT_W and right.visible and left.visible:
 		left.visible = false
+	var want: int = clampi(int(vw * 0.62), LEFT_W, maxi(LEFT_W, avail))
+	if want != left_w:
+		var big_change: bool = absi(want - left_w) > 60
+		left_w = want
+		left.offset_right = 8 + left_w
+		if big_change:
+			refresh_tab()
+	if feed_box != null:
+		# the news ticker sits just right of the dashboard, or at the left edge
+		feed_box.offset_left = (left_w + 24) if left.visible else 24
+		feed_box.offset_right = feed_box.offset_left + 600
 	if steps_card != null:
 		# the welcome and event cards sit in the same spot; the steps wait behind them
 		steps_card.visible = not steps_hidden and not notice.visible
-		steps_card.offset_left = (LEFT_W + 16) if left.visible else 8
+		steps_card.offset_left = (left_w + 16) if left.visible else 8
 		steps_card.offset_right = steps_card.offset_left + 380
 
 
@@ -1728,8 +1742,9 @@ func _tab_city() -> void:
 	var pct: Callable = func(v): return "%d%%" % int(round(float(v) * 100.0))
 	var cash: Callable = func(v): return _short_money(int(v))
 	# headline numbers, each with the change since last month and a sparkline
+	var wide: bool = left_w >= 900
 	var tiles: GridContainer = GridContainer.new()
-	tiles.columns = 2
+	tiles.columns = 4 if wide else 2
 	tiles.add_theme_constant_override("h_separation", 8)
 	tiles.add_theme_constant_override("v_separation", 8)
 	box.add_child(tiles)
@@ -1743,15 +1758,25 @@ func _tab_city() -> void:
 		var tile: Control = DashScript.new()
 		tiles.add_child(tile)
 		tile.as_kpi(str(kr[0]), col.call(str(kr[1])), kr[2], bool(kr[3]), DashScript.SERIES[int(kr[4])])
-	# trends
-	for lr in [["Population", "population", num, 0], ["City cash", "city_cash", cash, 2], ["Unemployment", "unemployment", pct, 1]]:
+	# trends, side by side when there is room
+	var trend_grid: GridContainer = GridContainer.new()
+	trend_grid.columns = 3 if left_w >= 1150 else (2 if wide else 1)
+	trend_grid.add_theme_constant_override("h_separation", 8)
+	trend_grid.add_theme_constant_override("v_separation", 8)
+	box.add_child(trend_grid)
+	for lr in [["Population", "population", num, 0], ["City cash", "city_cash", cash, 2], ["Unemployment", "unemployment", pct, 1], ["Happiness", "happiness", num, 2], ["Businesses open", "businesses_open", num, 0], ["Average day's pay", "avg_daily_wage", cash, 2]]:
 		var ch: Control = DashScript.new()
-		box.add_child(ch)
+		trend_grid.add_child(ch)
 		ch.as_line(str(lr[0]), col.call(str(lr[1])), months, lr[2], DashScript.SERIES[int(lr[3])])
 	# where working age adults work
 	var outside_jobs: int = int(s["employed"]) - int(s["local_jobs"])
+	var pair: GridContainer = GridContainer.new()
+	pair.columns = 2 if wide else 1
+	pair.add_theme_constant_override("h_separation", 8)
+	pair.add_theme_constant_override("v_separation", 8)
+	box.add_child(pair)
 	var donut: Control = DashScript.new()
-	box.add_child(donut)
+	pair.add_child(donut)
 	donut.as_donut("Working age adults (18 to 64)", [int(s["local_jobs"]), outside_jobs, int(s["adults"]) - int(s["employed"])], ["Work in town", "Work out of town", "Not working"], num)
 	# where the money goes, the biggest categories first
 	var spend_rows: Array = []
@@ -1763,7 +1788,7 @@ func _tab_city() -> void:
 			spend_rows.append([{"lodging": "Lodging", "real_estate": "Realtors", "camping": "Camping", "outdoor_gear": "Outdoor gear", "repairs": "Repairs", "childcare": "Child care", "medical": "Doctor visits", "guiding": "Guides", "boating": "Boating", "pharmacy": "Pharmacy", "tuition": "Private school", "storage": "Storage", "freight": "Freight", "bar": "Nights out", "funeral": "Funerals", "legal": "Lawyers"}.get(str(k), str(k).replace("_", " ").capitalize()), loc, outv])
 	spend_rows.sort_custom(func(x, y): return int(x[1]) + int(x[2]) > int(y[1]) + int(y[2]))
 	var bars: Control = DashScript.new()
-	box.add_child(bars)
+	pair.add_child(bars)
 	bars.as_bars("Monthly spending by category", spend_rows.slice(0, 8), ["In town", "Out of town"], cash)
 	box.add_child(_h("Since the town began"))
 	box.add_child(_rtl("Births %d, deaths %d, moved in %d, moved out %d.\nBusinesses opened %d, closed %d. Bankruptcies %d. Evictions %d. Thefts %d.\nSafety %d. Services: %s." % [c["births"], c["deaths"], c["moved_in"], c["moved_out"], c["businesses_opened"], c["businesses_closed"], c["bankruptcies"], c["evictions"], c["thefts"], int(LTCivic.safety_level(ww)), _services_text()]))
