@@ -75,26 +75,102 @@ static func setup(w: LTWorld, map_seed: int, avoid: Rect2) -> void:
 		"park_name": "%s State Park" % ["Eagle Peak", "Granite Ridge", "Elk Mountain", "Thunder Butte", "Iron Hill"][rng.randi_range(0, 4)],
 	}
 	w.config["map_seed"] = map_seed
-	# what this map has at all: some are open prairie with no forest, no mountain,
-	# no lake or no railroad, which makes them harder (drawn separately so the
-	# rest of the map stays the same for the seed)
-	var has: RandomNumberGenerator = RandomNumberGenerator.new()
-	has.seed = map_seed * 104729 + 7
+	_pick_kind(w, map_seed, avoid, keep_out, road_band, lakes)
+	w.config["terrain"]["avoid"] = [avoid.position.x, avoid.position.y, avoid.size.x, avoid.size.y]
+	w.config["terrain"]["landmarks"] = _make_landmarks(w, map_seed, avoid)
+
+
+## The kind of country the map is, each harder in its own way and paying back
+## in its own way:
+## - prairie: easy flat land, strong farms, few visitors
+## - mountain town: a valley along the county road between peaks; little flat
+##   land, costly roads, but mining and big tourism
+## - lake country: lakes everywhere; bridges and lakefront land cost more, but
+##   fishing, marinas and cabins
+## - north woods: the whole map is timber; every lot has to be cleared, but
+##   sawmills and hunting thrive
+## Every kind keeps clear, buildable land where the town starts.
+const KINDS: Dictionary = {
+	"prairie": "Open prairie", "mountain": "Mountain town", "lakes": "Lake country", "woods": "North woods",
+}
+
+
+static func _pick_kind(w: LTWorld, map_seed: int, avoid: Rect2, keep_out: Rect2, road_band: Rect2, lakes: Array) -> void:
+	var has_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	has_rng.seed = ("land kind %d" % map_seed).hash()
 	var tt0: Dictionary = w.config["terrain"]
-	if has.randf() > 0.75:
+	var roll: float = has_rng.randf()
+	var kind: String = "prairie" if roll < 0.36 else ("mountain" if roll < 0.57 else ("lakes" if roll < 0.78 else "woods"))
+	tt0["kind"] = kind
+	var p_forest: float = {"prairie": 0.5, "mountain": 0.7, "lakes": 0.6, "woods": 1.0}[kind]
+	var p_mount: float = {"prairie": 0.3, "mountain": 1.0, "lakes": 0.15, "woods": 0.35}[kind]
+	var p_lake: float = {"prairie": 0.6, "mountain": 0.4, "lakes": 1.0, "woods": 0.6}[kind]
+	var p_pond: float = {"prairie": 0.5, "mountain": 0.3, "lakes": 1.0, "woods": 0.5}[kind]
+	var p_rail: float = {"prairie": 0.8, "mountain": 0.55, "lakes": 0.7, "woods": 0.6}[kind]
+	var forest_on: bool = has_rng.randf() < p_forest
+	var mount_on: bool = has_rng.randf() < p_mount
+	var big_lake: bool = has_rng.randf() < p_lake
+	var pond: bool = has_rng.randf() < p_pond
+	# a prairie map still has something on it
+	if kind == "prairie" and not forest_on and not mount_on and not big_lake and not pond:
+		big_lake = true
+	if not forest_on:
 		tt0["forest"] = {"c": Vector2(-9000, -9000), "rx": 1.0, "rz": 1.0, "none": true}
-	if has.randf() > 0.6:
+	if not mount_on:
 		tt0["mountain"] = {"c": Vector2(-9000, 9000), "r": 1.0, "peak": 0.0, "none": true}
-	var big_lake: bool = has.randf() < 0.7
-	var pond: bool = has.randf() < 0.6
 	var keep_lakes: Array = []
 	for i in lakes.size():
 		if (i == 0 and big_lake) or (i > 0 and pond):
 			keep_lakes.append(lakes[i])
+	var clear: Callable = func(r: Rect2) -> bool:
+		return not r.intersects(keep_out) and not r.intersects(road_band)
+	var mountains: Array = [] if not mount_on else [tt0["mountain"]]
+	var forests: Array = [] if not forest_on else [tt0["forest"]]
+	match kind:
+		"mountain":
+			# peaks crowd a narrow valley along the county road from both sides
+			var valley: Rect2 = Rect2(avoid.get_center() - Vector2(230.0, 120.0), Vector2(460.0, 240.0))
+			var band: Rect2 = Rect2(0, road_z() - 70.0, MAP_W, 140.0)
+			clear = func(r: Rect2) -> bool:
+				return not r.intersects(valley) and not r.intersects(band)
+			var n: int = has_rng.randi_range(6, 8)
+			for tries in 160:
+				if mountains.size() >= n + 1:
+					break
+				var c: Vector2 = Vector2(has_rng.randf_range(0.0, MAP_W), has_rng.randf_range(0.0, MAP_H))
+				var rr: float = has_rng.randf_range(260.0, 420.0)
+				# only the foothills may reach the valley's edge
+				for g in 20:
+					if clear.call(_ellipse_rect(c, rr * 0.85, rr * 0.85)):
+						break
+					rr *= 0.9
+				if rr < 140.0 or not clear.call(_ellipse_rect(c, rr * 0.85, rr * 0.85)):
+					continue
+				mountains.append({"c": c, "r": rr, "peak": has_rng.randf_range(70.0, 170.0)})
+		"lakes":
+			var n2: int = has_rng.randi_range(5, 8)
+			for tries in 120:
+				if keep_lakes.size() >= n2 + 1:
+					break
+				var c2: Vector2 = Vector2(has_rng.randf_range(80.0, MAP_W - 80.0), has_rng.randf_range(80.0, MAP_H - 80.0))
+				var rx: float = has_rng.randf_range(30.0, 105.0)
+				var rz: float = has_rng.randf_range(25.0, 75.0)
+				var lr: Rect2 = _ellipse_rect(c2, rx, rz).grow(25.0)
+				var ok: bool = clear.call(lr)
+				for o in keep_lakes:
+					if lr.intersects(_ellipse_rect(o["c"], float(o["rx"]), float(o["rz"])).grow(20.0)):
+						ok = false
+				if ok:
+					keep_lakes.append({"c": c2, "rx": rx, "rz": rz, "name": "%s Lake" % ["Bass", "Loon", "Round", "Twin", "Sand", "Pickerel", "Swan", "Rush", "Birch", "Goose", "Horseshoe", "Spring"][has_rng.randi_range(0, 11)]})
+		"woods":
+			# private timber everywhere, the town's clearing included
+			for i in has_rng.randi_range(4, 6):
+				forests.append({"c": Vector2(has_rng.randf_range(0.0, MAP_W), has_rng.randf_range(0.0, MAP_H)), "rx": has_rng.randf_range(260.0, 430.0), "rz": has_rng.randf_range(220.0, 360.0), "private": true})
+			forests.append({"c": avoid.get_center(), "rx": avoid.size.x * 0.8, "rz": avoid.size.y * 0.9, "private": true})
 	tt0["lakes"] = keep_lakes
-	tt0["rail_present"] = has.randf() < 0.72
-	w.config["terrain"]["avoid"] = [avoid.position.x, avoid.position.y, avoid.size.x, avoid.size.y]
-	w.config["terrain"]["landmarks"] = _make_landmarks(w, map_seed, avoid)
+	tt0["mountains"] = mountains
+	tt0["forests"] = forests
+	tt0["rail_present"] = has_rng.randf() < p_rail
 
 
 static func _inset(corner: Vector2, ix: float, iz: float) -> Vector2:
@@ -128,7 +204,28 @@ static func forest_value(w: LTWorld, x: float, z: float) -> float:
 	var tt: Dictionary = t(w)
 	if tt.is_empty():
 		return -1.0
-	var f: Dictionary = tt["forest"]
+	var best: float = -9.0
+	for f in tt.get("forests", [tt["forest"]]):
+		if bool(f.get("none", false)):
+			continue
+		var c: Vector2 = f["c"]
+		var dx: float = (x - c.x) / float(f["rx"])
+		var dz: float = (z - c.y) / float(f["rz"])
+		best = maxf(best, 1.0 - (dx * dx + dz * dz))
+	if best <= -9.0:
+		return -1.0
+	var v: float = best + noise(w).get_noise_2d(x, z) * 0.45
+	# the county road and the railroad are cut through the trees
+	if absf(z - road_z()) < 18.0 or (tt.has("rail_z") and bool(tt.get("rail_present", true)) and absf(z - float(tt["rail_z"])) < 14.0):
+		v = minf(v, -0.2)
+	return v
+
+
+## Only the state forest's core is protected; private woods can be cleared and built on.
+static func state_forest_value(w: LTWorld, x: float, z: float) -> float:
+	var f: Dictionary = t(w)["forest"]
+	if bool(f.get("none", false)):
+		return -1.0
 	var c: Vector2 = f["c"]
 	var dx: float = (x - c.x) / float(f["rx"])
 	var dz: float = (z - c.y) / float(f["rz"])
@@ -145,8 +242,10 @@ static func has(w: LTWorld, feature: String) -> bool:
 	if tt.is_empty():
 		return false
 	match feature:
-		"forest", "mountain":
-			return not bool(tt[feature].get("none", false))
+		"forest":
+			return not tt.get("forests", [tt["forest"]]).filter(func(f): return not bool(f.get("none", false))).is_empty()
+		"mountain":
+			return not tt.get("mountains", [tt["mountain"]]).filter(func(m): return not bool(m.get("none", false))).is_empty()
 		"lake":
 			return not tt["lakes"].is_empty()
 		"rail":
@@ -155,7 +254,14 @@ static func has(w: LTWorld, feature: String) -> bool:
 
 
 static func mountain_peak(w: LTWorld) -> float:
-	return float(t(w).get("mountain", {}).get("peak", 0.0))
+	var best: float = float(t(w).get("mountain", {}).get("peak", 0.0))
+	for m in t(w).get("mountains", []):
+		best = maxf(best, float(m.get("peak", 0.0)))
+	return best
+
+
+static func kind_name(w: LTWorld) -> String:
+	return str(KINDS.get(str(t(w).get("kind", "prairie")), "Open prairie"))
 
 
 ## Ground height in meters: the valley floor is 0, the mountain rises in its corner.
@@ -163,15 +269,19 @@ static func height(w: LTWorld, x: float, z: float) -> float:
 	var tt: Dictionary = t(w)
 	if tt.is_empty():
 		return 0.0
-	var m: Dictionary = tt["mountain"]
-	var c: Vector2 = m["c"]
-	var d: float = Vector2(x, z).distance_to(c) / float(m["r"])
-	if d >= 1.0:
-		return 0.0
-	var base: float = pow(1.0 - d, 1.7)
-	# ridges and gullies, stronger up high
-	var ridge: float = 1.0 + noise(w).get_noise_2d(x * 2.2 + 500.0, z * 2.2) * 0.35 * (1.0 - d)
-	return maxf(0.0, float(m["peak"]) * base * ridge)
+	var best: float = 0.0
+	for m in tt.get("mountains", [tt["mountain"]]):
+		if bool(m.get("none", false)):
+			continue
+		var c: Vector2 = m["c"]
+		var d: float = Vector2(x, z).distance_to(c) / float(m["r"])
+		if d >= 1.0:
+			continue
+		var base: float = pow(1.0 - d, 1.7)
+		# ridges and gullies, stronger up high
+		var ridge: float = 1.0 + noise(w).get_noise_2d(x * 2.2 + 500.0, z * 2.2) * 0.35 * (1.0 - d)
+		best = maxf(best, float(m["peak"]) * base * ridge)
+	return best
 
 
 static func is_water(w: LTWorld, x: float, z: float) -> bool:
@@ -195,9 +305,10 @@ static func lake_at(w: LTWorld, x: float, z: float) -> int:
 static func protected(w: LTWorld, x: float, z: float) -> String:
 	if t(w).is_empty():
 		return ""
-	if height(w, x, z) > mountain_peak(w) * 0.3:
+	var mm: Dictionary = t(w)["mountain"]
+	if not bool(mm.get("none", false)) and Vector2(x, z).distance_to(mm["c"]) < float(mm["r"]) * 0.6 and height(w, x, z) > mountain_peak(w) * 0.3:
 		return str(t(w)["park_name"])
-	if forest_value(w, x, z) > 0.45:
+	if state_forest_value(w, x, z) > 0.45:
 		return str(t(w)["forest_name"])
 	return ""
 
@@ -330,11 +441,17 @@ static func feature_distance(w: LTWorld, feature: String, p: Vector2) -> float:
 		"lake":
 			return water_distance(w, p.x, p.y)
 		"forest":
-			var f: Dictionary = tt["forest"]
-			return maxf(0.0, p.distance_to(f["c"]) - minf(float(f["rx"]), float(f["rz"])))
+			var bf: float = 1e9
+			for f in tt.get("forests", [tt["forest"]]):
+				if not bool(f.get("none", false)):
+					bf = minf(bf, maxf(0.0, p.distance_to(f["c"]) - minf(float(f["rx"]), float(f["rz"]))))
+			return bf
 		"mountain":
-			var m: Dictionary = tt["mountain"]
-			return maxf(0.0, p.distance_to(m["c"]) - float(m["r"]) * 0.75)
+			var bm: float = 1e9
+			for m in tt.get("mountains", [tt["mountain"]]):
+				if not bool(m.get("none", false)):
+					bm = minf(bm, maxf(0.0, p.distance_to(m["c"]) - float(m["r"]) * 0.75))
+			return bm
 	return 1e9
 
 
@@ -411,6 +528,9 @@ static func _make_landmarks(w: LTWorld, map_seed: int, avoid: Rect2) -> Array:
 	var out: Array = []
 	var keep: Rect2 = avoid.grow(110.0)
 	var rz: float = road_z() + (-1.0 if rng.randf() < 0.5 else 1.0) * rng.randf_range(160.0, 230.0)
+	if str(t(w).get("kind", "")) == "mountain":
+		# in the mountains the railroad follows the valley floor beside the road
+		rz = road_z() + (-1.0 if rng.randf() < 0.5 else 1.0) * rng.randf_range(48.0, 60.0)
 	if not bool(w.config.get("open_land", false)):
 		# an old town grew up beside the tracks, not on them
 		rz = avoid.position.y - 30.0 if rng.randf() < 0.5 else avoid.end.y + 30.0

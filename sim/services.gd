@@ -490,7 +490,7 @@ static func _outdoor_visitors(w: LTWorld) -> void:
 	var season: float = 1.8 if m >= 5 and m <= 7 else (1.3 if m >= 8 and m <= 10 else (0.8 if m >= 2 and m <= 4 else 0.5))
 	if m >= 9 and m <= 11 and int(w.city["laws"].get("hunting_season", 1)) == 0:
 		season *= 0.6
-	var monthly: float = (25.0 * float(tt["lakes"].size()) + (40.0 if LTTerrain.has(w, "forest") else 8.0) + (25.0 if LTTerrain.has(w, "mountain") else 0.0) + LTRail.visitor_draw(w)) * season * LTRegion.index(w)
+	var monthly: float = (25.0 * float(tt["lakes"].size()) + (40.0 if LTTerrain.has(w, "forest") else 8.0) * (2.0 if str(tt.get("kind", "")) == "woods" else 1.0) + 25.0 * float(mini(4, tt.get("mountains", [tt["mountain"]]).filter(func(m): return not bool(m.get("none", false))).size())) + LTRail.visitor_draw(w)) * season * LTRegion.index(w)
 	var day_n: float = monthly / 30.0
 	var n: int = int(day_n)
 	if w.rng.randf() < day_n - float(n):

@@ -480,6 +480,7 @@ static func expected_riders(w: LTWorld) -> int:
 	var n: float = float(w.residents()) * 4.0
 	n += 1200.0 * float(LTTerrain.t(w).get("lakes", []).size())
 	n += 1500.0 if LTTerrain.has(w, "mountain") else 0.0
+	n += 1500.0 if str(LTTerrain.t(w).get("kind", "")) == "mountain" else 0.0
 	n += 900.0 if LTTerrain.has(w, "forest") else 0.0
 	n += 600.0 * float(w.open_businesses("hotel").size() + w.open_businesses("campground").size() + w.open_businesses("guide_service").size())
 	return int(n)

@@ -1347,7 +1347,7 @@ func _tab_mayor() -> void:
 	var tt: Dictionary = LTTerrain.t(ww)
 	if not tt.is_empty():
 		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
-		var land: VBoxContainer = _card(box, "The land")
+		var land: VBoxContainer = _card(box, "The land", LTTerrain.kind_name(ww))
 		var feats: Array = []
 		if LTTerrain.has(ww, "forest"):
 			feats.append(str(tt["forest_name"]))

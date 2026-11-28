@@ -729,11 +729,19 @@ func _random_land_and_passengers() -> void:
 	# maps differ: some have no forest, mountain, lake or railroad; a town with no
 	# railroad asks one to build; a town with one can ask the passenger trains to stop
 	var counts: Dictionary = {"forest": 0, "mountain": 0, "lake": 0, "rail": 0}
+	var kinds: Dictionary = {}
+	var start_blocked: Array = []
 	var no_rail_seed: int = -1
 	for sd in range(1, 41):
 		var wt: LTWorld = LTWorld.new()
 		wt.config["map_seed"] = sd
 		LTTerrain.setup(wt, sd, Rect2(500, 420, 600, 360))
+		var kd: String = str(LTTerrain.t(wt)["kind"])
+		kinds[kd] = int(kinds.get(kd, 0)) + 1
+		# every kind of map keeps buildable ground where the town starts
+		var sv: Dictionary = LTTerrain.survey(wt, Rect2(760, 625, 40, 40))
+		if not bool(sv["ok"]):
+			start_blocked.append("%d %s: %s" % [sd, kd, sv["why"]])
 		for k in counts:
 			if LTTerrain.has(wt, k):
 				counts[k] = int(counts[k]) + 1
@@ -760,9 +768,9 @@ func _random_land_and_passengers() -> void:
 		LTRail.daily(w2)
 		w2.day += 1
 	var nl_answer: String = str(LTRail.r(w2)["new_line"].get("status", ""))
-	var ok: bool = varied and no_rail_seed > 0 and bool(asked["ok"]) and answered and bool(nl["ok"]) and nl_answer == "declined"
-	_check("Random land and trains: maps differ in forest, mountain, lakes and railroad; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop", ok,
-		"Of 40 seeds: %s. Passenger stop request: %s -> %s (expects %d riders, needs %d). No-rail seed %d asked for a line: %s" % [str(counts), asked["message"].substr(0, 60), rr["pax"].get("status", ""), LTRail.expected_riders(w), LTRail.RIDERS_NEEDED, no_rail_seed, nl_answer], w)
+	var ok: bool = varied and kinds.size() == 4 and start_blocked.is_empty() and no_rail_seed > 0 and bool(asked["ok"]) and answered and bool(nl["ok"]) and nl_answer == "declined"
+	_check("Map kinds and trains: prairie, mountain town, lake country and north woods maps, each with buildable ground where the town starts; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop", ok,
+		"Of 40 seeds: %s, %s. Start blocked: %s. Passenger stop request: %s -> %s (expects %d riders, needs %d). No-rail seed %d asked for a line: %s" % [str(kinds), str(counts), str(start_blocked), asked["message"].substr(0, 60), rr["pax"].get("status", ""), LTRail.expected_riders(w), LTRail.RIDERS_NEEDED, no_rail_seed, nl_answer], w)
 
 
 func _business_buildings() -> void:

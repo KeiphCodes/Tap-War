@@ -1002,7 +1002,8 @@ func _build_forest() -> void:
 	var pines: Array = []
 	var leafy: Array = []
 	var peak: float = maxf(1.0, LTTerrain.mountain_peak(w))
-	var step: float = 9.0
+	# a map that is all woods gets its trees a little farther apart, so it stays quick to draw
+	var step: float = 12.0 if str(tt.get("kind", "")) == "woods" else 9.0
 	var ms: Vector2 = map_size()
 	var x: float = 0.0
 	while x < ms.x:
