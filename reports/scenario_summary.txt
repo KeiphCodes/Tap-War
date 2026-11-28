@@ -1,70 +1,73 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T01:08:21 by tests/scenarios.gd.
+Generated 2026-11-28T01:24:52 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
-  Faith Ramirez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 58 days in the county jail. Job before: store clerk, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 58 days in the county jail.
+  Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 70 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 70 days in the county jail.
 
 [PASS] Divorce: the household splits, child support is set by income, and bankruptcy cannot erase it
-  Linda Lewis and George Lewis divorced. Child support: $591 a month, owed by George Lewis, status after the payer's bankruptcy: 60 days late.
+  Sara Martin and George Martin divorced. Child support: $802 a month, owed by Sara Martin, status after the payer's bankruptcy: 60 days late.
 
 [PASS] Addiction: a heavy habit costs money and health until the Sim chooses treatment, which lowers it
-  Faith Ramirez started with a drinking level of 75. After 120 days: level 54, went to treatment: true, cash $16,491 to $19,252.
+  Diane Perez started with a drinking level of 75. After 120 days: level 8, went to treatment: true, cash $8,659 to $7,096.
 
 [PASS] Pregnancy: about nine months, prenatal visits, a birth, and maternity leave
-  Linda Olson was due Oct 17, Y1. Children 0 to 1. On leave until Nov 28, Y1.
+  Sara Martin was due Oct 13, Y1. Children 2 to 3. On leave until Nov 24, Y1.
 
 [PASS] A Sim run clinic captures doctor visits that used to leave town
-  Ramirez Health Center opened. Revenue so far $341. Medical spending kept in town recently: $283.
+  Perez Medical opened. Revenue so far $3,600. Medical spending kept in town recently: $1,669.
 
 [PASS] Supply chain: farm grain to the mill, flour to the bakery, bread to the grocery, all paid through the ledger
-  Farm Ramirez Acres revenue $2,791. Mill Hanson Mill revenue $681. Bakery Lewis Bread Co revenue $2,898. Grocery Ramirez Market supplier: Ramirez Acres and Valley Wholesale.
+  Farm Perez Gardens revenue $4,363. Mill Brown Grain and Feed revenue $974. Bakery Brown Bakery revenue $4,446. Grocery Perez Foods supplier: Perez Gardens and Valley Wholesale.
 
 [PASS] A chartered local bank lends to townspeople and the interest stays in town
-  Ramirez Savings Bank lent $1,253 to Jacob Ramirez. Creditor on the record: Ramirez Savings Bank. Paid back so far: $119.
+  Perez Savings Bank lent $1,299 to Kevin Perez. Creditor on the record: Perez Savings Bank. Paid back so far: $94.
 
 [PASS] Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town
-  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 7.9 minutes. The new street is done, condition 45.
+  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 7.9 minutes. The new street is done, condition 50.
 
 [PASS] City bonds, bus service and the new laws all work, and a small town cannot charter a bank
-  Bonds: Sold $200,000 in bonds at 3.8%. $1,192 a month for 20 years. Bus: riders paid $732 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 52 people: The state will not charter a bank for a town under 120 people. The town has 52.
+  Bonds: Sold $200,000 in bonds at 3.8%. $1,191 a month for 20 years. Bus: riders paid $1,152 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 73 people: The state will not charter a bank for a town under 120 people. The town has 73.
 
 [PASS] Elections mode: a challenger runs on real grievances, Sims vote, the result stands
-  Challenger: Joan Sanchez. Platform: lower taxes and less waste. Mayor still in office: true.
+  Challenger: Linda Martinez. Platform: lower taxes and less waste. Mayor still in office: true.
 
 [PASS] The region: when a county employer fails, the town Sims who worked there lose their jobs
-  Valley Co-op failed. 5 town Sims worked there and all are now looking for work.
+  County Medical Center failed. 9 town Sims worked there and all are now looking for work.
 
 [PASS] Storms: ordinary thunderstorms only damage run down or cheap buildings, severe storms hit those far harder, owners and insurers pay real repair bills
-  Twenty ordinary thunderstorms: average loss 2.3 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 12.7 on weak, 3.0 on sound. Repairs paid: $88,752. Insurance claims: 18.
+  Twenty ordinary thunderstorms: average loss 2.9 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 19.5 on weak, 2.1 on sound. Repairs paid: $120,968. Insurance claims: 23.
 
 [PASS] Saves carry every new system (cases, region, spend book, pregnancies, addictions) and continue identically
-  Hashes after 100 more days: 2872234743 and 2872234743.
+  Hashes after 100 more days: 299443848 and 299443848.
 
 [PASS] Every business type opens, runs for two months, and keeps the ledger balanced
   Opened: grocery, cafe, general_store, farm, construction, clinic, pharmacy, private_school, repair_shop, factory, warehouse, trucking, hotel, bar, childcare, funeral_home, law_office, real_estate, mill, bakery, bank, outfitter, marina, campground, guide_service, sawmill, quarry, gold_mine. Could not open: none. Still open after 60 days: 28.
 
 [PASS] Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes
-  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 563. Residents after two years: 39. Election: Sam Dakota won the town's first election with 82% of the vote against Kevin Johnson. Milestones: ["home", "first_settler", "first_business", "incorporated", "balanced"]
+  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 272. Residents after two years: 50. Election: Sam Dakota won the town's first election with 77% of the vote against Charles Rodriguez. Milestones: ["first_settler", "home", "incorporated", "balanced", "first_business", "pop_50"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
   Day one reads 11-28. The game day for today is 1. Forty days later it reads month 1 of 2027.
 
 [PASS] Contracts and lot details: drawn roads are drafts until the mayor presses Go live; the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome
-  Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $60,000, concrete avenue with sidewalks and lights $139,799, gravel lane $24,000. Built: concrete avenue quality 31, 0.1 minutes a block; gravel lane quality 22, 0.2 minutes a block. Deadline 30 days: bids promised [21, 22, 24] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $87,000. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
+  Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $60,000, concrete avenue with sidewalks and lights $139,799, gravel lane $24,000. Built: concrete avenue quality 30, 0.1 minutes a block; gravel lane quality 18, 0.2 minutes a block. Deadline 30 days: bids promised [22, 22, 25] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $87,000. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
 
 [PASS] Sim mayor: a seeded Sim founds the town, lays roads, awards contracts and logs each reason, and the player can take over
-  Tina Martin (content, cautious, kind, greedy, outgoing) made 9 decisions in 300 days. Streets 3, projects under way or done 12, residents 16. Take over: You are the mayor now. Every decision is yours until you hand it back.
+  Tina Martin (content, cautious, kind, greedy, outgoing) made 9 decisions in 300 days. Streets 3, projects under way or done 17, residents 23. Take over: You are the mayor now. Every decision is yours until you hand it back.
 
 [PASS] Custom homes: families design houses room by room that fit their lots, remodel as life changes, and ask the mayor for variances
-  22 of 22 houses fit their lots. Ramirez family: Ranch, 2 bedrooms, 2 baths, 1,380 sq ft, 2 car detached garage, basement, office became Ranch, 3 bedrooms, 2 baths, 1,540 sq ft, 2 car detached garage, basement, office. Variance: Variance granted. The Ramirez family can build a back deck.
+  22 of 22 houses fit their lots. Perez family: Farmhouse, 3 bedrooms, 2.5 baths, 1,615 sq ft, 2 car detached garage, basement, front porch became Farmhouse, 4 bedrooms, 2.5 baths, 1,776 sq ft, 2 car detached garage, basement, front porch. Variance: Variance granted. The Perez family can build a back deck.
 
 [PASS] Business buildings: owners design them room by room within their money, rooms set how many they serve, and busy ones add on
-  Lean cafe: 1,500 sq ft, 55 seats, 4 parking spaces. With money to spare: 1,500 sq ft, two stories, 55 seats, outdoor patio seating, apartments upstairs to rent out, 5 parking spaces. Ramirez Cafe grew from 800 to 1200 sq ft.
+  Lean cafe: 1,500 sq ft, 55 seats, 4 parking spaces. With money to spare: 1,500 sq ft, 55 seats, outdoor patio seating, 5 parking spaces. Perez Coffee House grew from 800 to 1200 sq ft.
 
 [PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
-  Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 760, payments 17% of income. FHA: FHA loan: $8,750 down, credit 590, payments 23% of income. Business: SBA 7(a) loan at 11.8%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
+  Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 25% of income. Business: SBA 7(a) loan at 11.7%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
 
 [PASS] Apartments: a Sim builds homes designed for who is waiting, each unit with its own rent, and renters move in
-  Ramirez's apartments: 4 homes. Walk up, 1 story: 2 one-bedrooms, 2 two-bedrooms. With laundry room and playground. Rents $767 to $939. 4 of 4 rented. Why: as many homes as the zoning allows, 4; family sized units, because families in town need room; a playground for the kids who will live there; accessible ground floor units, as fair housing rules require; rents kept affordable under a USDA rural rental housing loan.
+  Perez's apartments: 4 homes. Walk up, 1 story: 2 one-bedrooms, 2 two-bedrooms. With laundry room and playground. Rents $791 to $964. 4 of 4 rented. Why: as many homes as the zoning allows, 4; a playground for the kids who will live there; accessible ground floor units, as fair housing rules require; rents kept affordable under a USDA rural rental housing loan.
+
+[PASS] Real loans: the bank offers products, the borrower picks with a reason, adjustable rates reset within caps, balloons refinance, mortgage insurance drops at 78%
+  Offers: 30-year fixed, 15-year fixed, 5/1 adjustable (ARM), 30-year fixed, 1 point paid. Picked 5/1 adjustable (ARM): took the adjustable rate for the lower start, betting on moving or rates staying put. ARM 5.75% to 7.75%. Balloon refinanced: true. Insurance $79 then $0.
 
 RESULT: ALL SCENARIOS PASS
