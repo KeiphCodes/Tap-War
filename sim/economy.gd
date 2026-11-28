@@ -1004,7 +1004,7 @@ static func _farm_day(w: LTWorld, b: Dictionary) -> void:
 	var surplus: float = float(b["produce"]) - keep_for_town
 	if surplus > 40.0 and LTCalendar.weekday(w.day) == "Wednesday":
 		var sold: int = int(surplus * 0.8)
-		var rev: int = sold * PRODUCE_EXPORT_PRICE
+		var rev: int = LTRail.export_rev(w, b, sold * PRODUCE_EXPORT_PRICE)
 		w.ledger.pay("outside", w.acct_b(b), rev, "exports")
 		b["produce"] = float(b["produce"]) - float(sold)
 		b["month_revenue"] = int(b["month_revenue"]) + rev

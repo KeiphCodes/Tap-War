@@ -982,7 +982,11 @@ func _build_forest() -> void:
 					if not buckets.has(key):
 						buckets[key] = []
 					buckets[key].append(rr)
-	var sig: String = "%s|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size()]
+	var spur_n: int = 0
+	for b in w.businesses:
+		if bool(b.get("rail_spur", false)):
+			spur_n += 1
+	var sig: String = "%s|%d|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size(), spur_n]
 	if sig == _trees_sig and pine_mm != null:
 		return
 	_trees_sig = sig
@@ -1528,7 +1532,8 @@ func _business(root: Node3D, l: Dictionary) -> void:
 	var title: String = str(b["name"])
 	if not open:
 		title += "\nCLOSED"
-	var s: Label3D = _sign(root, title, Vector3(0, 9.6 if two else 6.6, 0), 36, Color(1, 1, 1) if open else Color(0.75, 0.7, 0.65))
+	var floors: int = int(b["bplan"].get("stories", 1)) if b.has("bplan") else 1
+	var s: Label3D = _sign(root, title, Vector3(0, maxf(9.6 if two else 6.6, 4.4 + float(floors - 1) * 3.4 + 2.0), 0), 36, Color(1, 1, 1) if open else Color(0.75, 0.7, 0.65))
 	s.pixel_size = 0.05
 
 
@@ -1580,8 +1585,19 @@ func _biz_extras(root: Node3D, l: Dictionary, b: Dictionary, open: bool) -> void
 		var pc: Vector3 = Vector3((float(pg[0]) + float(pg[2])) * 0.5, 0, -7.0)
 		_box(root, Vector3(0.2, 1.8, 2.0), pc + Vector3(-1.5, 0.9, 0), Color(0.9, 0.3, 0.3))
 		_box(root, Vector3(2.0, 0.15, 2.0), pc + Vector3(1.0, 0.08, 0), Color(0.9, 0.8, 0.5))
+	# the floors above the first, when a business has built up
+	var stories: int = int(plan.get("stories", 1))
+	var upper: int = stories - (2 if feats.has("apartments") else 1)
+	var base_y: float = 7.6 if feats.has("apartments") else 4.4
+	var tall: bool = stories >= 5
+	for i in maxi(0, upper):
+		var fy: float = base_y + float(i) * 3.4 + 1.7
+		_box(root, Vector3(8.0, 3.4, 6.0), Vector3(-0.5, fy, -1.5), Color(0.42, 0.55, 0.66) if tall else Color(0.7, 0.62, 0.52))
+		_box(root, Vector3(8.1, 0.9, 6.1), Vector3(-0.5, fy + 0.3, -1.5), Color(0.75, 0.85, 0.95) if tall else Color(0.3, 0.36, 0.44), open and i % 2 == 0)
+	if upper > 0:
+		_box(root, Vector3(8.4, 0.3, 6.4), Vector3(-0.5, base_y + float(upper) * 3.4 + 0.15, -1.5), Color(0.3, 0.3, 0.32))
 	if feats.has("solar"):
-		_box(root, Vector3(5.0, 0.1, 3.0), Vector3(-0.5, 4.7 if not feats.has("apartments") else 7.8, -2.0), Color(0.12, 0.16, 0.3))
+		_box(root, Vector3(5.0, 0.1, 3.0), Vector3(-0.5, (base_y + float(maxi(0, upper)) * 3.4 + 0.3) if upper > 0 else (4.7 if not feats.has("apartments") else 7.8), -2.0), Color(0.12, 0.16, 0.3))
 
 
 ## The outdoor businesses: an outfitter with a canoe on the roof, a marina with
@@ -1888,6 +1904,15 @@ func _civic(root: Node3D, l: Dictionary) -> void:
 			_box(root, Vector3(1.6, 0.4, 0.1), Vector3(0, 3.0, 2.3), Color(0.85, 0.15, 0.15), true)
 			_box(root, Vector3(0.4, 1.6, 0.1), Vector3(0, 3.0, 2.3), Color(0.85, 0.15, 0.15), true)
 			_box(root, Vector3(5.0, 1.4, 0.1), Vector3(0, 1.4, 2.3), Color(0.7, 0.85, 0.95), true)
+		"depot":
+			# a prairie depot: board and batten walls, a wide hip roof, the platform trackside
+			_box(root, Vector3(12.0, 4.0, 6.0), Vector3(0, 2.0, -1.0), Color(0.82, 0.68, 0.42))
+			_roof(root, Vector3(14.0, 2.4, 8.4), Vector3(0, 5.2, -1.0), Color(0.42, 0.22, 0.16))
+			_box(root, Vector3(2.0, 1.6, 2.4), Vector3(0, 2.2, 2.6), Color(0.82, 0.68, 0.42))
+			for i in 4:
+				_box(root, Vector3(1.0, 1.5, 0.1), Vector3(-4.5 + float(i) * 3.0, 2.2, 2.05), Color(1.0, 0.9, 0.6), true)
+			_box(root, Vector3(18.0, 0.5, 4.0), Vector3(0, 0.25, -6.0), Color(0.6, 0.58, 0.55))
+			_box(root, Vector3(3.0, 0.9, 0.1), Vector3(0, 4.3, 2.1), Color(0.95, 0.95, 0.9))
 		"park":
 			for i in 5:
 				var tp2: Vector3 = Vector3(-5.0 + (i % 3) * 5.0, 0, -4.0 + (i / 3) * 6.0)
@@ -3075,7 +3100,7 @@ func _build_landmarks(buckets: Dictionary) -> void:
 	var x: float = 0.0
 	while x < ms.x:
 		var mid: Vector2 = Vector2(x + 15.0, rail_z)
-		if not _taken(buckets, mid, 18.0) and not LTTerrain.is_water(w, mid.x, mid.y):
+		if not _taken(buckets, mid, 14.0) and not LTTerrain.is_water(w, mid.x, mid.y):
 			var gy: float = LTTerrain.height(w, mid.x, mid.y)
 			_bxf = Transform3D(Basis.IDENTITY, Vector3(mid.x, gy, mid.y))
 			_box(landmark_root, Vector3(30.0, 0.5, 4.4), Vector3(0, 0.2, 0), Color(0.45, 0.43, 0.4))
@@ -3096,6 +3121,24 @@ func _build_landmarks(buckets: Dictionary) -> void:
 			for wz in [-1.0, 1.0]:
 				_box(landmark_root, Vector3(45.0, 0.05, 0.05), Vector3(22.5, 8.4, wz), Color(0.15, 0.15, 0.15))
 		x += 45.0
+	# spur tracks from the main line to the businesses that built them
+	for b in w.businesses:
+		if not bool(b.get("rail_spur", false)) or str(b["status"]) == "closed":
+			continue
+		var bl: Dictionary = w.lot(int(b["lot"]))
+		if bl.is_empty():
+			continue
+		var sx: float = (float(bl["x0"]) + float(bl["x1"])) * 0.5
+		var edge: float = float(bl["z0"]) if float(bl["z0"]) > rail_z else float(bl["z1"])
+		var ln: float = absf(edge - rail_z)
+		if ln < 1.0:
+			continue
+		var mz: float = (edge + rail_z) * 0.5
+		_bxf = Transform3D(Basis.IDENTITY, Vector3(sx, LTTerrain.height(w, sx, mz), mz))
+		_box(landmark_root, Vector3(4.0, 0.45, ln), Vector3(0, 0.2, 0), Color(0.45, 0.43, 0.4))
+		for sxo in [-0.72, 0.72]:
+			_box(landmark_root, Vector3(0.1, 0.14, ln), Vector3(sxo, 0.6, 0), Color(0.5, 0.48, 0.46))
+		_box(landmark_root, Vector3(3.0, 3.6, 12.0), Vector3(0, 2.4, 0), [Color(0.55, 0.2, 0.15), Color(0.2, 0.3, 0.5), Color(0.75, 0.6, 0.2)][int(b["id"]) % 3])
 	for m in marks:
 		var p: Vector2 = Vector2(float(m["x"]), float(m["z"]))
 		var kind: String = str(m["kind"])

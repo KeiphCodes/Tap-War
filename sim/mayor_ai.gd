@@ -77,6 +77,7 @@ static func daily(w: LTWorld) -> void:
 		_variances(w, t)
 		_plats(w, t)
 		_mayors_house(w, t)
+		_depot(w, t)
 	if w.day % 7 == 5:
 		_award(w, t)
 	if LTCalendar.day_of_month(w.day) == 6:
@@ -245,6 +246,26 @@ static func _mayors_house(w: LTWorld, t: Dictionary) -> void:
 	var r: Dictionary = _act(w, {"kind": "define_project", "ptype": "mayor_house", "target": lot})
 	if bool(r.get("ok", false)):
 		_say(w, "decided to build a house for the mayor on %s. Reason: the camper gets old." % LTGeography.lot_label(w, lot))
+
+
+## A depot on the railroad: cheaper freight for the town's shippers, and once the
+## town is big enough the regional train stops. An ambitious mayor builds it sooner.
+static func _depot(w: LTWorld, t: Dictionary) -> void:
+	if LTRail.has_depot(w) or not LTRail.has_line(w) or w.residents() < 160 - int(float(t["ambition"])):
+		return
+	for p in w.projects:
+		if str(p["ptype"]) == "depot" and not ["cancelled", "done"].has(str(p["status"])):
+			return
+	if w.ledger.bal("city") < LTMoney.dollars(900000.0):
+		return
+	for l in w.lots:
+		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and LTRail.depot_lot_ok(w, l) == "":
+			if not ["civic", "mixed", "industrial", "commercial"].has(str(l["zone"])):
+				_act(w, {"kind": "zone_lot", "lot": int(l["id"]), "zone": "civic"})
+			var r: Dictionary = _act(w, {"kind": "define_project", "ptype": "depot", "target": int(l["id"])})
+			if bool(r.get("ok", false)):
+				_say(w, "put a railroad depot out to bid on %s. Reason: the town's farms and mills could ship by rail, and a depot is how a town gets a train stop." % LTGeography.lot_label(w, int(l["id"])))
+			return
 
 
 # ---------------------------------------------------------------- the people

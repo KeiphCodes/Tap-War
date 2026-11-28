@@ -263,6 +263,8 @@ func tick_day() -> void:
 		LTHomes.monthly(self)
 	if LTCalendar.day_of_month(day) == 16:
 		LTBuildings.monthly(self)
+	if LTCalendar.day_of_month(day) == 18:
+		LTRail.monthly(self)
 	if LTCalendar.day_of_month(day) == 20:
 		LTLand.monthly(self)
 	if LTCalendar.day_of_month(day) == 24:
@@ -276,6 +278,7 @@ func tick_day() -> void:
 		LTCivic.newspaper(self)
 	LTCivic.elections_daily(self)
 	LTGov.daily(self)
+	LTRail.daily(self)
 	LTFounder.daily(self)
 	LTMayorAI.daily(self)
 	LTEconomy.analyze_market(self)
@@ -718,6 +721,10 @@ func from_save(data: Dictionary, _version: int) -> Error:
 	debts = data["finance"]["debts"]
 	bank = data["finance"]["bank"]
 	city = data["city"]["city"]
+	# laws added since the town was saved start at their usual value
+	for k in LTCivic.DEFAULT_LAWS:
+		if not city["laws"].has(k):
+			city["laws"][k] = LTCivic.DEFAULT_LAWS[k]
 	# a law added since the save was made starts at its usual setting
 	for k in LTCivic.DEFAULT_LAWS:
 		if not city["laws"].has(k):

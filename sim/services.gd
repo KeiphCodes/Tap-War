@@ -534,6 +534,7 @@ static func _factory_day(w: LTWorld, b: Dictionary) -> void:
 	# pollution rules raise the cost of running clean
 	var rule: float = float(w.city["laws"].get("pollution_rule", 0.5))
 	input_cost += int(units * 40.0 * rule)
+	input_cost = LTRail.input_cost(w, b, input_cost)
 	var paid: int = w.ledger.pay(w.acct_b(b), "outside", input_cost, "factory_inputs")
 	b["month_costs"] = int(b["month_costs"]) + paid
 	if paid < input_cost:
@@ -542,7 +543,7 @@ static func _factory_day(w: LTWorld, b: Dictionary) -> void:
 	b["pollution"] = maxf(0.0, (1.0 - rule) * units * 0.02)
 	if float(b["stock"]) > 60.0 and LTCalendar.weekday(w.day) == "Thursday":
 		var sold: float = float(b["stock"]) - 20.0
-		var rev: int = int(sold * float(GOODS_EXPORT) * LTRegion.index(w))
+		var rev: int = LTRail.export_rev(w, b, int(sold * float(GOODS_EXPORT) * LTRegion.index(w)))
 		w.ledger.pay("outside", w.acct_b(b), rev, "exports")
 		b["stock"] = 20.0
 		b["month_revenue"] = int(b["month_revenue"]) + rev
@@ -578,7 +579,7 @@ static func _mill_day(w: LTWorld, b: Dictionary) -> void:
 	b["stock"] = float(b["stock"]) + got * 0.9
 	if float(b["stock"]) > 300.0 and LTCalendar.weekday(w.day) == "Tuesday":
 		var sold: float = float(b["stock"]) - 100.0
-		var rev: int = int(sold * float(FLOUR_UNIT) * 0.7)
+		var rev: int = LTRail.export_rev(w, b, int(sold * float(FLOUR_UNIT) * 0.7))
 		w.ledger.pay("outside", w.acct_b(b), rev, "exports")
 		b["stock"] = 100.0
 		b["month_revenue"] = int(b["month_revenue"]) + rev
@@ -601,10 +602,10 @@ static func _land_industry_day(w: LTWorld, b: Dictionary, unit: int, input_share
 		b["ore_grade"] = maxf(0.1, grade - 0.0004)
 		price = float(w.region.get("gold_price", 1.0)) * grade
 	var rule: float = float(w.city["laws"].get("pollution_rule", 0.5))
-	var input_cost: int = int(units * float(unit) * input_share + units * 4000.0 * rule * dirt)
+	var input_cost: int = LTRail.input_cost(w, b, int(units * float(unit) * input_share + units * 4000.0 * rule * dirt))
 	var paid: int = w.ledger.pay(w.acct_b(b), "outside", input_cost, inputs)
 	b["month_costs"] = int(b["month_costs"]) + paid
-	var rev: int = int(units * float(unit) * price)
+	var rev: int = LTRail.export_rev(w, b, int(units * float(unit) * price))
 	if rev > 0:
 		w.ledger.pay("outside", w.acct_b(b), rev, "exports")
 		b["month_revenue"] = int(b["month_revenue"]) + rev

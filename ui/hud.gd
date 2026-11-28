@@ -1284,6 +1284,19 @@ func _tab_mayor() -> void:
 		for m in LTTerrain.landmarks(ww):
 			if ["farmstead", "elevator", "church", "schoolhouse"].has(str(m["kind"])):
 				named.append(str(m["name"]))
+		var rail: String = "[color=#93a1b5]Railroad:[/color] the %s main line. " % LTRail.RAILROAD
+		if LTRail.passenger_service(ww):
+			rail += "The depot is open and the regional train stops twice a day (%d riders today). " % int(ww.city.get("riders_today", 0))
+		elif LTRail.has_depot(ww):
+			rail += "The depot is open for freight; the regional train starts stopping at %d residents. " % LTRail.PASSENGER_AT
+		else:
+			rail += "No depot yet: build one on a lot beside the tracks (Projects) for a team track, and later a train stop. "
+		var spurs: Array = []
+		for b in ww.businesses:
+			if bool(b.get("rail_spur", false)) and str(b["status"]) == "open":
+				spurs.append(str(b["name"]))
+		rail += ("Spurs: %s." % ", ".join(spurs)) if not spurs.is_empty() else "No business has its own spur yet."
+		land.add_child(_rtl(rail))
 		if not named.is_empty():
 			land.add_child(_rtl("[color=#93a1b5]Here before the town:[/color] %s, the railroad and the power line along the county road, windmills, lake cabins and a fire lookout on the mountain." % ", ".join(named)))
 
@@ -1419,7 +1432,7 @@ func _tab_budget() -> void:
 const LAW_GROUPS: Array = [
 	["Services", "What the city pays for. More money, better service, higher costs.", ["school_funding", "police_funding", "fire_funding", "health_funding", "welfare", "bus_service"]],
 	["Business rules", "The rules every business decides under.", ["min_wage", "license_fee", "health_code", "pollution_rule", "bank_charter", "mining", "hunting_season"]],
-	["Housing and land", "What can be built, and how renters and borrowers are treated.", ["building_code", "zoning_density", "lot_coverage", "rent_cap", "late_fee_cap"]],
+	["Housing and land", "What can be built, and how renters and borrowers are treated.", ["building_code", "zoning_density", "lot_coverage", "height_limit", "rent_cap", "late_fee_cap"]],
 ]
 
 
@@ -1870,6 +1883,8 @@ func _tab_projects() -> void:
 	var tlist: Array = ["road_repair", "road_patch", "school", "school_small", "clinic", "clinic_small", "park"]
 	if int(ww.player.get("home_lot", -1)) < 0:
 		tlist.insert(0, "mayor_house")
+	if LTRail.has_line(ww) and not LTRail.has_depot(ww):
+		tlist.append("depot")
 	for t in tlist:
 		types.add_item("%s (about %s)" % [str(LTProjects.TITLES[t]).replace(" %s", "").replace("%s", "a street"), _money(int(LTProjects.BASE_COST[t]))])
 	box.add_child(types)
@@ -1885,8 +1900,10 @@ func _tab_projects() -> void:
 			var zl: Array = ["civic", "mixed", "park"] if pt == "park" else ["civic", "mixed"]
 			if pt == "mayor_house":
 				zl = LTGeography.ZONES
+			elif pt == "depot":
+				zl = ["civic", "mixed", "industrial", "commercial"]
 			for l in ww.lots:
-				if str(l["use"]) == "empty" and zl.has(str(l["zone"])):
+				if str(l["use"]) == "empty" and zl.has(str(l["zone"])) and (pt != "depot" or LTRail.depot_lot_ok(ww, l) == ""):
 					tgt.add_item("Lot %d (%s, %s)" % [l["id"], LTGeography.lot_street(ww, int(l["id"]))["name"], l["zone"]])
 					tgt.set_item_metadata(tgt.item_count - 1, int(l["id"]))
 			if tgt.item_count == 0:
@@ -2447,6 +2464,12 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 			var bz: Dictionary = w().biz(id)
 			if not typing and not bz.is_empty():
 				_biz_charts(bz)
+			if not typing and LTRail.SHIPPERS.has(str(bz.get("type", ""))) and int(bz.get("lot", -1)) >= 0:
+				var rd: float = LTRail.distance(w(), w().lot(int(bz["lot"])))
+				var ship: String = "own rail spur, %d meters off the main line, since %s: about 7%% better on every load" % [int(bz.get("spur_m", 0)), LTCalendar.short(int(bz.get("spur_day", 0)))] if bool(bz.get("rail_spur", false)) else ("loads rail cars at the city's team track: about 3%% better than trucking" if LTRail.ship_factor(w(), bz) > 1.0 else "by truck")
+				inspect_form.add_child(_rtl("\n[b]SHIPPING[/b]\n%s by %s. The tracks are %d meters away.%s" % [str(LTRail.SHIPPERS[str(bz["type"])]).capitalize(), ship, int(rd), "" if bool(bz.get("rail_spur", false)) or rd > LTRail.REACH else " A spur would cost about %s." % _money(LTRail.spur_cost(w(), w().lot(int(bz["lot"]))))]))
+			if not typing and bz.has("acres"):
+				inspect_form.add_child(_rtl("[b]Farmland[/b] %d acres." % int(bz["acres"])))
 			if not typing and bz.has("bplan") and int(bz["lot"]) >= 0:
 				_biz_plans(w().lot(int(bz["lot"])), bz["bplan"], "THE BUILDING")
 		"lot":

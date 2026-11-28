@@ -278,7 +278,8 @@ static func cost(plan: Dictionary) -> int:
 static func text(plan: Dictionary) -> String:
 	if plan.is_empty():
 		return ""
-	var parts: Array = ["%s sq ft%s" % [LTGeography._thousands(int(plan["sqft"])), ", two stories" if int(plan.get("stories", 1)) == 2 else ""]]
+	var st: int = int(plan.get("stories", 1))
+	var parts: Array = ["%s sq ft%s" % [LTGeography._thousands(int(plan["sqft"])), "" if st == 1 else ", %d stories" % st]]
 	var ct: String = capacity_text(plan)
 	if ct != "":
 		parts.append(ct)
@@ -302,7 +303,7 @@ static func layout(l: Dictionary, plan: Dictionary) -> Dictionary:
 	var fw: float = LTGeography.lot_frontage(l)
 	var dp: float = LTGeography.lot_depth(l)
 	var stories: int = int(plan.get("stories", 1))
-	var foot: float = float(plan["sqft"]) / LTHomes.M2 / float(stories if stories == 2 and not plan.get("features", []).has("apartments") else 1)
+	var foot: float = float(plan["sqft"]) / LTHomes.M2 / float(maxi(1, stories - (1 if plan.get("features", []).has("apartments") else 0)))
 	var feats: Array = plan.get("features", [])
 	var shed: bool = str(plan.get("style", "")) == "metal"
 	var park_n: int = int(plan.get("parking", 0))
@@ -398,6 +399,9 @@ static func monthly(w: LTWorld) -> void:
 			continue
 		if int(b["loss_months"]) > 0 or w.day - int(b.get("opened_day", 0)) < 365 or w.day - int(b.get("expanded_day", -9999)) < 730:
 			continue
+		if PRODUCERS.has(str(b["type"])):
+			_grow_production(w, b)
+			continue
 		var cap: float = capacity(b["bplan"])
 		if cap < 0.0 or float(b.get("customers_avg", 0.0)) < cap * 0.9:
 			continue
@@ -423,10 +427,15 @@ static func _expand(w: LTWorld, b: Dictionary) -> void:
 	var why: String = "turning customers away: the building serves about %d a day and more than that come" % int(capacity(b["bplan"]))
 	if not bool(lay["fits"]):
 		if LTLand.assemble_for(w, b):
-			lay = layout(w.lot(int(b["lot"])), plan)
+			l = w.lot(int(b["lot"]))
+			lay = layout(l, plan)
 	if not bool(lay["fits"]):
-		w.log_biz(b, "Wanted to add %d square feet but the lot is too small and no land next door is for sale. Reason: %s." % [add, why])
-		return
+		# no more land: build up, as far as the city's height limit allows
+		if not _go_up(w, b, plan, l):
+			w.log_biz(b, "Wanted to add %d square feet but the lot is full, no land next door is for sale, and the city's height limit is %d stories. Reason: %s." % [add, height_limit(w), why])
+			return
+		price = int(float(price) * height_premium(int(plan["stories"])))
+		why += "; the lot is full, so the addition goes up to %d stories" % int(plan["stories"])
 	var r: Dictionary = LTProjects.define_project(w, "expansion", int(l["id"]), int(float(price) * 1.3), -1, false,
 		{"kind": "business", "id": int(b["id"]), "name": str(b["name"]), "acct": acct}, price, add)
 	if not bool(r.get("ok", false)):
@@ -448,6 +457,99 @@ static func _expand(w: LTWorld, b: Dictionary) -> void:
 	w.log_biz(b, "Hired builders for a %d square foot addition, about %s. Reason: %s." % [add, LTMoney.fmt(price), why])
 	w.log_sim(owner, "Decided to add on to %s. Reason: %s." % [b["name"], why], true)
 	w.chronicle_add("%s is adding on: %d more square feet." % [b["name"], add], "business", false, [owner["id"]])
+
+
+const PRODUCERS: Array = ["farm", "factory", "mill", "sawmill", "quarry"]
+const ACRE_PRICE: int = 550000          # $5,500 an acre of South Dakota cropland
+
+
+static func height_limit(w: LTWorld) -> int:
+	return int(w.city["laws"].get("height_limit", 3))
+
+
+## Taller costs more per square foot: an elevator from three stories, a steel or
+## concrete frame from five, high rise fire code (sprinklers, standpipes, a fire
+## command room) from eight.
+static func height_premium(stories: int) -> float:
+	if stories >= 8:
+		return 1.7
+	if stories >= 5:
+		return 1.4
+	if stories >= 3:
+		return 1.2
+	return 1.0
+
+
+## Add a story on the same footprint, if the code and the height limit allow.
+static func _go_up(w: LTWorld, b: Dictionary, plan: Dictionary, l: Dictionary) -> bool:
+	if str(plan.get("style", "")) == "metal":
+		return false
+	var apt: int = 1 if plan.get("features", []).has("apartments") else 0
+	var floors_now: int = maxi(1, int(b["bplan"].get("stories", 1)) - apt)
+	var need: int = int(ceil(float(plan["sqft"]) / (float(b["bplan"]["sqft"]) / float(floors_now))))
+	if need + apt > height_limit(w):
+		return false
+	plan["stories"] = need + apt
+	return bool(layout(l, plan)["fits"])
+
+
+## A producer that keeps making money grows: more floor, more machines, more
+## crew, and a farm buys the next quarter section of land.
+static func _grow_production(w: LTWorld, b: Dictionary) -> void:
+	var hist: Array = b.get("month_profit_hist", [])
+	if hist.size() < 12:
+		return
+	var tot: float = 0.0
+	for i in range(hist.size() - 12, hist.size()):
+		if int(hist[i]) <= 0:
+			return
+		tot += float(hist[i])
+	var avg: float = tot / 12.0
+	var owner: Dictionary = w.cit(int(b["owners"][0]))
+	if owner.is_empty() or float(owner["traits"]["ambition"]) < 45.0:
+		return
+	var btype: String = str(b["type"])
+	var cs: Dictionary = LTEconomy.COSTS.get(btype, {})
+	var plan: Dictionary = b["bplan"].duplicate(true)
+	var add: int = maxi(800, int(float(plan["sqft"]) * 0.4))
+	plan["sqft"] = int(plan["sqft"]) + add
+	plan["rooms"] = rooms_for(plan)
+	var price: int = LTMoney.dollars(float(add) * LTEconomy.SHED_PER_SQFT + float(cs.get("equipment", 0)) * 0.35)
+	var acres: int = 0
+	if btype == "farm":
+		acres = 160
+		price += acres * ACRE_PRICE
+	# a careful owner wants it paid back within about eight years
+	var payback: float = float(price) / maxf(1.0, avg * 12.0 * 0.35)
+	if payback > 6.0 + float(owner["traits"]["risk"]) / 25.0:
+		w.log_biz(b, "Thought about growing. Reason it waits: %s would take %.0f years to pay back at today's profits." % [LTMoney.fmt(price), payback])
+		b["expanded_day"] = w.day - 365
+		return
+	var acct: String = w.acct_b(b)
+	if w.biz_cash(b) < int(float(price) * 0.25):
+		return
+	var l: Dictionary = w.lot(int(b["lot"]))
+	if not bool(layout(l, plan)["fits"]) and acres == 0:
+		if not LTLand.assemble_for(w, b):
+			w.log_biz(b, "Wanted to grow by %d square feet but the lot is full and no land next door is for sale." % add)
+			b["expanded_day"] = w.day - 365
+			return
+		l = w.lot(int(b["lot"]))
+	var down: int = mini(w.biz_cash(b) - LTMoney.dollars(20000.0), int(float(price) * 0.3))
+	w.ledger.pay(acct, "outside", down, "expansion")
+	var d: Dictionary = LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", price - down, 0.075 if acres == 0 else 0.068, 120 if acres == 0 else 300, "expansion" if acres == 0 else "farmland", int(l["id"]), [])
+	LTFinance.fund_loan(w, d, "outside", price - down)
+	b["bplan"] = plan
+	b["equipment"] = float(b.get("equipment", 1.0)) + 0.35
+	b["target_staff"] = int(b["target_staff"]) + 2
+	b["expanded_day"] = w.day
+	if acres > 0:
+		b["acres"] = int(b.get("acres", 160)) + acres
+	var why: String = "a year of steady profit, about %s a month, and it pays back in about %.0f years" % [LTMoney.fmt(int(avg)), payback]
+	var what: String = ("bought another %d acres (now %d) and a bigger machine shed" % [acres, int(b["acres"])]) if acres > 0 else ("added %s square feet and new equipment" % LTGeography._thousands(add))
+	w.log_biz(b, "Grew: %s, %s, and is hiring two more. Reason: %s." % [what, LTMoney.fmt(price), why])
+	w.log_sim(owner, "Decided to grow %s. Reason: %s." % [b["name"], why], true)
+	w.chronicle_add("%s is growing: %s and two more jobs." % [b["name"], what], "business", true, [owner["id"]])
 
 
 static func finish_expansion(w: LTWorld, p: Dictionary) -> void:

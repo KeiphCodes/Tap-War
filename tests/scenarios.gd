@@ -32,6 +32,7 @@ func _init() -> void:
 	_business_rooms()
 	_town_government()
 	_map_landmarks()
+	_rail_and_growth()
 	_property_lines_and_bank()
 	_apartments_built_for_need()
 	_real_loans()
@@ -651,6 +652,61 @@ func _map_landmarks() -> void:
 			bad += 1
 	var ok: bool = kinds.has("farmstead") and kinds.has("elevator") and kinds.has("church") and kinds.has("lookout") and bad == 0 and a == LTTerrain.landmarks(w2)
 	_check("Map landmarks: each map seed has farms, a grain elevator on the railroad, a country church, cabins and a lookout, the same every time", ok, "%d landmarks: %s. On water: %d." % [a.size(), str(kinds.keys()), bad], w)
+
+
+func _rail_and_growth() -> void:
+	# a busy bulk shipper puts in its own spur, the city can only put a depot
+	# beside the tracks, nobody builds on the right of way, a full lot builds up
+	# to the height limit, and a farm that keeps making money buys more land
+	var w: LTWorld = _town(5)
+	var b: Dictionary = {}
+	for x in w.businesses:
+		if str(x["status"]) == "open" and int(x["lot"]) >= 0 and not bool(x.get("home_based", false)):
+			b = x
+			break
+	if not b.is_empty() and not b.has("bplan"):
+		b["bplan"] = LTBuildings.design(w, "general_store", w.cit(int(b["owners"][0])), 2500, 0)
+	if b.is_empty():
+		_check("Railroad and growth", false, "no business with a building", w)
+		return
+	var keep_type: String = str(b["type"])
+	b["type"] = "mill"
+	b["month_revenue"] = LTMoney.dollars(90000.0)
+	w.ledger.pay("outside", w.acct_b(b), LTMoney.dollars(400000.0), "test_capital")
+	var why: String = LTRail.consider_spur(w, b)
+	var spur: bool = bool(b.get("rail_spur", false)) and LTRail.export_rev(w, b, 100000) > 100000
+	var rz: float = LTRail.line_z(w)
+	var row: Dictionary = LTTerrain.survey(w, Rect2(400.0, rz - 10.0, 20.0, 30.0))
+	var far: Dictionary = {}
+	for l in w.lots:
+		if LTRail.distance(w, l) > 200.0:
+			far = l
+			break
+	var depot_no: String = LTRail.depot_lot_ok(w, far)
+	# building up
+	b["type"] = keep_type
+	var plan: Dictionary = b["bplan"].duplicate(true)
+	plan["sqft"] = int(plan["sqft"]) * 3
+	w.city["laws"]["height_limit"] = 2.0
+	var low: bool = LTBuildings._go_up(w, b, plan.duplicate(true), w.lot(int(b["lot"])))
+	w.city["laws"]["height_limit"] = 6.0
+	var up_plan: Dictionary = plan.duplicate(true)
+	var high: bool = LTBuildings._go_up(w, b, up_plan, w.lot(int(b["lot"])))
+	# a farm that has made money for a year
+	b["type"] = "farm"
+	b["month_profit_hist"] = []
+	for i in 12:
+		b["month_profit_hist"].append(LTMoney.dollars(60000.0))
+	b["expanded_day"] = -9999
+	w.cit(int(b["owners"][0]))["traits"]["ambition"] = 80
+	w.ledger.pay("outside", w.acct_b(b), LTMoney.dollars(600000.0), "test_capital")
+	var staff_before: int = int(b["target_staff"])
+	LTBuildings._grow_production(w, b)
+	var grew: bool = int(b.get("acres", 160)) == 320 and int(b["target_staff"]) == staff_before + 2
+	b["type"] = keep_type
+	var ok: bool = spur and not bool(row["ok"]) and depot_no.contains("beside the tracks") and not low and high and int(up_plan["stories"]) >= 3 and grew
+	_check("Railroad and growth: shippers build spurs, depots go by the tracks, the right of way stays clear, full lots build up to the height limit, farms buy land", ok,
+		"Spur: %s. Right of way: %s. Depot far away: %s. Up to 2 stories: %s, up to 6: %s (%d stories). Farm acres: %d." % [why, row["why"], depot_no, low, high, int(up_plan.get("stories", 1)), int(b.get("acres", 0))], w)
 
 
 func _business_buildings() -> void:

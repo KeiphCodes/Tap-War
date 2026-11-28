@@ -197,6 +197,12 @@ static func survey(w: LTWorld, r: Rect2) -> Dictionary:
 	var out: Dictionary = {"ok": true, "why": "", "wooded": false, "lakefront": false, "view": false}
 	if t(w).is_empty():
 		return out
+	# the railroad's right of way: 15 meters each side of the track
+	var rz0: float = rail_z(w)
+	if r.position.y < rz0 + 15.0 and r.end.y > rz0 - 15.0:
+		out["ok"] = false
+		out["why"] = "the land is the railroad's right of way, 15 meters each side of the track"
+		return out
 	var trees: int = 0
 	var n: int = 0
 	var step: float = clampf(minf(r.size.x, r.size.y) / 4.0, 3.0, 8.0)
@@ -360,6 +366,8 @@ static func _find_road_z(w: LTWorld) -> void:
 
 
 static func rail_z(w: LTWorld) -> float:
+	if not t(w).has("rail_z"):
+		landmarks(w)
 	return float(t(w).get("rail_z", road_z() - 70.0))
 
 
@@ -369,7 +377,10 @@ static func _make_landmarks(w: LTWorld, map_seed: int, avoid: Rect2) -> Array:
 	rng.seed = map_seed * 7919 + 17
 	var out: Array = []
 	var keep: Rect2 = avoid.grow(110.0)
-	var rz: float = road_z() + (-1.0 if rng.randf() < 0.5 else 1.0) * rng.randf_range(55.0, 85.0)
+	var rz: float = road_z() + (-1.0 if rng.randf() < 0.5 else 1.0) * rng.randf_range(160.0, 230.0)
+	if not bool(w.config.get("open_land", false)):
+		# an old town grew up beside the tracks, not on them
+		rz = avoid.position.y - 30.0 if rng.randf() < 0.5 else avoid.end.y + 30.0
 	t(w)["rail_z"] = rz
 	var fits: Callable = func(p: Vector2, gap: float, wooded_ok: bool) -> bool:
 		if p.x < 40.0 or p.y < 40.0 or p.x > MAP_W - 40.0 or p.y > MAP_H - 40.0 or keep.has_point(p):

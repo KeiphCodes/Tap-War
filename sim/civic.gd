@@ -28,8 +28,9 @@ const LAWS: Dictionary = {
 	"transfer_tax": {"label": "Tax on every property sale, paid by the seller", "min": 0.0, "max": 0.03, "step": 0.005, "pct": true},
 	"hunting_season": {"label": "Hunting season (0 closed, 1 open in season)", "min": 0.0, "max": 1.0, "step": 1.0},
 	"mining": {"label": "Mining (0 banned, 1 quarries only, 2 gold mines too)", "min": 0.0, "max": 2.0, "step": 1.0},
+	"height_limit": {"label": "Height limit for buildings, in stories", "min": 1.0, "max": 30.0, "step": 1.0},
 }
-const DEFAULT_LAWS: Dictionary = {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005, "lot_coverage": 0.4, "hunting_season": 1.0, "mining": 1.0}
+const DEFAULT_LAWS: Dictionary = {"min_wage": 1000, "property_tax": 0.015, "sales_tax": 0.02, "income_tax": 0.0, "business_tax": 0.06, "school_funding": 1.0, "police_funding": 1.0, "health_funding": 0.5, "welfare": 0.5, "fire_funding": 1.0, "license_fee": 1.0, "building_code": 1.0, "health_code": 1.0, "pollution_rule": 0.5, "zoning_density": 4, "rent_cap": 0.1, "late_fee_cap": 3500, "bus_service": 0.0, "bank_charter": 0.0, "transfer_tax": 0.005, "lot_coverage": 0.4, "hunting_season": 1.0, "mining": 1.0, "height_limit": 3.0}
 const DENY_REASONS: Array = ["no money in the budget this year", "this is not the city's job", "the need is not as big as the petition says", "maybe next year"]
 const PETITION_KINDS: Dictionary = {
 	"grocery": {"title": "We need a grocery store in town", "civic": false},
@@ -335,6 +336,9 @@ static func add_service(w: LTWorld, kind: String, lot_id: int, quality: float, s
 			w.city["jobs"].append({"id": jid, "title": "nurse", "skill": "medicine", "service": "clinic", "wage": LTMoney.dollars(170.0), "holder": -1})
 			if size == "full":
 				w.city["jobs"].append({"id": jid + 1, "title": "clinic doctor", "skill": "medicine", "service": "clinic", "wage": LTMoney.dollars(320.0), "holder": -1})
+		"depot":
+			l["name"] = "%s Depot" % w.city["name"]
+			l["value"] = LTMoney.dollars(500000.0)
 		"park":
 			w.city["jobs"].append({"id": jid, "title": "park keeper", "skill": "farming", "service": "park", "wage": LTMoney.dollars(112.0), "holder": -1})
 
@@ -1096,6 +1100,8 @@ static func law_estimate(w: LTWorld, key: String, value: float) -> Dictionary:
 			hits = "Anyone starting a business pays %s the fee. High fees push a few founders, the less honest ones, to skip the license. City income changes by about %s a year." % ["more" if value > old else "less", LTMoney.fmt(yearly)]
 		"building_code":
 			hits = "Builders: a stricter code costs about %d%% more per project but sets a floor on quality and storm damage. A loose code is cheaper now and costs later." % int(absf(value - old) * 12.0)
+		"height_limit":
+			hits = "Buildings may rise to %d stories. A business whose lot is full can build up instead of out; past three stories it needs an elevator, past five a steel frame, past eight high rise fire protection. Taller buildings cast longer shadows and bring more traffic." % int(value)
 		"health_code":
 			hits = "Food shops, bars, clinics, child care and the motel. Inspectors visit more often; owners spend on cleaning; failing shops lose reputation or face charges."
 		"pollution_rule":
@@ -1171,7 +1177,7 @@ static func set_law(w: LTWorld, key: String, value) -> Dictionary:
 		return {"ok": false, "message": "The state will not charter a bank for a town under 120 people. The town has %d." % w.alive_count()}
 	var cfg: Dictionary = LAWS[key]
 	var v: float = clampf(float(value), float(cfg["min"]), float(cfg["max"]))
-	var old: float = float(w.city["laws"][key])
+	var old: float = float(w.city["laws"].get(key, DEFAULT_LAWS.get(key, 0.0)))
 	if is_equal_approx(v, old):
 		return {"ok": false, "message": "No change."}
 	var est: Dictionary = law_estimate(w, key, v)

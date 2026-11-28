@@ -7,18 +7,18 @@ extends RefCounted
 const BASE_COST: Dictionary = {
 	"road_repair": 9000000, "road_patch": 3500000, "school": 52000000, "school_small": 26000000,
 	"clinic": 34000000, "clinic_small": 15000000, "park": 6000000, "apartments": 42000000,
-	"house": 22000000, "mayor_house": 30000000, "shop": 15000000, "remodel": 4000000, "expansion": 8000000,
+	"house": 22000000, "mayor_house": 30000000, "shop": 15000000, "remodel": 4000000, "expansion": 8000000, "depot": 65000000,
 }
 const BASE_DAYS: Dictionary = {
 	"road_repair": 45, "road_patch": 20, "school": 180, "school_small": 120,
 	"clinic": 140, "clinic_small": 90, "park": 40, "apartments": 150,
-	"house": 90, "mayor_house": 120, "shop": 75, "remodel": 30, "expansion": 60,
+	"house": 90, "mayor_house": 120, "shop": 75, "remodel": 30, "expansion": 60, "depot": 150,
 }
 const TITLES: Dictionary = {
 	"road_repair": "Rebuild %s", "road_patch": "Patch %s", "school": "Build the town school",
 	"school_small": "Build a two room schoolhouse", "clinic": "Build the town clinic",
 	"clinic_small": "Open a small health office", "park": "Build a park", "apartments": "Build a 4 unit apartment house",
-	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building", "remodel": "A remodel", "expansion": "An addition",
+	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building", "remodel": "A remodel", "expansion": "An addition", "depot": "Build a railroad depot with a platform and team track",
 }
 const BID_DAYS: int = 14
 const OUTSIDE: Array = [
@@ -160,6 +160,11 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 			for q in w.projects:
 				if str(q["ptype"]) == "mayor_house" and not ["cancelled", "done"].has(str(q["status"])):
 					return {"ok": false, "message": "The mayor's house is already out to bid or being built."}
+		if ptype == "depot":
+			allowed = ["civic", "mixed", "industrial", "commercial"]
+			var dno: String = LTRail.depot_lot_ok(w, l)
+			if dno != "":
+				return {"ok": false, "message": dno}
 		if not allowed.has(str(l["zone"])):
 			return {"ok": false, "message": "Lot %d is zoned %s. This project needs %s. Rezone it first." % [target, l["zone"], " or ".join(allowed)]}
 		p["lot"] = target
