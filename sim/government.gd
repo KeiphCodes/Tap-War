@@ -257,6 +257,12 @@ static func check_action(w: LTWorld, act: Dictionary) -> Dictionary:
 			var r: Array = vote(w, what, key, float(act["value"]) > old, key == "business_tax" or key == "min_wage")
 			if not bool(r[0]):
 				return {"ok": false, "message": str(r[3])}
+		"define_project":
+			if str(act.get("ptype", "")) == "depot":
+				var cost: int = maxi(0, LTRail.DEPOT_COST - int(LTRail.r(w)["grant_amt"]))
+				var r3: Array = vote(w, "spending about %s of city money on a public rail loading track" % LTMoney.fmt(cost), "property_tax", true)
+				if not bool(r3[0]):
+					return {"ok": false, "message": str(r3[3])}
 		"issue_bond", "city_borrow":
 			var r2: Array = vote(w, "%s %s" % ["selling bonds for" if str(act["kind"]) == "issue_bond" else "borrowing", LTMoney.fmt(int(act["amount"]))], "property_tax", true)
 			if not bool(r2[0]):

@@ -986,7 +986,7 @@ func _build_forest() -> void:
 	for b in w.businesses:
 		if bool(b.get("rail_spur", false)):
 			spur_n += 1
-	var sig: String = "%s|%d|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size(), spur_n]
+	var sig: String = "%s|%d|%d|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size(), spur_n, int(LTRail.has_line(w))]
 	if sig == _trees_sig and pine_mm != null:
 		return
 	_trees_sig = sig
@@ -1905,14 +1905,15 @@ func _civic(root: Node3D, l: Dictionary) -> void:
 			_box(root, Vector3(0.4, 1.6, 0.1), Vector3(0, 3.0, 2.3), Color(0.85, 0.15, 0.15), true)
 			_box(root, Vector3(5.0, 1.4, 0.1), Vector3(0, 1.4, 2.3), Color(0.7, 0.85, 0.95), true)
 		"depot":
-			# a prairie depot: board and batten walls, a wide hip roof, the platform trackside
-			_box(root, Vector3(12.0, 4.0, 6.0), Vector3(0, 2.0, -1.0), Color(0.82, 0.68, 0.42))
-			_roof(root, Vector3(14.0, 2.4, 8.4), Vector3(0, 5.2, -1.0), Color(0.42, 0.22, 0.16))
-			_box(root, Vector3(2.0, 1.6, 2.4), Vector3(0, 2.2, 2.6), Color(0.82, 0.68, 0.42))
-			for i in 4:
-				_box(root, Vector3(1.0, 1.5, 0.1), Vector3(-4.5 + float(i) * 3.0, 2.2, 2.05), Color(1.0, 0.9, 0.6), true)
-			_box(root, Vector3(18.0, 0.5, 4.0), Vector3(0, 0.25, -6.0), Color(0.6, 0.58, 0.55))
-			_box(root, Vector3(3.0, 0.9, 0.1), Vector3(0, 4.3, 2.1), Color(0.95, 0.95, 0.9))
+			# a public loading track: a siding, a raised loading dock, a small scale house
+			_box(root, Vector3(20.0, 0.45, 4.0), Vector3(0, 0.2, -6.5), Color(0.45, 0.43, 0.4))
+			for sx in [-0.72, 0.72]:
+				_box(root, Vector3(20.0, 0.14, 0.1), Vector3(0, 0.6, -6.5 + sx), Color(0.5, 0.48, 0.46))
+			_box(root, Vector3(14.0, 1.2, 4.0), Vector3(0, 0.6, -2.5), Color(0.62, 0.6, 0.56))
+			_box(root, Vector3(4.0, 3.0, 4.0), Vector3(6.0, 1.5, 2.5), Color(0.82, 0.68, 0.42))
+			_roof(root, Vector3(4.6, 1.4, 4.6), Vector3(6.0, 3.7, 2.5), Color(0.42, 0.22, 0.16))
+			_box(root, Vector3(3.0, 3.6, 12.0), Vector3(-4.0, 2.4, -6.5), Color(0.55, 0.2, 0.15))
+			_box(root, Vector3(1.6, 1.6, 2.2), Vector3(-2.0, 2.0, -2.5), Color(0.85, 0.65, 0.1))
 		"park":
 			for i in 5:
 				var tp2: Vector3 = Vector3(-5.0 + (i % 3) * 5.0, 0, -4.0 + (i / 3) * 6.0)
@@ -3097,10 +3098,15 @@ func _build_landmarks(buckets: Dictionary) -> void:
 	_batch_begin()
 	# the railroad: ballast, ties and two rails
 	var rail_z: float = LTTerrain.rail_z(w)
+	var pulled: bool = not LTRail.has_line(w)
 	var x: float = 0.0
 	while x < ms.x:
 		var mid: Vector2 = Vector2(x + 15.0, rail_z)
-		if not _taken(buckets, mid, 14.0) and not LTTerrain.is_water(w, mid.x, mid.y):
+		if pulled and not LTTerrain.is_water(w, mid.x, mid.y):
+			# the rails came up: the old grade is a gravel trail
+			_bxf = Transform3D(Basis.IDENTITY, Vector3(mid.x, LTTerrain.height(w, mid.x, mid.y), mid.y))
+			_box(landmark_root, Vector3(30.0, 0.3, 3.0), Vector3(0, 0.12, 0), Color(0.66, 0.62, 0.54))
+		elif not _taken(buckets, mid, 14.0) and not LTTerrain.is_water(w, mid.x, mid.y):
 			var gy: float = LTTerrain.height(w, mid.x, mid.y)
 			_bxf = Transform3D(Basis.IDENTITY, Vector3(mid.x, gy, mid.y))
 			_box(landmark_root, Vector3(30.0, 0.5, 4.4), Vector3(0, 0.2, 0), Color(0.45, 0.43, 0.4))

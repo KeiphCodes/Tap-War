@@ -342,6 +342,12 @@ func apply_action(a: Dictionary) -> Dictionary:
 			result = LTGeography.plot_lots(self, float(act["x0"]), float(act["z0"]), float(act["x1"]), float(act["z1"]), str(act.get("zone", "residential")), float(act.get("width", 0.0)))
 		"unplot":
 			result = LTGeography.unplot(self, int(act["lot"]))
+		"rail_request":
+			result = LTRail.request_agreement(self)
+		"rail_grant":
+			result = LTRail.apply_grant(self)
+		"rail_state":
+			result = LTRail.ask_state_to_buy(self)
 		"appoint":
 			result = LTGov.appoint(self, str(act["role"]), int(act["citizen_id"]))
 		"charter":

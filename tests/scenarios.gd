@@ -682,6 +682,15 @@ func _rail_and_growth() -> void:
 		if LTRail.distance(w, l) > 200.0:
 			far = l
 			break
+	# the city's loading track, the real way: ask, the railroad answers on traffic
+	var no_deal: String = LTRail.depot_lot_ok(w, far)
+	var rr: Dictionary = LTRail.r(w)
+	var asked: Dictionary = w.apply_action({"kind": "rail_request"})
+	b["month_revenue"] = LTMoney.dollars(90000.0)
+	for i in 46:
+		LTRail.daily(w)
+		w.day += 1
+	var signed: bool = str(rr["agreement"]) == "signed"
 	var depot_no: String = LTRail.depot_lot_ok(w, far)
 	# building up
 	b["type"] = keep_type
@@ -703,10 +712,15 @@ func _rail_and_growth() -> void:
 	var staff_before: int = int(b["target_staff"])
 	LTBuildings._grow_production(w, b)
 	var grew: bool = int(b.get("acres", 160)) == 320 and int(b["target_staff"]) == staff_before + 2
+	# a light branch line the railroad gives up on
+	b["type"] = "mill"
+	rr["abandon_day"] = w.day
+	LTRail.daily(w)
+	var pulled: bool = not LTRail.has_line(w) and not bool(b.get("rail_spur", false))
 	b["type"] = keep_type
-	var ok: bool = spur and not bool(row["ok"]) and depot_no.contains("beside the tracks") and not low and high and int(up_plan["stories"]) >= 3 and grew
-	_check("Railroad and growth: shippers build spurs, depots go by the tracks, the right of way stays clear, full lots build up to the height limit, farms buy land", ok,
-		"Spur: %s. Right of way: %s. Depot far away: %s. Up to 2 stories: %s, up to 6: %s (%d stories). Farm acres: %d." % [why, row["why"], depot_no, low, high, int(up_plan.get("stories", 1)), int(b.get("acres", 0))], w)
+	var ok: bool = no_deal.contains("agree") and bool(asked["ok"]) and signed and pulled and spur and not bool(row["ok"]) and depot_no.contains("beside the main line") and not low and high and int(up_plan["stories"]) >= 3 and grew
+	_check("Railroad and growth: shippers build spurs, the city gets a loading track only through the railroad's agreement and beside the tracks, lines can be abandoned, the right of way stays clear, full lots build up to the height limit, farms buy land", ok,
+		"Spur: %s. Right of way: %s. Before an agreement: %s. Railroad signed: %s. Lot far from the track: %s. Line abandoned and spur gone: %s. Up to 2 stories: %s, up to 6: %s (%d stories). Farm acres: %d." % [why, row["why"], no_deal, signed, depot_no, pulled, low, high, int(up_plan.get("stories", 1)), int(b.get("acres", 0))], w)
 
 
 func _business_buildings() -> void:

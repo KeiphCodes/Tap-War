@@ -18,7 +18,7 @@ const TITLES: Dictionary = {
 	"road_repair": "Rebuild %s", "road_patch": "Patch %s", "school": "Build the town school",
 	"school_small": "Build a two room schoolhouse", "clinic": "Build the town clinic",
 	"clinic_small": "Open a small health office", "park": "Build a park", "apartments": "Build a 4 unit apartment house",
-	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building", "remodel": "A remodel", "expansion": "An addition", "depot": "Build a railroad depot with a platform and team track",
+	"house": "A settler's house", "mayor_house": "Build the mayor's house", "shop": "A new business building", "remodel": "A remodel", "expansion": "An addition", "depot": "Build a public rail loading track",
 }
 const BID_DAYS: int = 14
 const OUTSIDE: Array = [

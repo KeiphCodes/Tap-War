@@ -612,7 +612,7 @@ static func _work_day(w: LTWorld, c: Dictionary) -> void:
 		if bus:
 			w.ledger.pay(w.acct_p(c), "city", LTCivic.BUS_FARE, "bus_fares")
 		else:
-			w.ledger.pay(w.acct_p(c), "outside", LTRail.commute_cost(w, COMMUTE_COST_DAILY), "commute_fuel")
+			w.ledger.pay(w.acct_p(c), "outside", COMMUTE_COST_DAILY, "commute_fuel")
 		if not LTRegion.employer_open(w, str(job.get("employer_name", ""))):
 			clear_job(w, c)
 			return

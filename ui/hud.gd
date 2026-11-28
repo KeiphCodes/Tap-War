@@ -1212,6 +1212,46 @@ func _gov_card(parent: Control, ww: LTWorld) -> void:
 			show_toast(str(main.act({"kind": "decree", "why": "the mayor wanted a free hand"})["message"]))
 			_tab_mayor(), "No more elections or board. Trust falls hard, people protest, and the state courts can order elections back."))
 
+
+## The railroad: who owns it, how busy it is, and the city's steps to a public
+## loading track, done the real way.
+func _rail_card(parent: Control, ww: LTWorld) -> void:
+	if LTTerrain.t(ww).is_empty():
+		return
+	var rr: Dictionary = LTRail.r(ww)
+	var mine: bool = not LTMayorAI.is_on(ww) and not bool(ww.city.get("player_out", false))
+	var rc: VBoxContainer = _card(parent, "Railroad", "Owned by %s%s" % [rr["owner"], ", run by the %s" % LTRail.SHORT_LINE if str(rr["owner"]) != LTRail.RAILROAD else ""])
+	if not LTRail.has_line(ww):
+		rc.add_child(_lbl("The rails came up. Everything ships by truck.", 13, Color("93a1b5")))
+		return
+	rc.add_child(_rtl("%s. Freight only: no passenger train has run in South Dakota for decades.\n[color=#93a1b5]Cars last year:[/color] %d   [color=#93a1b5]Town shippers would load:[/color] about %d a year" % ["A light branch line" if bool(rr["branch"]) else "A busy main line", int(rr["cars_last"]) if int(rr["cars_last"]) > 0 else int(rr["base_cars"]), int(LTRail.expected_cars(ww))]))
+	if int(rr["abandon_day"]) >= 0:
+		rc.add_child(_rtl("[color=#eb6263][b]The railroad has filed to abandon this line.[/b][/color] The rails come up %s unless the state buys it." % LTCalendar.short(int(rr["abandon_day"]))))
+		if mine and rr["state_request"].is_empty():
+			rc.add_child(_btn("Ask the state to buy the line", func():
+				show_toast(str(main.act({"kind": "rail_state"})["message"]))
+				_tab_mayor(), "The state rail board decides in about 90 days, on traffic and jobs."))
+	rc.add_child(_rtl("[b]Public loading track:[/b] %s" % LTRail.next_step(ww)))
+	var steps: Array = [
+		["The town incorporates", bool(ww.city.get("incorporated", true))],
+		["The railroad signs an industry track agreement (it wants about %d cars a year)" % int(LTRail.CARS_FOR_AGREEMENT), str(rr["agreement"]) == "signed"],
+		["State rail aid, up to half (optional)", int(rr["grant_amt"]) > 0],
+		["The town board approves the money, and builders bid (Projects)", LTRail.has_depot(ww)],
+	]
+	var st: String = ""
+	for s2 in steps:
+		st += "%s %s\n" % ["[color=#0aac23]●[/color]" if bool(s2[1]) else "[color=#4a5568]○[/color]", s2[0]]
+	rc.add_child(_rtl(st.strip_edges()))
+	if mine and LTRail.has_line(ww) and not LTRail.has_depot(ww):
+		if str(rr["agreement"]) != "signed" and rr["request"].is_empty() and bool(ww.city.get("incorporated", true)):
+			rc.add_child(_btn("Ask the railroad for an agreement", func():
+				show_toast(str(main.act({"kind": "rail_request"})["message"]))
+				_tab_mayor(), "The railroad answers in about 45 days, based on the cars the town's shippers would load."))
+		elif str(rr["agreement"]) == "signed" and int(rr["grant_amt"]) == 0 and (rr["grant"].is_empty() or str(rr["grant"].get("status", "")) != "pending"):
+			rc.add_child(_btn("Apply for state rail aid", func():
+				show_toast(str(main.act({"kind": "rail_grant"})["message"]))
+				_tab_mayor(), "The state decides in about 90 days and can pay up to half."))
+
 func _tab_mayor() -> void:
 	var box: VBoxContainer = tab_boxes["Mayor"]
 	_clear(box)
@@ -1268,6 +1308,7 @@ func _tab_mayor() -> void:
 	if bool(ww.city.get("player_out", false)) or not bool(ww.city.get("mayor_in_office", true)):
 		el.add_child(_rtl("[color=#ef6b5b][b]You are out of office.[/b] %s is mayor now and runs the town. You can keep watching, or start a new town.[/color]" % ww.player["name"]))
 	_gov_card(row, ww)
+	_rail_card(row, ww)
 	# milestones
 	var mc: VBoxContainer = _card(box, "Milestones", "%d of %d reached" % [done_n, ms.size()])
 	var mg: GridContainer = _cols(mc, 2 if wide else 1)
@@ -1284,18 +1325,13 @@ func _tab_mayor() -> void:
 		for m in LTTerrain.landmarks(ww):
 			if ["farmstead", "elevator", "church", "schoolhouse"].has(str(m["kind"])):
 				named.append(str(m["name"]))
-		var rail: String = "[color=#93a1b5]Railroad:[/color] the %s main line. " % LTRail.RAILROAD
-		if LTRail.passenger_service(ww):
-			rail += "The depot is open and the regional train stops twice a day (%d riders today). " % int(ww.city.get("riders_today", 0))
-		elif LTRail.has_depot(ww):
-			rail += "The depot is open for freight; the regional train starts stopping at %d residents. " % LTRail.PASSENGER_AT
-		else:
-			rail += "No depot yet: build one on a lot beside the tracks (Projects) for a team track, and later a train stop. "
+		var rail: String = "[color=#93a1b5]Railroad:[/color] %s" % ("the old grade is a trail now; the rails came up." if not LTRail.has_line(ww) else "%s line. %s " % [LTRail.operator(ww), LTRail.next_step(ww)])
 		var spurs: Array = []
 		for b in ww.businesses:
 			if bool(b.get("rail_spur", false)) and str(b["status"]) == "open":
 				spurs.append(str(b["name"]))
-		rail += ("Spurs: %s." % ", ".join(spurs)) if not spurs.is_empty() else "No business has its own spur yet."
+		if LTRail.has_line(ww):
+			rail += ("Spurs: %s." % ", ".join(spurs)) if not spurs.is_empty() else "No business has its own spur yet."
 		land.add_child(_rtl(rail))
 		if not named.is_empty():
 			land.add_child(_rtl("[color=#93a1b5]Here before the town:[/color] %s, the railroad and the power line along the county road, windmills, lake cabins and a fire lookout on the mountain." % ", ".join(named)))
@@ -1883,7 +1919,7 @@ func _tab_projects() -> void:
 	var tlist: Array = ["road_repair", "road_patch", "school", "school_small", "clinic", "clinic_small", "park"]
 	if int(ww.player.get("home_lot", -1)) < 0:
 		tlist.insert(0, "mayor_house")
-	if LTRail.has_line(ww) and not LTRail.has_depot(ww):
+	if LTRail.has_line(ww) and not LTRail.has_depot(ww) and str(LTRail.r(ww)["agreement"]) == "signed":
 		tlist.append("depot")
 	for t in tlist:
 		types.add_item("%s (about %s)" % [str(LTProjects.TITLES[t]).replace(" %s", "").replace("%s", "a street"), _money(int(LTProjects.BASE_COST[t]))])
@@ -2466,7 +2502,7 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 				_biz_charts(bz)
 			if not typing and LTRail.SHIPPERS.has(str(bz.get("type", ""))) and int(bz.get("lot", -1)) >= 0:
 				var rd: float = LTRail.distance(w(), w().lot(int(bz["lot"])))
-				var ship: String = "own rail spur, %d meters off the main line, since %s: about 7%% better on every load" % [int(bz.get("spur_m", 0)), LTCalendar.short(int(bz.get("spur_day", 0)))] if bool(bz.get("rail_spur", false)) else ("loads rail cars at the city's team track: about 3%% better than trucking" if LTRail.ship_factor(w(), bz) > 1.0 else "by truck")
+				var ship: String = "own rail spur, %d meters off the main line, since %s: about 7%% better on every load" % [int(bz.get("spur_m", 0)), LTCalendar.short(int(bz.get("spur_day", 0)))] if bool(bz.get("rail_spur", false)) else ("loads rail cars at the city's public loading track: about 4%% better than trucking, less the city's fee" if LTRail.ship_factor(w(), bz) > 1.0 else "by truck")
 				inspect_form.add_child(_rtl("\n[b]SHIPPING[/b]\n%s by %s. The tracks are %d meters away.%s" % [str(LTRail.SHIPPERS[str(bz["type"])]).capitalize(), ship, int(rd), "" if bool(bz.get("rail_spur", false)) or rd > LTRail.REACH else " A spur would cost about %s." % _money(LTRail.spur_cost(w(), w().lot(int(bz["lot"]))))]))
 			if not typing and bz.has("acres"):
 				inspect_form.add_child(_rtl("[b]Farmland[/b] %d acres." % int(bz["acres"])))

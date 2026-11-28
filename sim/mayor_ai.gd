@@ -248,15 +248,34 @@ static func _mayors_house(w: LTWorld, t: Dictionary) -> void:
 		_say(w, "decided to build a house for the mayor on %s. Reason: the camper gets old." % LTGeography.lot_label(w, lot))
 
 
-## A depot on the railroad: cheaper freight for the town's shippers, and once the
-## town is big enough the regional train stops. An ambitious mayor builds it sooner.
+## The railroad, step by step: ask for an agreement once the town ships enough to
+## be worth it, apply for state aid, then build the public loading track. If the
+## railroad wants to abandon the line, ask the state to buy it.
 static func _depot(w: LTWorld, t: Dictionary) -> void:
-	if LTRail.has_depot(w) or not LTRail.has_line(w) or w.residents() < 160 - int(float(t["ambition"])):
+	if LTTerrain.t(w).is_empty() or not bool(w.city.get("incorporated", true)):
+		return
+	var rr: Dictionary = LTRail.r(w)
+	if int(rr["abandon_day"]) >= 0 and rr["state_request"].is_empty():
+		if bool(_act(w, {"kind": "rail_state"}).get("ok", false)):
+			_say(w, "asked the state to buy the branch line. Reason: the town's farms and mills need the railroad.")
+		return
+	if not LTRail.has_line(w) or LTRail.has_depot(w):
+		return
+	var cars: float = LTRail.expected_cars(w)
+	if str(rr["agreement"]) != "signed":
+		if cars >= LTRail.CARS_FOR_AGREEMENT * 0.8 and rr["request"].is_empty() and bool(_act(w, {"kind": "rail_request"}).get("ok", false)):
+			_say(w, "asked the railroad for an agreement to build a public loading track. Reason: the town's shippers could load about %d cars a year." % int(cars))
+		return
+	if int(rr["grant_amt"]) == 0 and (rr["grant"].is_empty() or str(rr["grant"].get("status", "")) == "denied" and w.day - int(rr["grant"]["day"]) >= 365):
+		if bool(_act(w, {"kind": "rail_grant"}).get("ok", false)):
+			_say(w, "applied for state rail aid. Reason: the state can pay up to half.")
+		return
+	if not rr["grant"].is_empty() and str(rr["grant"].get("status", "")) == "pending" and float(t["discipline"]) > 45.0:
 		return
 	for p in w.projects:
 		if str(p["ptype"]) == "depot" and not ["cancelled", "done"].has(str(p["status"])):
 			return
-	if w.ledger.bal("city") < LTMoney.dollars(900000.0):
+	if w.ledger.bal("city") < LTRail.DEPOT_COST - int(rr["grant_amt"]) + LTMoney.dollars(150000.0):
 		return
 	for l in w.lots:
 		if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and LTRail.depot_lot_ok(w, l) == "":
@@ -264,7 +283,7 @@ static func _depot(w: LTWorld, t: Dictionary) -> void:
 				_act(w, {"kind": "zone_lot", "lot": int(l["id"]), "zone": "civic"})
 			var r: Dictionary = _act(w, {"kind": "define_project", "ptype": "depot", "target": int(l["id"])})
 			if bool(r.get("ok", false)):
-				_say(w, "put a railroad depot out to bid on %s. Reason: the town's farms and mills could ship by rail, and a depot is how a town gets a train stop." % LTGeography.lot_label(w, int(l["id"])))
+				_say(w, "put a public rail loading track out to bid on %s. Reason: shippers without their own spur can load cars there, and the city earns a fee on every car." % LTGeography.lot_label(w, int(l["id"])))
 			return
 
 
