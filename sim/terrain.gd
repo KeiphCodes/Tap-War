@@ -110,10 +110,21 @@ static func _pick_kind(w: LTWorld, map_seed: int, avoid: Rect2, keep_out: Rect2,
 	var forest_on: bool = has_rng.randf() < p_forest
 	var mount_on: bool = has_rng.randf() < p_mount
 	var big_lake: bool = has_rng.randf() < p_lake
-	var pond: bool = has_rng.randf() < p_pond
-	# a prairie map still has something on it
-	if kind == "prairie" and not forest_on and not mount_on and not big_lake and not pond:
-		big_lake = true
+	var pond: bool = has_rng.randf() < p_pond and lakes.size() > 1
+	# no empty maps: at least two of forest, mountain and lakes, filled in the way
+	# that fits the kind of country
+	var order: Array = {"prairie": ["lake", "forest", "mountain"], "mountain": ["forest", "lake"], "lakes": ["forest", "mountain"], "woods": ["lake", "mountain"]}[kind]
+	for f in order:
+		if int(forest_on) + int(mount_on) + int(big_lake or pond) >= 2:
+			break
+		match f:
+			"lake":
+				if not (big_lake or pond):
+					big_lake = true
+			"forest":
+				forest_on = true
+			"mountain":
+				mount_on = true
 	if not forest_on:
 		tt0["forest"] = {"c": Vector2(-9000, -9000), "rx": 1.0, "rz": 1.0, "none": true}
 	if not mount_on:

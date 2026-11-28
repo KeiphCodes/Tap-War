@@ -737,6 +737,8 @@ func _random_land_and_passengers() -> void:
 		wt.config["map_seed"] = sd
 		LTTerrain.setup(wt, sd, Rect2(500, 420, 600, 360))
 		var kd: String = str(LTTerrain.t(wt)["kind"])
+		if int(LTTerrain.has(wt, "forest")) + int(LTTerrain.has(wt, "mountain")) + int(LTTerrain.has(wt, "lake")) < 2:
+			start_blocked.append("%d %s has fewer than two natural features" % [sd, kd])
 		kinds[kd] = int(kinds.get(kd, 0)) + 1
 		# every kind of map keeps buildable ground where the town starts
 		var sv: Dictionary = LTTerrain.survey(wt, Rect2(760, 625, 40, 40))
