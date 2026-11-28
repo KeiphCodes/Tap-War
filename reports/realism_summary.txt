@@ -1,5 +1,5 @@
 LIVING TOWN REALISM CHECK
-Generated 2026-11-28T06:14:56 by tests/realism.gd.
+Generated 2026-11-28T06:59:36 by tests/realism.gd.
 
 Weather, 200 simulated years:
 [PASS] Thunderstorm days a year: 39.15  (allowed 30.00 to 50.00; real: about 40 in Sioux Falls)
