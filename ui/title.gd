@@ -268,13 +268,371 @@ func _page_main() -> void:
 			get_tree().quit()))
 
 
+# ---------------------------------------------------------------- the deed
+
+const PAPER: Color = Color("f3ead3")
+const PAPER_EDGE: Color = Color("b89b6a")
+const INK: Color = Color("3a2a1a")
+const INK_2: Color = Color("7a6448")
+const STAMP: Color = Color("b3261e")
+const COUNTIES: Array = ["Prairie", "Meadow", "Buffalo", "Spirit Lake", "Wolf Creek", "Antelope", "Cedar", "Sand Hill", "Big Stone", "Pheasant"]
+
+var deed_layer: Control
+var _deed: Dictionary = {}
+
+
+## A new game starts with paperwork, as owning land really does: the warranty
+## deed for the prairie (or an oath of office, or a deed to a Sim lottery winner).
 func _page_new() -> void:
-	# the new town card opens over the town; Cancel comes back here
-	visible = false
-	main.hud.root.visible = true
-	main.hud.show_setup(false, func():
-		visible = true
-		main.hud.root.visible = false)
+	if _deed.is_empty():
+		_deed = {"start": 0, "runner": 0, "elected": false, "lottery": 1, "calendar": true, "name": "", "pronouns": 0, "age": 38, "home": "Sioux Falls", "town": "New Hope", "seed": randi() % 999999 + 1, "mayor_seed": randi() % 999999 + 1, "doc": randi() % 90000 + 10000}
+	side.visible = false
+	if deed_layer != null:
+		deed_layer.queue_free()
+	deed_layer = Control.new()
+	deed_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(deed_layer)
+	root.move_child(fade, root.get_child_count() - 1)
+	var dim: ColorRect = ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.45)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	deed_layer.add_child(dim)
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	deed_layer.add_child(scroll)
+	var center: CenterContainer = CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
+	var pad: MarginContainer = MarginContainer.new()
+	for k in ["margin_top", "margin_bottom"]:
+		pad.add_theme_constant_override(k, 28)
+	center.add_child(pad)
+	var paper: PanelContainer = PanelContainer.new()
+	var ps: StyleBoxFlat = StyleBoxFlat.new()
+	ps.bg_color = PAPER
+	ps.border_color = PAPER_EDGE
+	ps.set_border_width_all(2)
+	ps.set_corner_radius_all(4)
+	ps.shadow_color = Color(0, 0, 0, 0.5)
+	ps.shadow_size = 18
+	ps.content_margin_left = 56
+	ps.content_margin_right = 56
+	ps.content_margin_top = 40
+	ps.content_margin_bottom = 40
+	paper.add_theme_stylebox_override("panel", ps)
+	paper.custom_minimum_size = Vector2(880, 0)
+	pad.add_child(paper)
+	var v: VBoxContainer = VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	paper.add_child(v)
+	_deed_body(v)
+
+
+func _ink(text: String, size: int = 18, color: Color = INK, align: int = HORIZONTAL_ALIGNMENT_LEFT) -> Label:
+	var l: Label = Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.horizontal_alignment = align
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
+
+
+## A blank on the paper: a line to write on.
+func _blank(text: String, width: float, on_change: Callable, placeholder: String = "") -> LineEdit:
+	var e: LineEdit = LineEdit.new()
+	e.text = text
+	e.placeholder_text = placeholder
+	e.custom_minimum_size = Vector2(width, 36)
+	var st: StyleBoxFlat = StyleBoxFlat.new()
+	st.bg_color = Color(1, 1, 1, 0.0)
+	st.border_color = INK_2
+	st.border_width_bottom = 2
+	st.content_margin_left = 4
+	st.content_margin_right = 4
+	e.add_theme_stylebox_override("normal", st)
+	var fo: StyleBoxFlat = st.duplicate()
+	fo.bg_color = Color(1, 1, 1, 0.35)
+	fo.border_color = INK
+	e.add_theme_stylebox_override("focus", fo)
+	e.add_theme_color_override("font_color", Color("1d2a6b"))
+	e.add_theme_color_override("font_placeholder_color", Color(INK_2, 0.6))
+	e.add_theme_color_override("caret_color", INK)
+	e.add_theme_font_size_override("font_size", 19)
+	e.text_changed.connect(on_change)
+	return e
+
+
+func _paper_check(cb: CheckBox) -> void:
+	var none: StyleBoxEmpty = StyleBoxEmpty.new()
+	for k in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		cb.add_theme_stylebox_override(k, none)
+	for k in ["font_color", "font_pressed_color", "font_hover_color", "font_hover_pressed_color", "font_focus_color"]:
+		cb.add_theme_color_override(k, INK)
+	cb.add_theme_color_override("checkbox_checked_color", Color("1d2a6b"))
+	cb.add_theme_color_override("checkbox_unchecked_color", INK_2)
+
+
+## A small button on the paper, outlined in ink.
+func _paper_btn(text: String, cb: Callable) -> Button:
+	var b: Button = Button.new()
+	b.text = text
+	b.add_theme_stylebox_override("normal", _box(Color(1, 1, 1, 0.25), INK_2, 6))
+	b.add_theme_stylebox_override("hover", _box(Color(1, 1, 1, 0.55), INK, 6))
+	b.add_theme_stylebox_override("pressed", _box(Color(1, 1, 1, 0.7), INK, 6))
+	b.add_theme_stylebox_override("focus", _box(Color(0, 0, 0, 0), INK, 6))
+	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+		b.add_theme_color_override(k, INK)
+	b.add_theme_font_size_override("font_size", 15)
+	b.pressed.connect(cb)
+	return b
+
+
+## The age written on a blank, with small arrows.
+func _age_box() -> SpinBox:
+	var ag: SpinBox = SpinBox.new()
+	ag.min_value = 18
+	ag.max_value = 99
+	ag.value = int(_deed["age"])
+	ag.custom_minimum_size = Vector2(90, 36)
+	var le: LineEdit = ag.get_line_edit()
+	var st: StyleBoxFlat = StyleBoxFlat.new()
+	st.bg_color = Color(1, 1, 1, 0.0)
+	st.border_color = INK_2
+	st.border_width_bottom = 2
+	le.add_theme_stylebox_override("normal", st)
+	le.add_theme_stylebox_override("focus", st)
+	le.add_theme_color_override("font_color", Color("1d2a6b"))
+	le.add_theme_font_size_override("font_size", 19)
+	ag.value_changed.connect(func(x): _deed["age"] = int(x))
+	return ag
+
+
+## Choices on the paper: boxes to check, only one marked.
+func _checks(items: Array, sel: int, on_pick: Callable) -> HBoxContainer:
+	var hb: HBoxContainer = HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 22)
+	var group: ButtonGroup = ButtonGroup.new()
+	for i in items.size():
+		var cb: CheckBox = CheckBox.new()
+		cb.text = str(items[i])
+		cb.button_group = group
+		_paper_check(cb)
+		cb.button_pressed = i == sel
+		cb.add_theme_color_override("font_color", INK)
+		cb.add_theme_color_override("font_pressed_color", INK)
+		cb.add_theme_color_override("font_hover_color", Color("1d2a6b"))
+		cb.add_theme_font_size_override("font_size", 17)
+		var ii: int = i
+		cb.toggled.connect(func(on):
+			if on:
+				on_pick.call(ii))
+		hb.add_child(cb)
+	return hb
+
+
+func _row(parent: Control, parts: Array) -> HBoxContainer:
+	var hb: HBoxContainer = HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 10)
+	for p in parts:
+		if p is Label:
+			(p as Label).autowrap_mode = TextServer.AUTOWRAP_OFF
+		(p as Control).size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hb.add_child(p)
+	parent.add_child(hb)
+	return hb
+
+
+## What the surveyor found on this parcel: the kind of country and what is on it.
+func _survey(seed_v: int) -> String:
+	var wt: LTWorld = LTWorld.new()
+	wt.config["map_seed"] = seed_v
+	LTTerrain.setup(wt, seed_v, Rect2(500, 420, 600, 360))
+	var bits: Array = []
+	if LTTerrain.has(wt, "mountain"):
+		bits.append("mountains")
+	if LTTerrain.has(wt, "forest"):
+		bits.append("timber")
+	var lakes: int = LTTerrain.t(wt)["lakes"].size()
+	if lakes > 0:
+		bits.append("%d lake%s" % [lakes, "" if lakes == 1 else "s"])
+	bits.append("a railroad" if LTTerrain.has(wt, "rail") else "no railroad")
+	return "%s, with %s" % [LTTerrain.kind_name(wt), LTHomes._join(bits)]
+
+
+func _deed_body(v: VBoxContainer) -> void:
+	var d: Dictionary = _deed
+	var county: String = "%s County" % COUNTIES[int(d["seed"]) % COUNTIES.size()]
+	var sim: bool = int(d["runner"]) == 1
+	var classic: bool = int(d["start"]) == 1 and not sim
+	var redo: Callable = func(): _page_new()
+	# how this game begins
+	v.add_child(_checks(["Found a new town on open prairie", "Take office in Prairie Hollow (about 100 people)"], 1 if classic else 0, func(i):
+		d["start"] = i
+		if i == 1:
+			d["runner"] = 0
+		redo.call()))
+	v.add_child(_checks(["I will run it", "A Sim wins the lottery and runs it (I watch, and can take over)"], int(d["runner"]), func(i):
+		d["runner"] = i
+		if i == 1:
+			d["start"] = 0
+		redo.call()))
+	v.add_child(HSeparator.new())
+	if classic:
+		v.add_child(_ink("OATH OF OFFICE", 34, INK, HORIZONTAL_ALIGNMENT_CENTER))
+		v.add_child(_ink("Town of Prairie Hollow  ·  %s, South Dakota" % county, 15, INK_2, HORIZONTAL_ALIGNMENT_CENTER))
+		_row(v, [_ink("I,"), _blank(str(d["name"]), 280, func(t): d["name"] = t, "your full name"), _ink(", age"), _age_box()])
+		_row(v, [_ink("of"), _blank(str(d["home"]), 220, func(t): d["home"] = t, "hometown"), _ink("   pronouns"), _checks(["they/them", "she/her", "he/him"], int(d["pronouns"]), func(i): d["pronouns"] = i)])
+		v.add_child(_ink("do solemnly swear that I will support the Constitution of the United States and of the State of South Dakota, and faithfully discharge the duties of Mayor of Prairie Hollow to the best of my ability.", 18))
+	else:
+		v.add_child(_ink("WARRANTY DEED", 38, INK, HORIZONTAL_ALIGNMENT_CENTER))
+		v.add_child(_ink("State of South Dakota  ·  %s  ·  Register of Deeds  ·  Document No. %d" % [county, int(d["doc"])], 15, INK_2, HORIZONTAL_ALIGNMENT_CENTER))
+		var money: String = ["two hundred fifty thousand dollars ($250,000)", "one million dollars ($1,000,000)", "five million dollars ($5,000,000)"][int(d["lottery"])]
+		v.add_child(_ink("KNOW ALL BY THESE PRESENTS, that %s, Grantor, for and in consideration of %s in lottery winnings, paid in hand, does hereby grant, convey and warrant unto" % [county.to_upper(), money], 18))
+		if sim:
+			v.add_child(_ink("GRANTEE: a lottery winner drawn by mayor seed", 19))
+			var rs: HBoxContainer = _row(v, [_ink("Mayor seed No."), _blank(str(d["mayor_seed"]), 160, func(t):
+				if t.strip_edges().is_valid_int():
+					d["mayor_seed"] = int(t.strip_edges()), "")])
+			rs.add_child(_paper_btn("Draw another winner", func():
+				d["mayor_seed"] = randi() % 999999 + 1
+				redo.call()))
+			var who: Dictionary = LTMayorAI.make_persona(int(d["mayor_seed"]))
+			v.add_child(_ink("The winner: %s, %d, of %s, who is %s." % [who["name"], int(who["age"]), who["hometown"], LTMayorAI.describe(who)], 18, Color("1d2a6b")))
+		else:
+			_row(v, [_ink("GRANTEE:"), _blank(str(d["name"]), 300, func(t): d["name"] = t, "your full name"), _ink("age"), _age_box()])
+			_row(v, [_ink("of"), _blank(str(d["home"]), 220, func(t): d["home"] = t, "hometown"), _ink("   pronouns"), _checks(["they/them", "she/her", "he/him"], int(d["pronouns"]), func(i): d["pronouns"] = i)])
+		v.add_child(_ink("the following described real estate in %s:" % county, 18))
+		var land: HBoxContainer = _row(v, [_ink("Parcel (map seed) No."), _blank(str(d["seed"]), 150, func(t):
+			if t.strip_edges().is_valid_int():
+				d["seed"] = int(t.strip_edges()), "")])
+		land.add_child(_paper_btn("Survey another parcel", func():
+			d["seed"] = randi() % 999999 + 1
+			redo.call()))
+		v.add_child(_ink("Surveyed as: %s, on County Road 12." % _survey(int(d["seed"])), 18, Color("1d2a6b")))
+		_row(v, [_ink("to be platted as the Town of"), _blank(str(d["town"]), 260, func(t): d["town"] = t, "name your town")])
+		v.add_child(_ink("Consideration paid:", 17, INK_2))
+		v.add_child(_checks(["$250,000 (hard)", "$1,000,000", "$5,000,000 (easy)"], int(d["lottery"]), func(i):
+			d["lottery"] = i
+			redo.call()))
+	v.add_child(HSeparator.new())
+	if not sim:
+		v.add_child(_ink("Terms of governance:", 17, INK_2))
+		v.add_child(_checks(["Permanent mayor", "Elected mayor (two four-year terms)"], 1 if bool(d["elected"]) else 0, func(i): d["elected"] = i == 1))
+	var cal: CheckBox = CheckBox.new()
+	_paper_check(cal)
+	cal.text = "Date this document today, and keep the town on the real calendar"
+	cal.button_pressed = bool(d["calendar"])
+	cal.add_theme_color_override("font_color", INK)
+	cal.add_theme_color_override("font_pressed_color", INK)
+	cal.toggled.connect(func(on): d["calendar"] = on)
+	v.add_child(cal)
+	# the signature line
+	var sig_row: HBoxContainer = HBoxContainer.new()
+	sig_row.add_theme_constant_override("separation", 16)
+	v.add_child(sig_row)
+	var sig_box: VBoxContainer = VBoxContainer.new()
+	sig_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sig_row.add_child(sig_box)
+	var sig: Label = _ink("", 34, Color("1d2a6b"))
+	var fv: FontVariation = FontVariation.new()
+	fv.base_font = ThemeDB.fallback_font
+	fv.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(0.32, 1.0), Vector2.ZERO)
+	fv.variation_embolden = 0.4
+	sig.add_theme_font_override("font", fv)
+	sig.custom_minimum_size = Vector2(0, 48)
+	sig_box.add_child(sig)
+	var line: ColorRect = ColorRect.new()
+	line.color = INK
+	line.custom_minimum_size = Vector2(0, 2)
+	sig_box.add_child(line)
+	sig_box.add_child(_ink("Grantee" if not classic else "Mayor", 14, INK_2))
+	var holder: Control = Control.new()
+	holder.custom_minimum_size = Vector2(250, 70)
+	sig_row.add_child(holder)
+	var stamp_box: PanelContainer = PanelContainer.new()
+	var ss: StyleBoxFlat = StyleBoxFlat.new()
+	ss.bg_color = Color(0, 0, 0, 0)
+	ss.border_color = STAMP
+	ss.set_border_width_all(4)
+	ss.set_corner_radius_all(6)
+	ss.content_margin_left = 14
+	ss.content_margin_right = 14
+	stamp_box.add_theme_stylebox_override("panel", ss)
+	stamp_box.position = Vector2(10, 6)
+	stamp_box.size = Vector2(230, 58)
+	stamp_box.pivot_offset = Vector2(115, 29)
+	stamp_box.rotation = -0.18
+	stamp_box.visible = false
+	holder.add_child(stamp_box)
+	var stamp: Label = _ink("", 34, STAMP, HORIZONTAL_ALIGNMENT_CENTER)
+	stamp.autowrap_mode = TextServer.AUTOWRAP_OFF
+	stamp_box.add_child(stamp)
+	var btns: HBoxContainer = HBoxContainer.new()
+	btns.alignment = BoxContainer.ALIGNMENT_END
+	btns.add_theme_constant_override("separation", 12)
+	v.add_child(btns)
+	var back: Button = _paper_btn("Back", func():
+		deed_layer.queue_free()
+		deed_layer = null
+		side.visible = true
+		_page_main())
+	back.custom_minimum_size = Vector2(120, 48)
+	btns.add_child(back)
+	var go: Button = Button.new()
+	go.text = "Sign the deed" if not classic and not sim else ("Take the oath" if classic else "Record the deed")
+	go.custom_minimum_size = Vector2(220, 48)
+	go.add_theme_stylebox_override("normal", _box(Color("1d2a6b"), Color("1d2a6b"), 8))
+	go.add_theme_stylebox_override("hover", _box(Color("2a3a8a"), Color("2a3a8a"), 8))
+	go.add_theme_color_override("font_color", Color.WHITE)
+	btns.add_child(go)
+	go.pressed.connect(func():
+		var nm: String = str(d["name"]).strip_edges()
+		if not sim and nm == "":
+			main.hud.show_toast("Write your name on the deed first.")
+			return
+		go.disabled = true
+		back.disabled = true
+		sig.text = nm if not sim else str(LTMayorAI.make_persona(int(d["mayor_seed"]))["name"])
+		stamp.text = "SWORN" if classic else "RECORDED"
+		stamp_box.visible = true
+		stamp_box.scale = Vector2(1.7, 1.7)
+		stamp_box.modulate.a = 0.0
+		var tw: Tween = create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(stamp_box, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK)
+		tw.tween_property(stamp_box, "modulate:a", 0.9, 0.12)
+		tw.set_parallel(false)
+		tw.tween_interval(0.9)
+		tw.tween_callback(func(): _enter(func(): _start_from_deed())))
+
+
+func _start_from_deed() -> void:
+	var d: Dictionary = _deed
+	var sim: bool = int(d["runner"]) == 1
+	var mode: Dictionary = {
+		"start": "classic" if int(d["start"]) == 1 and not sim else "founder",
+		"elections": bool(d["elected"]),
+		"lottery": [LTMoney.dollars(250000.0), LTMoney.dollars(1000000.0), LTMoney.dollars(5000000.0)][int(d["lottery"])],
+		"real_calendar": bool(d["calendar"]),
+		"player_name": str(d["name"]).strip_edges() if str(d["name"]).strip_edges() != "" else "Sam Dakota",
+		"map_seed": int(d["seed"]),
+		"player_pronouns": ["they", "she", "he"][int(d["pronouns"])],
+		"player_age": int(d["age"]),
+		"player_hometown": str(d["home"]).strip_edges(),
+		"town_name": str(d["town"]).strip_edges() if str(d["town"]).strip_edges() != "" else "New Hope",
+	}
+	if sim:
+		mode["autonomous"] = true
+		mode["mayor_seed"] = int(d["mayor_seed"])
+	if deed_layer != null:
+		deed_layer.queue_free()
+		deed_layer = null
+	side.visible = true
+	_deed = {}
+	main.new_town(randi() % 1000000, mode)
 
 
 func _page_load() -> void:

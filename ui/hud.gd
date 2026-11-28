@@ -517,7 +517,8 @@ func _on_menu(id: int) -> void:
 			main.to_title()
 			main.title._page_load()
 		2:
-			show_setup()
+			main.to_title()
+			main.title._page_new()
 		8:
 			main.to_title()
 		3:
