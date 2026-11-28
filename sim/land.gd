@@ -259,6 +259,7 @@ static func _bigger_yards(w: LTWorld) -> void:
 				if not bool(dec["ok"]):
 					continue
 				var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "home_equity", price, float(dec["rate"]) - 0.03, 120, "house", int(l["id"]), [])
+				LTLoans.attach(w, d, "Home equity loan, 10-year fixed", "equity")
 				LTFinance.fund_loan(w, d, w.acct_p(head), price)
 				how = "a home equity loan"
 			var paid: int = buy_next_door(w, "sim", int(head["id"]), w.acct_p(head), l, n)

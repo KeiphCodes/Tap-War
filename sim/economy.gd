@@ -564,9 +564,16 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 			var mort: int = mini(gap, int(dec.get("re_part", int(float(cs["building"]) * 0.85))))
 			var fee: int = int(dec.get("fee", 0))
 			if mort > 0:
-				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "commercial_mortgage", mort, float(dec["rate"]) - 0.01, int(dec.get("re_years", 20)) * 12, "building", lot_id, []))
+				var cm: Dictionary = LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "commercial_mortgage", mort, float(dec["rate"]) - 0.01, int(dec.get("re_years", 20)) * 12, "building", lot_id, [])
+				LTLoans.attach(w, cm, "Commercial mortgage on the building, %d years" % int(dec.get("re_years", 20)), "commercial", {"prepay_penalty": "none" if bool(dec.get("sba", false)) else "3-2-1"})
+				parts.append(cm)
 			if gap - mort + fee > 0:
-				parts.append(LTFinance.new_debt(w, "b", int(b["id"]), "bank", -1, "business_loan", gap - mort + fee, float(dec["rate"]), int(dec.get("years", 7)) * 12, "equipment", -1, []))
+				# the loan officer offers the ways this loan can be shaped; the founder picks
+				var boffers: Array = LTLoans.business_offers(w, gap - mort + fee, float(dec["rate"]), int(dec.get("years", 7)), bool(dec.get("sba", false)))
+				var bpick: Dictionary = LTLoans.choose(c, boffers, {"income": maxi(1, int(plan.get("bank_view", plan["est_monthly"]))), "cash": w.cash(c), "years": float(dec.get("years", 7))})
+				var bd: Dictionary = LTLoans.book(w, "b", int(b["id"]), "business_loan", gap - mort + fee, bpick["offer"], "equipment", -1, boffers, str(bpick["why"]))
+				parts.append(bd)
+				LTLoans.pay_closing(w, acct, bpick["offer"])
 			if fee > 0:
 				w.ledger.pay(acct, "outside", fee, "sba_fees")
 			for d in parts:

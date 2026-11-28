@@ -958,6 +958,7 @@ static func start_remodel(w: LTWorld, h: Dictionary, l: Dictionary, head: Dictio
 	h["last_remodel_day"] = w.day
 	if funding == "loan":
 		var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "home_equity", cost, 0.085, 120, "house", int(l["id"]), [])
+		LTLoans.attach(w, d, "Home equity loan, 10-year fixed", "equity")
 		LTFinance.fund_loan(w, d, acct, cost)
 	var diy: bool = float(head["skills"]["construction"]) > 65.0 and cost < LTMoney.dollars(30000.0)
 	if diy:

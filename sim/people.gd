@@ -123,6 +123,7 @@ static func _setup_owner(w: LTWorld, h: Dictionary, l: Dictionary) -> void:
 			if adults.size() > 1 and int(adults[1]["spouse"]) == int(head["id"]):
 				joint = [int(adults[1]["id"])]
 			var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", bal, 0.058, 360, "house", int(l["id"]), joint)
+			LTLoans.attach(w, d, "30-year fixed", "mortgage")
 			d["original"] = int(float(l["value"]) * 0.85)
 			h["mortgage"] = int(d["id"])
 			w.log_sim(head, "Owns the house on %s with a mortgage of %s from Prairie State Bank." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(bal)], true)

@@ -31,6 +31,7 @@ func _init() -> void:
 	_business_buildings()
 	_property_lines_and_bank()
 	_apartments_built_for_need()
+	_real_loans()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -701,3 +702,43 @@ func _apartments_built_for_need() -> void:
 	var spec: Dictionary = l2.get("apt", {})
 	var ok: bool = not built.is_empty() and str(l2.get("use", "")) == "apartment" and not spec.is_empty() and spec["units"].size() >= 4 and rented > 0 and rent_ok and not LTApartments.floor_plan(l2, spec).is_empty()
 	_check("Apartments: a Sim builds homes designed for who is waiting, each unit with its own rent, and renters move in", ok, "%s. %s. Rents %s. %d of %d rented. Why: %s." % [built.get("title", "nothing built"), LTApartments.text(spec), LTApartments.rent_range(spec), rented, l2.get("units", []).size(), "; ".join(spec.get("why", []))], w)
+
+
+func _real_loans() -> void:
+	var w: LTWorld = _town(5)
+	var c: Dictionary = _adult(w, func(x): return w.age_years(x) >= 30)
+	c["credit"]["has_file"] = true
+	c["credit"]["score"] = 740
+	_give(w, c, 200000.0)
+	# the bank lays out real products and the borrower picks one, with a reason
+	var base: Dictionary = {"program": "conventional", "loan": LTMoney.dollars(240000.0), "rate": 0.065, "insurance": 0.005}
+	var offers: Array = LTLoans.mortgage_offers(w, base, LTMoney.dollars(9000.0), 0.43, 0)
+	var pick: Dictionary = LTLoans.choose(c, offers, {"income": LTMoney.dollars(9000.0), "cash": w.cash(c), "years": 10.0})
+	var names: Array = offers.map(func(o): return str(o["name"]))
+	# an adjustable rate resets after five years, within its 2% cap
+	var arm: Dictionary = {}
+	for o in offers:
+		if str(o["rate_type"]) == "arm":
+			arm = o
+	var d: Dictionary = LTLoans.book(w, "p", int(c["id"]), "mortgage", LTMoney.dollars(240000.0), arm, "", -1, offers, "test")
+	d["terms"]["months_paid"] = 60
+	w.bank["index"] = 0.08
+	var r0: float = float(d["rate"])
+	LTLoans.due_this_month(w, d)
+	var reset_ok: bool = float(d["rate"]) > r0 and float(d["rate"]) <= r0 + 0.02 + 0.0001
+	# a balloon that has been paid on time is refinanced when it comes due
+	var bo: Dictionary = LTLoans.price("business", "5-year balloon, 20-year amortization", LTMoney.dollars(100000.0), 0.08, 60, {"amort": 240})
+	var bd: Dictionary = LTLoans.book(w, "p", int(c["id"]), "business_loan", LTMoney.dollars(100000.0), bo, "", -1, [bo], "test")
+	bd["terms"]["months_paid"] = 59
+	var before: int = w.debts.size()
+	var due: int = LTLoans.due_this_month(w, bd)
+	var refi: bool = due == -2 and LTLoans.balloon_due(w, bd) and w.debts.size() == before + 1 and str(bd["status"]) == "paid"
+	# mortgage insurance comes off at 78% of the home's value
+	var po: Dictionary = LTLoans.price("mortgage", "30-year fixed", LTMoney.dollars(190000.0), 0.065, 360, {"insurance": 0.005})
+	var pd: Dictionary = LTLoans.book(w, "p", int(c["id"]), "mortgage", LTMoney.dollars(190000.0), po, "", -1, [po], "test")
+	pd["terms"]["home_value"] = LTMoney.dollars(200000.0)
+	var ins0: int = LTLoans.insurance_due(w, pd)
+	pd["balance"] = LTMoney.dollars(150000.0)
+	var ins1: int = LTLoans.insurance_due(w, pd)
+	var ok: bool = offers.size() >= 3 and not pick.is_empty() and str(pick["why"]) != "" and reset_ok and refi and ins0 > 0 and ins1 == 0 and float(arm.get("apr", 0.0)) > float(arm.get("rate", 1.0))
+	_check("Real loans: the bank offers products, the borrower picks with a reason, adjustable rates reset within caps, balloons refinance, mortgage insurance drops at 78%", ok, "Offers: %s. Picked %s: %s. ARM %.2f%% to %.2f%%. Balloon refinanced: %s. Insurance %s then %s." % [", ".join(names), pick.get("offer", {}).get("name", "?"), pick.get("why", ""), r0 * 100.0, float(d["rate"]) * 100.0, refi, LTMoney.fmt(ins0), LTMoney.fmt(ins1)], w)

@@ -158,6 +158,7 @@ static func _settler_buys_house(w: LTWorld, l: Dictionary) -> void:
 	var down: int = int(float(price) * 0.1)
 	w.ledger.pay("outside", seller, down, "house_purchases")
 	var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", price - down, 0.064, 360, "house", int(l["id"]), [])
+	LTLoans.attach(w, d, "30-year fixed", "mortgage", {"insurance": 0.005})
 	LTFinance.fund_loan(w, d, seller, price - down)
 	LTCivic.transfer_tax(w, seller, price, int(l["id"]))
 	var b: Dictionary = w.biz(int(l["owner_id"])) if str(l["owner_kind"]) == "business" else {}
@@ -198,6 +199,7 @@ static func settler_moves_in(w: LTWorld, p: Dictionary, l: Dictionary) -> void:
 	l["owner_id"] = int(head["id"])
 	var price: int = int(p["price"]) + int(p["change_orders"])
 	var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", price, 0.062, 360, "house", int(l["id"]), [])
+	LTLoans.attach(w, d, "30-year fixed construction to permanent loan", "mortgage")
 	h["mortgage"] = int(d["id"])
 	LTFinance._dhist(w, d, "The bank's construction loan became the mortgage when the family moved in.")
 	for m in w.household_members(h):

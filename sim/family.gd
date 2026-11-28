@@ -265,11 +265,18 @@ static func _home_buying(w: LTWorld) -> void:
 			continue
 		var down: int = int(offer["down"])
 		var dec: Dictionary = {"rate": float(offer["rate"])}
-		w.household_pay(h, "outside", int(offer["closing"]), "closing_costs")
+		# the loan officer lays out the products this program allows; the family picks
+		var products: Array = LTLoans.mortgage_offers(w, offer, int(offer["income"]), float(offer["max_dti"]), int(offer["dues"]))
+		if products.is_empty():
+			continue
+		var pick: Dictionary = LTLoans.choose(head, products, {"income": int(offer["income"]), "cash": w.household_cash(h) - down, "years": 7.0 + float(head["traits"]["discipline"]) / 10.0})
+		var chosen: Dictionary = pick["offer"]
 		var paid: int = w.household_pay(h, seller, down, "house_purchases")
-		var d: Dictionary = LTFinance.new_debt(w, "p", int(head["id"]), "bank", -1, "mortgage", int(offer["loan"]), float(dec["rate"]), 360, "house", int(l["id"]), [])
+		var d: Dictionary = LTLoans.book(w, "p", int(head["id"]), "mortgage", int(offer["loan"]), chosen, "house", int(l["id"]), products, str(pick["why"]))
+		d["terms"]["home_value"] = price
 		d["program"] = str(offer["program"])
 		LTFinance._dhist(w, d, "%s." % offer["reason"])
+		LTLoans.pay_closing(w, w.acct_p(head), chosen)
 		LTFinance.fund_loan(w, d, seller, price - down)
 		if int(offer["loan"]) > price - down:
 			# the FHA upfront premium is part of the loan
@@ -287,7 +294,7 @@ static func _home_buying(w: LTWorld) -> void:
 		l["owner_kind"] = "sim"
 		l["owner_id"] = int(head["id"])
 		for_sale.erase(l)
-		w.log_sim(head, "Bought the house on %s for %s with %s down and a %s mortgage. Reason: the family wanted a place of its own." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(paid), offer["program"]], true)
+		w.log_sim(head, "Bought the house on %s for %s with %s down: a %s %s at %.2f%%, %s a month. %s. Reason: the family wanted a place of its own." % [LTGeography.lot_label(w, int(l["id"])), LTMoney.fmt(price), LTMoney.fmt(paid), offer["program"], chosen["name"], float(chosen["rate"]) * 100.0, LTMoney.fmt(int(chosen["payment"])), str(pick["why"]).substr(0, 1).to_upper() + str(pick["why"]).substr(1)], true)
 		w.chronicle_add("The %s household bought a house on %s." % [head["last_name"], LTGeography.lot_street(w, int(l["id"]))["name"]], "housing", w.involves_watched(h["members"]), h["members"].duplicate())
 
 

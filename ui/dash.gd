@@ -271,8 +271,11 @@ func _draw_line() -> void:
 	if hi - lo < 0.0001:
 		hi = lo + 1.0
 	var pad: float = (hi - lo) * 0.1
+	var never_negative: bool = lo >= 0.0
 	lo -= pad
 	hi += pad
+	if never_negative:
+		lo = maxf(lo, 0.0)
 	var left: float = 64.0
 	_plot = Rect2(left, 40, size.x - left - 16, size.y - 40 - 30)
 	# recessive grid with three value labels

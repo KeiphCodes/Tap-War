@@ -305,7 +305,7 @@ static func bank_rate(w: LTWorld, dtype: String, score: int) -> float:
 			base = 0.229
 		"city_loan":
 			base = 0.05
-	return base + float(w.bank["tightness"]) * 0.04 + maxf(0.0, float(760 - score)) / 100.0 * 0.012
+	return base + float(w.bank["tightness"]) * 0.04 + maxf(0.0, float(760 - score)) / 100.0 * 0.012 + (LTLoans.index_rate(w) - 0.042)
 
 
 ## Returns {"ok", "reason", "rate", "max"} without lending.
@@ -415,7 +415,7 @@ static func mortgage_offer(w: LTWorld, h: Dictionary, head: Dictionary, price: i
 		if dti > float(pg[3]) - tight * 0.05:
 			why_not.append("%s payments would be %d%% of income" % [name, int(dti * 100.0)])
 			continue
-		return {"ok": true, "program": name, "down": down, "loan": loan, "rate": rate, "closing": closing, "insurance": float(pg[5]),
+		return {"ok": true, "program": name, "down": down, "loan": loan, "rate": rate, "closing": closing, "insurance": float(pg[5]), "max_dti": float(pg[3]) - tight * 0.05, "dues": dues, "income": income,
 			"reason": "%s loan: %s down, credit %d, payments %d%% of income" % [name, LTMoney.fmt(down), score, int(dti * 100.0)]}
 	var advice: String = ""
 	if score < 580:
@@ -525,8 +525,11 @@ static func personal_loan(w: LTWorld, c: Dictionary, reason: String) -> void:
 		w.remember(c, "loan_denied", -1, -10.0)
 		return
 	amount = mini(amount, int(dec["max"]))
-	var d: Dictionary = new_debt(w, "p", int(c["id"]), "bank", -1, "personal_loan", amount, float(dec["rate"]), 24, "", -1, [])
+	var offers: Array = LTLoans.personal_offers(w, amount, float(dec["rate"]))
+	var pick: Dictionary = LTLoans.choose(c, offers, {"income": monthly_income(w, c), "cash": w.cash(c), "years": 3.0})
+	var d: Dictionary = LTLoans.book(w, "p", int(c["id"]), "personal_loan", amount, pick["offer"], "", -1, offers, str(pick["why"]))
 	LTFinance.fund_loan(w, d, w.acct_p(c), amount)
+	LTLoans.pay_closing(w, w.acct_p(c), pick["offer"])
 	w.bank["lent_12m"] = int(w.bank["lent_12m"]) + amount
 	w.counters["loans_made"] = int(w.counters["loans_made"]) + 1
 	if not bool(c["credit"]["has_file"]):
@@ -609,6 +612,21 @@ static func _cycle(w: LTWorld, d: Dictionary) -> void:
 			return
 	var interest: int = int(float(d["balance"]) * float(d["rate"]) / 12.0)
 	d["balance"] = int(d["balance"]) + interest
+	var termed: int = -1
+	if d.has("terms") and str(d["status"]) != "assumed":
+		termed = LTLoans.due_this_month(w, d)
+		if termed == -2:
+			# a balloon: refinanced, or the whole amount is owed now
+			if LTLoans.balloon_due(w, d):
+				return
+			termed = int(d["balance"])
+		# mortgage insurance rides on top of the payment, to the insurer
+		var ins: int = LTLoans.insurance_due(w, d)
+		if ins > 0 and str(d["debtor_kind"]) == "p":
+			for c0 in _payer_accounts(w, d):
+				ins -= w.ledger.pay(w.acct_p(c0), "outside", ins, "mortgage_insurance")
+				if ins <= 0:
+					break
 	if str(d["debtor_kind"]) == "b":
 		var db: Dictionary = w.biz(int(d["debtor_id"]))
 		if not db.is_empty() and str(db["status"]) == "building":
@@ -621,6 +639,8 @@ static func _cycle(w: LTWorld, d: Dictionary) -> void:
 	var due: int = min_due(d)
 	if int(d["term"]) > 0:
 		due = mini(int(d["payment"]) + int(d["missed"]) * 0, int(d["balance"]))
+	if termed >= 0:
+		due = mini(termed, int(d["balance"]))
 	var paid: int = 0
 	var to_acct: String = creditor_acct(w, d)
 	match str(d["debtor_kind"]):
@@ -695,7 +715,11 @@ static func _score_people(w: LTWorld, d: Dictionary) -> Array:
 
 static func _missed(w: LTWorld, d: Dictionary, paid: int, due: int, people: Array) -> void:
 	d["missed"] = int(d["missed"]) + 1
-	d["balance"] = int(d["balance"]) + mini(LATE_FEE, int(w.city["laws"].get("late_fee_cap", LATE_FEE)))
+	var fee: int = mini(LATE_FEE, int(w.city["laws"].get("late_fee_cap", LATE_FEE)))
+	if d.has("terms"):
+		# a real note: 5% of the payment once the 15 day grace period passes, within the city's cap
+		fee = mini(int(float(due) * 0.05), int(w.city["laws"].get("late_fee_cap", LATE_FEE)))
+	d["balance"] = int(d["balance"]) + fee
 	var m: int = int(d["missed"])
 	var steps: Array = ["current", "late30", "late60", "late90", "collections"]
 	d["status"] = steps[mini(m, 4)]
@@ -1075,6 +1099,8 @@ static func _plans_month(w: LTWorld) -> void:
 
 
 static func _bank_month(w: LTWorld) -> void:
+	LTLoans.market_month(w)
+	LTLoans.monthly(w)
 	var book: float = 0.0
 	for d in w.debts:
 		if is_active(d) and str(d["creditor"]) == "bank":

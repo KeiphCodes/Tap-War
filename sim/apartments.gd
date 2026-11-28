@@ -478,6 +478,7 @@ static func monthly(w: LTWorld) -> void:
 	var own: int = mini(w.cash(best), maxi(int(float(need) * down_share), down - land))
 	w.ledger.pay(acct, escrow, own, "construction_escrow")
 	var d: Dictionary = LTFinance.new_debt(w, "p", int(best["id"]), "bank", -1, "commercial_mortgage", need - own, float(dec["rate"]), months, "building", int(lot["id"]), [])
+	LTLoans.attach(w, d, "USDA rural rental housing loan, 40 years" if months >= 480 else "Commercial mortgage, 25 years", "commercial", {"prepay_penalty": "none" if months >= 480 else "3-2-1"})
 	LTFinance._dhist(w, d, "Financed with %s." % program)
 	LTFinance.fund_loan(w, d, escrow, need - own)
 	p["developer"]["acct"] = escrow

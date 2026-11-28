@@ -2414,6 +2414,8 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 			t = _pet_text(id)
 		"debt":
 			t = _debt_text(id)
+			if not typing:
+				_debt_charts(id)
 	inspect_actions.add_child(_btn("Close", func():
 		right.visible = false
 		main.view.select_lot(-1)
@@ -2458,7 +2460,9 @@ func _doc_for(kind: String, id: int) -> Array:
 		"road":
 			return ["ROAD RECORD", "FILED", _signature(true)]
 		"debt":
-			return ["LOAN RECORD", "", _signature(false, "Recorded by the lender")]
+			var dd: Dictionary = ww.debt(id)
+			var paidoff: bool = not dd.is_empty() and str(dd["status"]) == "paid"
+			return ["PROMISSORY NOTE" if dd.has("terms") else "LOAN RECORD", "PAID" if paidoff else "", _signature(false, "Signed by %s for %s" % [LTFinance.debtor_name(ww, dd), LTFinance.creditor_name(ww, dd)] if not dd.is_empty() else "Recorded by the lender")]
 	return []
 
 
@@ -2779,24 +2783,105 @@ func _pet_text(id: int) -> String:
 	return t
 
 
+## The numbers at the top of a loan: tiles, this month's payment split, the balance
+## over the life of the loan and what each year pays in principal and interest.
+func _debt_charts(id: int) -> void:
+	var ww: LTWorld = w()
+	var d: Dictionary = ww.debt(id)
+	if d.is_empty():
+		return
+	var cash: Callable = func(v): return _short_money(int(v))
+	var t: Dictionary = d.get("terms", {})
+	var tiles: GridContainer = _cols(inspect_top, 2)
+	var left: int = maxi(0, int(t.get("amort", d["term"])) - int(t.get("months_paid", 0)))
+	var payoff: String = LTCalendar.short(ww.day + left * 30) if left > 0 and str(d["status"]) != "paid" else ("paid off" if str(d["status"]) == "paid" else "-")
+	for kr in [["Balance owed", [int(d["original"]), int(d["balance"])], cash, false, 0], ["Interest rate", [float(t.get("start_rate", d["rate"])), float(d["rate"])], func(v): return "%.2f%%" % (float(v) * 100.0), false, 1],
+			["Monthly payment", [int(d["payment"]) + int(t.get("ins_month", 0) if float(t.get("insurance", 0.0)) > 0.0 else 0)], cash, false, 0], ["Paid so far", [int(d["paid_total"])], cash, true, 2]]:
+		var tile: Control = DashScript.new()
+		tiles.add_child(tile)
+		tile.as_kpi(str(kr[0]), kr[1], kr[2], bool(kr[3]), DashScript.SERIES[int(kr[4])])
+	inspect_top.add_child(_lbl("APR %s   Paid off by %s" % ["%.2f%%" % (float(t["apr"]) * 100.0) if t.has("apr") else "-", payoff], 13, Color("5a4a32")))
+	if str(d["status"]) == "paid" or int(d["term"]) <= 0:
+		return
+	# this month's payment: how much goes to interest and how much repays the loan
+	var it: int = int(float(d["balance"]) * float(d["rate"]) / 12.0)
+	var io: bool = int(t.get("months_paid", 0)) < int(t.get("io_months", 0))
+	var pr: int = 0 if io else maxi(0, int(d["payment"]) - it)
+	var parts: Array = [pr, it]
+	var names: Array = ["Principal", "Interest"]
+	if float(t.get("insurance", 0.0)) > 0.0:
+		parts.append(int(t.get("ins_month", 0)))
+		names.append("Mortgage insurance")
+	var dn: Control = DashScript.new()
+	inspect_top.add_child(dn)
+	dn.as_donut("Where this month's payment goes", parts, names, cash)
+	if not t.is_empty():
+		var sch: Array = LTLoans.schedule(d)
+		var bals: Array = sch[0]
+		var labels: Array = []
+		for i in bals.size():
+			labels.append("Month %d" % i)
+		var ch: Control = DashScript.new()
+		inspect_top.add_child(ch)
+		ch.as_line("Balance as scheduled", bals, labels, cash, DashScript.SERIES[0])
+		var yrs: Array = sch[1]
+		var bars: Control = DashScript.new()
+		inspect_top.add_child(bars)
+		bars.as_bars("Each year: principal and interest paid", yrs.slice(0, 10) if yrs.size() > 10 else yrs, ["Principal", "Interest"], cash)
+
+
 func _debt_text(id: int) -> String:
 	var ww: LTWorld = w()
 	var d: Dictionary = ww.debt(id)
 	if d.is_empty():
 		return "No debt."
-	var t: String = "[font_size=19][b]%s[/b][/font_size]\n" % str(d["type"]).replace("_", " ").capitalize()
-	t += "Owed by %s to %s. Original %s, now %s at %.1f%%. Status: %s.\n" % [LTFinance.debtor_name(ww, d), LTFinance.creditor_name(ww, d), _money(int(d["original"])), _money(int(d["balance"])), float(d["rate"]) * 100.0, LTFinance.status_text(str(d["status"]))]
+	var t: Dictionary = d.get("terms", {})
+	var title: String = str(t.get("name", str(d["type"]).replace("_", " ").capitalize()))
+	var s: String = "[font_size=19][b]%s[/b][/font_size]\n" % title
+	s += "Borrower %s. Lender %s.%s\n" % [LTFinance.debtor_name(ww, d), LTFinance.creditor_name(ww, d), " Personally guaranteed by %s." % sim_link(int(d["guarantor"])) if int(d["guarantor"]) >= 0 else ""]
+	s += "Signed %s. Status: [b]%s[/b].\n" % [LTCalendar.short(maxi(1, int(d["opened_day"]))), LTFinance.status_text(str(d["status"]))]
+	s += "\n[b]Terms[/b]\n"
+	s += "Amount borrowed %s. Owed now %s.\n" % [_money(int(d["original"])), _money(int(d["balance"]))]
+	if t.is_empty():
+		s += "Rate %.2f%%. %s\n" % [float(d["rate"]) * 100.0, "Payment %s a month for %d months." % [_money(int(d["payment"])), int(d["term"])] if int(d["term"]) > 0 else "A revolving balance, minimum payment due monthly."]
+	else:
+		var rt: String = "Fixed at %.2f%%" % (float(d["rate"]) * 100.0)
+		if str(t["rate_type"]) == "arm":
+			rt = "Adjustable: started at %.2f%%, now %.2f%%. Fixed for %d years, then resets every year to the market rate plus %.2f%%, at most %d%% a year and %d%% over the life of the loan" % [float(t["start_rate"]) * 100.0, float(d["rate"]) * 100.0, int(t["fixed_months"]) / 12, LTLoans.ARM_MARGIN * 100.0, int(LTLoans.ARM_CAP_LATER * 100.0), int(LTLoans.ARM_CAP_LIFE * 100.0)]
+		s += "Interest: %s. APR %.2f%% (the true yearly cost with fees).\n" % [rt, float(t["apr"]) * 100.0]
+		s += "Term %d years%s.\n" % [int(t["term"]) / 12, ", payments figured over %d years with a balloon of about %s due at the end" % [int(t["amort"]) / 12, _money(int(t.get("balloon_amount", 0)))] if bool(t.get("balloon", false)) else ""]
+		if int(t["io_months"]) > 0:
+			s += "Interest only for the first %d months (%s a month), then %s a month.\n" % [int(t["io_months"]), _money(int(t.get("io_payment", 0))), _money(int(t["pi"]))]
+		else:
+			s += "Principal and interest %s a month.\n" % _money(int(d["payment"]))
+		if float(t.get("insurance", 0.0)) > 0.0:
+			s += "Mortgage insurance %s a month (%.2f%% a year)%s.\n" % [_money(int(t["ins_month"])), float(t["insurance"]) * 100.0, ", for the life of the loan (FHA)" if float(t["insurance"]) >= 0.0055 else ", until the loan is down to 78% of the home's value"]
+		s += "Late fee 5%% of the payment after a %d day grace period, at most %s by city law.\n" % [LTLoans.GRACE_DAYS, _money(int(ww.city["laws"].get("late_fee_cap", 3500)))]
+		var pp: String = str(t.get("prepay_penalty", "none"))
+		s += "Paying early: %s.\n" % ("no penalty" if pp == "none" else "a penalty of 3% of what is paid early in the first year, 2% in the second, 1% in the third")
+		if int(t.get("extra_paid", 0)) > 0:
+			s += "Extra principal paid so far: %s.\n" % _money(int(t["extra_paid"]))
+		s += "Payments made: %d of %d.\n" % [int(t["months_paid"]), int(t["amort"]) if not bool(t.get("balloon", false)) else int(t["term"])]
+		s += "\n[b]Closing costs[/b]\n"
+		for ln in t.get("fees", []):
+			s += "%s   %s\n" % [ln[0], _money(int(ln[1]))]
+		s += "[b]Total %s[/b]\n" % _money(int(t.get("fee_total", 0)))
 	if str(d["secured_by"]) != "":
-		t += "Secured by the %s.\n" % d["secured_by"]
+		s += "\nSecured by the %s%s.\n" % [d["secured_by"], " (%s)" % lot_link(int(d["collateral_lot"])) if int(d["collateral_lot"]) >= 0 else ""]
 	if not bool(d["dischargeable"]):
-		t += "Bankruptcy cannot erase this kind of debt.\n"
-	t += "\n[b]Paper trail[/b]\n"
-	for e in d["history"]:
-		t += "[color=#9fb0c0]%s[/color] %s\n" % [LTCalendar.short(maxi(1, int(e["day"]))), e["text"]]
-	return t
-
-
-# ================================================================ roads, contracts and lot details
+		s += "Bankruptcy cannot erase this kind of debt.\n"
+	var offers: Array = d.get("offers", [])
+	if offers.size() > 1:
+		s += "\n[b]What the bank offered[/b]\n"
+		for o in offers:
+			s += "%s%s: %.2f%%, APR %.2f%%, %s a month, %s at closing, %s interest in all%s\n" % ["[b]" if bool(o["chosen"]) else "", o["name"], float(o["rate"]) * 100.0, float(o["apr"]) * 100.0, _money(int(o["payment"])), _money(int(o["fee_total"])), _money(int(o["total_interest"])), "  (chosen)[/b]" if bool(o["chosen"]) else ""]
+	if str(d.get("choice", "")) != "":
+		s += "[b]Why this one:[/b] %s.\n" % (str(d["choice"]).substr(0, 1).to_upper() + str(d["choice"]).substr(1))
+	s += "\n[b]Paper trail[/b]\n"
+	for i in range(d["history"].size() - 1, -1, -1):
+		var e: Dictionary = d["history"][i]
+		s += "[color=#7a6a52]%s[/color] %s\n" % [LTCalendar.short(maxi(1, int(e["day"]))), e["text"]]
+	return s
 
 func _road_project(street_id: int) -> int:
 	var best: int = -1
