@@ -336,6 +336,9 @@ static func add_service(w: LTWorld, kind: String, lot_id: int, quality: float, s
 			w.city["jobs"].append({"id": jid, "title": "nurse", "skill": "medicine", "service": "clinic", "wage": LTMoney.dollars(170.0), "holder": -1})
 			if size == "full":
 				w.city["jobs"].append({"id": jid + 1, "title": "clinic doctor", "skill": "medicine", "service": "clinic", "wage": LTMoney.dollars(320.0), "holder": -1})
+		"station":
+			l["name"] = "%s Station" % w.city["name"]
+			l["value"] = LTMoney.dollars(1200000.0)
 		"depot":
 			l["name"] = "%s Rail Loading Track" % w.city["name"]
 			l["value"] = LTMoney.dollars(500000.0)

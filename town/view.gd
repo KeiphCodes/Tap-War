@@ -891,7 +891,7 @@ func _build_wildlife() -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = int(tt["seed"]) + 99
 	var f: Dictionary = tt["forest"]
-	for i in 8:
+	for i in (8 if LTTerrain.has(w, "forest") else 0):
 		var a: float = rng.randf() * TAU
 		var p: Vector2 = (f["c"] as Vector2) + Vector2(cos(a) * float(f["rx"]), sin(a) * float(f["rz"])) * rng.randf_range(0.6, 1.0)
 		_animal("deer", p, rng)
@@ -900,7 +900,7 @@ func _build_wildlife() -> void:
 			var a2: float = rng.randf() * TAU
 			_animal("duck", (lk["c"] as Vector2) + Vector2(cos(a2) * float(lk["rx"]), sin(a2) * float(lk["rz"])) * rng.randf_range(0.2, 0.8), rng)
 	var m: Dictionary = tt["mountain"]
-	for i in 5:
+	for i in (5 if LTTerrain.has(w, "mountain") else 0):
 		var a3: float = rng.randf() * TAU
 		_animal("elk" if i < 3 else "goat", (m["c"] as Vector2) + Vector2(cos(a3), sin(a3)) * float(m["r"]) * rng.randf_range(0.2, 0.6), rng)
 	for i in 6:
@@ -986,7 +986,7 @@ func _build_forest() -> void:
 	for b in w.businesses:
 		if bool(b.get("rail_spur", false)):
 			spur_n += 1
-	var sig: String = "%s|%d|%d|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size(), spur_n, int(LTRail.has_line(w))]
+	var sig: String = "%s|%d|%d|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size(), spur_n, int(LTRail.has_line(w)) + 2 * int(LTTerrain.has(w, "rail")) + 4 * int(LTRail.has_station(w))]
 	if sig == _trees_sig and pine_mm != null:
 		return
 	_trees_sig = sig
@@ -1904,6 +1904,17 @@ func _civic(root: Node3D, l: Dictionary) -> void:
 			_box(root, Vector3(1.6, 0.4, 0.1), Vector3(0, 3.0, 2.3), Color(0.85, 0.15, 0.15), true)
 			_box(root, Vector3(0.4, 1.6, 0.1), Vector3(0, 3.0, 2.3), Color(0.85, 0.15, 0.15), true)
 			_box(root, Vector3(5.0, 1.4, 0.1), Vector3(0, 1.4, 2.3), Color(0.7, 0.85, 0.95), true)
+		"station":
+			# a small passenger station: a brick waiting room, a long platform, a canopy
+			_box(root, Vector3(9.0, 3.8, 6.0), Vector3(0, 1.9, 1.0), Color(0.62, 0.32, 0.24))
+			_roof(root, Vector3(10.4, 2.0, 7.4), Vector3(0, 4.8, 1.0), Color(0.25, 0.28, 0.3))
+			for i in 3:
+				_box(root, Vector3(1.4, 1.8, 0.1), Vector3(-3.0 + float(i) * 3.0, 2.0, 4.05), Color(1.0, 0.9, 0.6), true)
+			_box(root, Vector3(24.0, 0.9, 4.0), Vector3(0, 0.45, -5.0), Color(0.68, 0.67, 0.64))
+			_box(root, Vector3(24.0, 0.06, 0.4), Vector3(0, 0.92, -6.8), Color(0.95, 0.8, 0.2))
+			for i in 5:
+				_cyl(root, 0.12, 3.2, Vector3(-10.0 + float(i) * 5.0, 2.5, -4.0), Color(0.3, 0.3, 0.32))
+			_box(root, Vector3(24.0, 0.2, 3.0), Vector3(0, 4.1, -4.6), Color(0.25, 0.3, 0.35))
 		"depot":
 			# a public loading track: a siding, a raised loading dock, a small scale house
 			_box(root, Vector3(20.0, 0.45, 4.0), Vector3(0, 0.2, -6.5), Color(0.45, 0.43, 0.4))
@@ -2215,6 +2226,8 @@ func _outdoor_plan(c: Dictionary, hour: float) -> Dictionary:
 			var d: Vector2 = cen - spot
 			return {"pos": Vector3(spot.x, 0, spot.y), "visible": true, "car": false, "moving": false, "face": atan2(d.x, d.y)}
 		"hiking":
+			if not LTTerrain.has(w, "mountain"):
+				return {}
 			if _trail_pts.is_empty():
 				_trail_pts = LTTerrain.trail(w)
 			var k: float = fmod(hour, 2.0) / 2.0
@@ -2227,7 +2240,7 @@ func _outdoor_plan(c: Dictionary, hour: float) -> Dictionary:
 			var dirv: Vector2 = (b - a) if up else (a - b)
 			return {"pos": Vector3(p.x, 0, p.y), "visible": true, "car": false, "moving": time_scale > 0.0, "dir": Vector3(dirv.x, 0, dirv.y).normalized()}
 		"hunting":
-			if not LTChoices.hunting_open(w):
+			if not LTChoices.hunting_open(w) or not LTTerrain.has(w, "forest"):
 				return {}
 			var f: Dictionary = tt["forest"]
 			var ang: float = _hash01(cid, 3, 7) * TAU
@@ -3098,11 +3111,14 @@ func _build_landmarks(buckets: Dictionary) -> void:
 	_batch_begin()
 	# the railroad: ballast, ties and two rails
 	var rail_z: float = LTTerrain.rail_z(w)
-	var pulled: bool = not LTRail.has_line(w)
+	var pulled: bool = bool(LTRail.r(w).get("removed", false))
+	var no_rail: bool = not LTTerrain.has(w, "rail")
 	var x: float = 0.0
 	while x < ms.x:
 		var mid: Vector2 = Vector2(x + 15.0, rail_z)
-		if pulled and not LTTerrain.is_water(w, mid.x, mid.y):
+		if no_rail:
+			pass
+		elif pulled and not LTTerrain.is_water(w, mid.x, mid.y):
 			# the rails came up: the old grade is a gravel trail
 			_bxf = Transform3D(Basis.IDENTITY, Vector3(mid.x, LTTerrain.height(w, mid.x, mid.y), mid.y))
 			_box(landmark_root, Vector3(30.0, 0.3, 3.0), Vector3(0, 0.12, 0), Color(0.66, 0.62, 0.54))

@@ -2,9 +2,12 @@ class_name LTRail
 extends RefCounted
 ## The railroad as it really works in South Dakota.
 ##
-## - The track belongs to a private railroad. Nobody in town can start one, and
-##   there is no passenger service: no passenger train has run in South Dakota
-##   for decades.
+## - The track belongs to a private railroad. Nobody in town can start one. Some
+##   maps have no railroad at all: the town has to talk a railroad into building
+##   a branch line, and usually pay part of it.
+## - Passenger trains run on the freight railroad's tracks, as Amtrak and state
+##   supported trains do. A town gets a stop by asking the passenger service, which
+##   decides on likely riders, and then building its own station.
 ## - A business that ships in bulk (grain, flour, lumber, stone, factory goods,
 ##   ore) can pay for its own spur track off the line, if the railroad agrees it
 ##   will ship enough. Rail costs about a third of trucking per ton.
@@ -45,6 +48,7 @@ static func r(w: LTWorld) -> Dictionary:
 			"owner": RAILROAD, "branch": branch, "base_cars": rng.randi_range(500, 1100) if branch else rng.randi_range(4000, 12000),
 			"cars_ytd": 0.0, "cars_last": 0, "removed": false, "agreement": "", "request": {}, "grant": {}, "grant_amt": 0,
 			"abandon_day": -1, "state_request": {}, "history": [],
+			"new_line": {}, "pax": {}, "pax_ok": false, "riders_year": 0,
 		}
 	return w.city["rail"]
 
@@ -62,7 +66,7 @@ static func line_z(w: LTWorld) -> float:
 
 
 static func has_line(w: LTWorld) -> bool:
-	return not LTTerrain.t(w).is_empty() and not bool(r(w).get("removed", false))
+	return LTTerrain.has(w, "rail") and not bool(r(w).get("removed", false))
 
 
 static func operator(w: LTWorld) -> String:
@@ -87,6 +91,19 @@ static func spur_cost(w: LTWorld, l: Dictionary) -> int:
 
 static func has_depot(w: LTWorld) -> bool:
 	return LTCivic.has_service(w, "depot")
+
+
+static func has_station(w: LTWorld) -> bool:
+	return LTCivic.has_service(w, "station")
+
+
+static func passenger_service(w: LTWorld) -> bool:
+	return has_line(w) and has_station(w)
+
+
+## Visitors a month the train brings on top of drivers (used by the outdoor trade).
+static func visitor_draw(w: LTWorld) -> float:
+	return 30.0 if passenger_service(w) else 0.0
 
 
 ## How much better a business does shipping by rail: its own spur saves the most,
@@ -194,6 +211,8 @@ static func consider_spur(w: LTWorld, b: Dictionary) -> String:
 ## Where the town stands on the way to a public loading track: the next step, in words.
 static func next_step(w: LTWorld) -> String:
 	var rr: Dictionary = r(w)
+	if not LTTerrain.has(w, "rail"):
+		return "There is no railroad on this map. The town would have to get a railroad to build a branch line."
 	if not has_line(w):
 		return "The railroad is gone."
 	if has_depot(w):
@@ -249,6 +268,8 @@ static func daily(w: LTWorld) -> void:
 	if LTTerrain.t(w).is_empty():
 		return
 	var rr: Dictionary = r(w)
+	_new_line_day(w)
+	_passenger_day(w)
 	if not rr["request"].is_empty() and w.day >= int(rr["request"]["due"]):
 		rr["request"] = {}
 		var cars: float = expected_cars(w)
@@ -345,3 +366,204 @@ static func depot_lot_ok(w: LTWorld, l: Dictionary) -> String:
 	if has_depot(w):
 		return "The town already has a public loading track."
 	return ""
+
+
+
+# ---------------------------------------------------------------- a map with no railroad
+
+const NEW_LINE_COST: int = 350000000     # about a mile of new branch line, $3.5 million
+const CARS_RAILROAD_PAYS: float = 600.0  # enough traffic that the railroad builds on its own dime
+const CARS_SHARED: float = 150.0         # enough that it builds if the town pays part
+
+
+## The mayor asks a railroad to build a branch line to town. It answers in about four months.
+static func request_new_line(w: LTWorld) -> Dictionary:
+	var rr: Dictionary = r(w)
+	if LTTerrain.has(w, "rail"):
+		return {"ok": false, "message": "The town already has a railroad."}
+	if not bool(w.city.get("incorporated", true)):
+		return {"ok": false, "message": "Only an incorporated town can deal with a railroad."}
+	var nl: Dictionary = rr["new_line"]
+	if not nl.is_empty() and ["asked", "share", "building"].has(str(nl.get("status", ""))):
+		return {"ok": false, "message": "That is already under way."}
+	if not nl.is_empty() and str(nl.get("status", "")) == "declined" and w.day - int(nl.get("day", 0)) < 365:
+		return {"ok": false, "message": "The railroad said no less than a year ago."}
+	rr["new_line"] = {"status": "asked", "day": w.day, "due": w.day + 120}
+	_note(w, "The city asked the %s to build a branch line to %s. The railroad will study the traffic and answer by %s." % [RAILROAD, w.city["name"], LTCalendar.short(w.day + 120)], false)
+	return {"ok": true, "message": "Asked. The railroad weighs how many cars a year the town would ship (now about %d). It builds on its own at about %d, and asks the town to pay part at about %d." % [int(expected_cars(w)), int(CARS_RAILROAD_PAYS), int(CARS_SHARED)]}
+
+
+## The city agrees to pay its share; the town board votes on it first.
+static func pay_share(w: LTWorld) -> Dictionary:
+	var rr: Dictionary = r(w)
+	var nl: Dictionary = rr["new_line"]
+	if str(nl.get("status", "")) != "share":
+		return {"ok": false, "message": "The railroad has not asked the town to pay a share."}
+	var share: int = int(nl["share"])
+	if LTGov.board_seated(w) and not LTGov.by_decree(w):
+		var v: Array = LTGov.vote(w, "paying %s toward a new branch line" % LTMoney.fmt(share), "property_tax", true)
+		if not bool(v[0]):
+			return {"ok": false, "message": str(v[3])}
+	if w.ledger.bal("city") < share:
+		return {"ok": false, "message": "The city has %s and its share is %s. Borrow or sell bonds first." % [LTMoney.fmt(w.ledger.bal("city")), LTMoney.fmt(share)]}
+	w.ledger.pay("city", "outside", share, "rail_line_share")
+	_start_building(w, "the city paid %s of the cost" % LTMoney.fmt(share))
+	return {"ok": true, "message": "Paid. The railroad starts building; trains in about a year."}
+
+
+static func _start_building(w: LTWorld, why: String) -> void:
+	var rr: Dictionary = r(w)
+	var z: float = _free_corridor(w)
+	rr["new_line"] = {"status": "building", "day": w.day, "done": w.day + 365, "z": z}
+	_note(w, "The %s is building a branch line to %s. Reason: %s. Trains should run by %s." % [RAILROAD, w.city["name"], why, LTCalendar.short(w.day + 365)])
+
+
+## A straight corridor across the map with no lots on it, near the planned one.
+static func _free_corridor(w: LTWorld) -> float:
+	var base: float = LTTerrain.rail_z(w)
+	for k in 60:
+		for sgn in [1.0, -1.0]:
+			var z: float = base + sgn * float(k) * 10.0
+			if z < 60.0 or z > LTTerrain.MAP_H - 60.0 or absf(z - LTTerrain.road_z()) < 60.0:
+				continue
+			var clear: bool = true
+			for l in w.lots:
+				if not bool(l.get("removed", false)) and float(l["z0"]) < z + 15.0 and float(l["z1"]) > z - 15.0:
+					clear = false
+					break
+			if clear:
+				return z
+	return base
+
+
+static func _new_line_day(w: LTWorld) -> void:
+	var rr: Dictionary = r(w)
+	var nl: Dictionary = rr["new_line"]
+	if nl.is_empty():
+		return
+	match str(nl.get("status", "")):
+		"asked":
+			if w.day < int(nl["due"]):
+				return
+			var cars: float = expected_cars(w)
+			if cars >= CARS_RAILROAD_PAYS:
+				_start_building(w, "the town's shippers would load about %d cars a year" % int(cars))
+			elif cars >= CARS_SHARED:
+				var share: int = int(float(NEW_LINE_COST) * 0.4)
+				rr["new_line"] = {"status": "share", "day": w.day, "share": share}
+				_note(w, "The %s will build a branch line to %s if the town pays %s, about 40%% of the cost. Reason: about %d cars a year is not quite enough to pay for it alone." % [RAILROAD, w.city["name"], LTMoney.fmt(share), int(cars)])
+			else:
+				rr["new_line"] = {"status": "declined", "day": w.day}
+				_note(w, "The %s will not build a branch line to %s. Reason: the town would ship about %d cars a year; it would need about %d before it could share the cost." % [RAILROAD, w.city["name"], int(cars), int(CARS_SHARED)])
+		"building":
+			if w.day < int(nl["done"]):
+				return
+			LTTerrain.t(w)["rail_z"] = float(nl["z"])
+			LTTerrain.t(w)["rail_present"] = true
+			rr["new_line"] = {"status": "open", "day": w.day}
+			rr["branch"] = true
+			rr["base_cars"] = 300
+			rr["owner"] = RAILROAD
+			_note(w, "The first train ran on the new branch line to %s." % w.city["name"])
+
+
+# ---------------------------------------------------------------- passenger trains
+
+const PAX_SERVICE: String = "Prairie Rail passenger service"
+const STATION_COST: int = 150000000      # platform, shelter, ramps and parking, $1.5 million
+const RIDERS_NEEDED: int = 3000
+
+
+## Riders a year the passenger service would expect here: townspeople plus the
+## visitors the lake, the woods, the mountain, a hotel and a campground draw.
+static func expected_riders(w: LTWorld) -> int:
+	var n: float = float(w.residents()) * 4.0
+	n += 1200.0 * float(LTTerrain.t(w).get("lakes", []).size())
+	n += 1500.0 if LTTerrain.has(w, "mountain") else 0.0
+	n += 900.0 if LTTerrain.has(w, "forest") else 0.0
+	n += 600.0 * float(w.open_businesses("hotel").size() + w.open_businesses("campground").size() + w.open_businesses("guide_service").size())
+	return int(n)
+
+
+static func request_stop(w: LTWorld) -> Dictionary:
+	var rr: Dictionary = r(w)
+	if not has_line(w):
+		return {"ok": false, "message": "There is no railroad for a passenger train to run on."}
+	if not bool(w.city.get("incorporated", true)):
+		return {"ok": false, "message": "Only an incorporated town can ask for a stop."}
+	if bool(rr["pax_ok"]):
+		return {"ok": false, "message": "The passenger service already agreed to stop here."}
+	var px: Dictionary = rr["pax"]
+	if str(px.get("status", "")) == "asked":
+		return {"ok": false, "message": "The passenger service has not answered yet."}
+	if str(px.get("status", "")) == "declined" and w.day - int(px.get("day", 0)) < 365:
+		return {"ok": false, "message": "The passenger service said no less than a year ago."}
+	rr["pax"] = {"status": "asked", "day": w.day, "due": w.day + 90}
+	_note(w, "The city asked the %s to stop its trains at %s. The answer is due %s." % [PAX_SERVICE, w.city["name"], LTCalendar.short(w.day + 90)], false)
+	return {"ok": true, "message": "Asked. The service expects about %d riders a year here and wants about %d." % [expected_riders(w), RIDERS_NEEDED]}
+
+
+static func station_lot_ok(w: LTWorld, l: Dictionary) -> String:
+	if not has_line(w):
+		return "There is no railroad here."
+	if not bool(r(w)["pax_ok"]):
+		return "The passenger service has to agree to stop here first (Mayor tab, Railroad)."
+	if distance(w, l) > 60.0:
+		return "A station has to sit beside the track: this lot is %d meters away. Pick a lot within 60 meters of the track." % int(distance(w, l))
+	if has_station(w):
+		return "The town already has a station."
+	return ""
+
+
+static func _passenger_day(w: LTWorld) -> void:
+	var rr: Dictionary = r(w)
+	var px: Dictionary = rr["pax"]
+	if str(px.get("status", "")) == "asked" and w.day >= int(px["due"]):
+		var riders: int = expected_riders(w)
+		if riders >= RIDERS_NEEDED:
+			rr["pax_ok"] = true
+			rr["pax"] = {"status": "agreed", "day": w.day}
+			_note(w, "The %s agreed to stop at %s twice a day once the town builds a station. It expects about %d riders a year." % [PAX_SERVICE, w.city["name"], riders])
+		else:
+			rr["pax"] = {"status": "declined", "day": w.day}
+			_note(w, "The %s will not stop at %s yet. Reason: about %d riders a year expected, and a stop needs about %d. More people, a hotel, or things to see bring riders." % [PAX_SERVICE, w.city["name"], riders, RIDERS_NEEDED])
+	if not passenger_service(w):
+		return
+	if not bool(w.city.get("rail_service_started", false)):
+		w.city["rail_service_started"] = true
+		_note(w, "The first %s train stopped at the new %s station. Visitors can come by train, and people can ride to jobs in the city." % [PAX_SERVICE, w.city["name"]])
+	if LTCalendar.is_month_start(w.day):
+		LTCivic._spend(w, "outside", LTMoney.dollars(900.0), "station_upkeep")
+	# visitors off the train eat, stay and shop
+	var riders_today: int = int(float(expected_riders(w)) / 365.0 * w.rng.randf_range(0.6, 1.4))
+	w.city["riders_today"] = riders_today
+	rr["riders_year"] = int(rr.get("riders_year", 0)) + riders_today
+	var eat: Array = w.open_businesses("cafe") + w.open_businesses("bar")
+	var visitors: int = riders_today / 2
+	for i in visitors:
+		if eat.is_empty():
+			break
+		var cafe: Dictionary = eat[w.rng.randi_range(0, eat.size() - 1)]
+		if float(cafe["stock"]) < 1.0 or not LTServices.has_room(w, cafe):
+			continue
+		var price: int = int(float(LTEconomy.MEAL_PRICE) * float(cafe["price_level"]))
+		w.ledger.pay("outside", w.acct_b(cafe), price, "retail_sales")
+		cafe["stock"] = float(cafe["stock"]) - 1.0
+		cafe["customers_today"] = int(cafe["customers_today"]) + 1
+		cafe["sales_today"] = int(cafe["sales_today"]) + price
+		cafe["month_revenue"] = int(cafe["month_revenue"]) + price
+		cafe["lifetime_revenue"] = int(cafe["lifetime_revenue"]) + price
+	var hotels: Array = w.open_businesses("hotel")
+	if not hotels.is_empty() and visitors > 0:
+		var h: Dictionary = hotels[w.rng.randi_range(0, hotels.size() - 1)]
+		var nights: int = maxi(1, visitors / 4)
+		var room: int = LTMoney.dollars(95.0) * nights
+		w.ledger.pay("outside", w.acct_b(h), room, "retail_sales")
+		h["month_revenue"] = int(h["month_revenue"]) + room
+		h["lifetime_revenue"] = int(h["lifetime_revenue"]) + room
+		h["sales_today"] = int(h["sales_today"]) + room
+
+
+## A commuter who can take the train pays a fare instead of gas.
+static func commute_cost(w: LTWorld, gas: int) -> int:
+	return int(float(gas) * 0.6) if passenger_service(w) else gas

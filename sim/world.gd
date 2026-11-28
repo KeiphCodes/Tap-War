@@ -348,6 +348,12 @@ func apply_action(a: Dictionary) -> Dictionary:
 			result = LTRail.apply_grant(self)
 		"rail_state":
 			result = LTRail.ask_state_to_buy(self)
+		"rail_new_line":
+			result = LTRail.request_new_line(self)
+		"rail_share":
+			result = LTRail.pay_share(self)
+		"rail_stop":
+			result = LTRail.request_stop(self)
 		"appoint":
 			result = LTGov.appoint(self, str(act["role"]), int(act["citizen_id"]))
 		"charter":

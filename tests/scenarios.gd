@@ -33,6 +33,7 @@ func _init() -> void:
 	_town_government()
 	_map_landmarks()
 	_rail_and_growth()
+	_random_land_and_passengers()
 	_property_lines_and_bank()
 	_apartments_built_for_need()
 	_real_loans()
@@ -650,8 +651,8 @@ func _map_landmarks() -> void:
 		kinds[str(m["kind"])] = true
 		if LTTerrain.is_water(w, float(m["x"]), float(m["z"])):
 			bad += 1
-	var ok: bool = kinds.has("farmstead") and kinds.has("elevator") and kinds.has("church") and kinds.has("lookout") and bad == 0 and a == LTTerrain.landmarks(w2)
-	_check("Map landmarks: each map seed has farms, a grain elevator on the railroad, a country church, cabins and a lookout, the same every time", ok, "%d landmarks: %s. On water: %d." % [a.size(), str(kinds.keys()), bad], w)
+	var ok: bool = kinds.has("farmstead") and kinds.has("elevator") == LTTerrain.has(w, "rail") and kinds.has("church") and kinds.has("lookout") == LTTerrain.has(w, "mountain") and bad == 0 and a == LTTerrain.landmarks(w2)
+	_check("Map landmarks: each map seed has farms and a country church, an elevator if it has a railroad, a lookout if it has a mountain, the same every time", ok, "%d landmarks: %s. On water: %d." % [a.size(), str(kinds.keys()), bad], w)
 
 
 func _rail_and_growth() -> void:
@@ -669,6 +670,7 @@ func _rail_and_growth() -> void:
 	if b.is_empty():
 		_check("Railroad and growth", false, "no business with a building", w)
 		return
+	LTTerrain.t(w)["rail_present"] = true
 	var keep_type: String = str(b["type"])
 	b["type"] = "mill"
 	b["month_revenue"] = LTMoney.dollars(90000.0)
@@ -721,6 +723,46 @@ func _rail_and_growth() -> void:
 	var ok: bool = no_deal.contains("agree") and bool(asked["ok"]) and signed and pulled and spur and not bool(row["ok"]) and depot_no.contains("beside the main line") and not low and high and int(up_plan["stories"]) >= 3 and grew
 	_check("Railroad and growth: shippers build spurs, the city gets a loading track only through the railroad's agreement and beside the tracks, lines can be abandoned, the right of way stays clear, full lots build up to the height limit, farms buy land", ok,
 		"Spur: %s. Right of way: %s. Before an agreement: %s. Railroad signed: %s. Lot far from the track: %s. Line abandoned and spur gone: %s. Up to 2 stories: %s, up to 6: %s (%d stories). Farm acres: %d." % [why, row["why"], no_deal, signed, depot_no, pulled, low, high, int(up_plan.get("stories", 1)), int(b.get("acres", 0))], w)
+
+
+func _random_land_and_passengers() -> void:
+	# maps differ: some have no forest, mountain, lake or railroad; a town with no
+	# railroad asks one to build; a town with one can ask the passenger trains to stop
+	var counts: Dictionary = {"forest": 0, "mountain": 0, "lake": 0, "rail": 0}
+	var no_rail_seed: int = -1
+	for sd in range(1, 41):
+		var wt: LTWorld = LTWorld.new()
+		wt.config["map_seed"] = sd
+		LTTerrain.setup(wt, sd, Rect2(500, 420, 600, 360))
+		for k in counts:
+			if LTTerrain.has(wt, k):
+				counts[k] = int(counts[k]) + 1
+		if not LTTerrain.has(wt, "rail") and no_rail_seed < 0:
+			no_rail_seed = sd
+	var varied: bool = true
+	for k in counts:
+		if int(counts[k]) == 0 or int(counts[k]) == 40:
+			varied = false
+	var w: LTWorld = _town(5)
+	LTTerrain.t(w)["rail_present"] = true
+	var rr: Dictionary = LTRail.r(w)
+	var asked: Dictionary = w.apply_action({"kind": "rail_stop"})
+	for i in 91:
+		LTRail.daily(w)
+		w.day += 1
+	var answered: bool = ["agreed", "declined"].has(str(rr["pax"].get("status", "")))
+	var w2: LTWorld = LTWorld.new()
+	w2.new_town(no_rail_seed, {}, {"start": "founder"})
+	LTTerrain.t(w2)["rail_present"] = false
+	w2.city["incorporated"] = true
+	var nl: Dictionary = w2.apply_action({"kind": "rail_new_line"})
+	for i in 121:
+		LTRail.daily(w2)
+		w2.day += 1
+	var nl_answer: String = str(LTRail.r(w2)["new_line"].get("status", ""))
+	var ok: bool = varied and no_rail_seed > 0 and bool(asked["ok"]) and answered and bool(nl["ok"]) and nl_answer == "declined"
+	_check("Random land and trains: maps differ in forest, mountain, lakes and railroad; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop", ok,
+		"Of 40 seeds: %s. Passenger stop request: %s -> %s (expects %d riders, needs %d). No-rail seed %d asked for a line: %s" % [str(counts), asked["message"].substr(0, 60), rr["pax"].get("status", ""), LTRail.expected_riders(w), LTRail.RIDERS_NEEDED, no_rail_seed, nl_answer], w)
 
 
 func _business_buildings() -> void:

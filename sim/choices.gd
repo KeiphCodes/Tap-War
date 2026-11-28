@@ -314,7 +314,7 @@ static func _outdoors(w: LTWorld, c: Dictionary) -> void:
 		"fishing":
 			can = not tt["lakes"].is_empty()
 		"hiking":
-			can = true
+			can = LTTerrain.has(w, "mountain") or LTTerrain.has(w, "forest")
 		"hunting":
 			can = hunting_open(w) and w.age_years(c) >= 12
 	if not can:
@@ -331,8 +331,8 @@ static func _outdoors(w: LTWorld, c: Dictionary) -> void:
 	if h == "hunting" and LTCalendar.month_index(w.day) == 10 and w.rng.randf() < 0.4:
 		var hh: Dictionary = w.hh(int(c["household"]))
 		hh["pantry"] = float(hh["pantry"]) + 6.0
-		w.log_sim(c, "Got a deer in the %s. The freezer is full for a while." % tt["forest_name"], true)
+		w.log_sim(c, ("Got a deer in the %s. The freezer is full for a while." % tt["forest_name"]) if LTTerrain.has(w, "forest") else "Got a limit of pheasants out on the prairie.", true)
 	elif h == "fishing" and w.rng.randf() < 0.15:
 		w.log_sim(c, "Caught a good stringer of walleye on %s." % tt["lakes"][int(c["id"]) % tt["lakes"].size()]["name"], false)
 	elif h == "hiking" and w.rng.randf() < 0.1:
-		w.log_sim(c, "Hiked to the top of %s." % tt["park_name"].replace(" State Park", ""), false)
+		w.log_sim(c, ("Hiked to the top of %s." % tt["park_name"].replace(" State Park", "")) if LTTerrain.has(w, "mountain") else ("Hiked the trails in the %s." % tt["forest_name"]), false)

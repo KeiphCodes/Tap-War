@@ -258,6 +258,10 @@ static func check_action(w: LTWorld, act: Dictionary) -> Dictionary:
 			if not bool(r[0]):
 				return {"ok": false, "message": str(r[3])}
 		"define_project":
+			if str(act.get("ptype", "")) == "station":
+				var r4: Array = vote(w, "spending about %s of city money on a passenger rail station" % LTMoney.fmt(LTRail.STATION_COST), "property_tax", true)
+				if not bool(r4[0]):
+					return {"ok": false, "message": str(r4[3])}
 			if str(act.get("ptype", "")) == "depot":
 				var cost: int = maxi(0, LTRail.DEPOT_COST - int(LTRail.r(w)["grant_amt"]))
 				var r3: Array = vote(w, "spending about %s of city money on a public rail loading track" % LTMoney.fmt(cost), "property_tax", true)

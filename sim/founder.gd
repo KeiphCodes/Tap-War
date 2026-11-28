@@ -67,6 +67,7 @@ static func settler_pull(w: LTWorld) -> float:
 	pull += float(LTEconomy.open_positions(w)) * 3.0
 	pull += LTCivic.safety_level(w) * 0.1
 	pull += LTGeography.amenity_share(w, "sidewalks") * 8.0
+	pull += 6.0 if LTRail.passenger_service(w) else 0.0
 	# cheap land and a fresh start draw people early on
 	pull += clampf(30.0 - float(w.residents()) * 0.1, 5.0, 30.0)
 	var paved: float = 0.0

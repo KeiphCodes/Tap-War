@@ -255,6 +255,34 @@ static func _depot(w: LTWorld, t: Dictionary) -> void:
 	if LTTerrain.t(w).is_empty() or not bool(w.city.get("incorporated", true)):
 		return
 	var rr: Dictionary = LTRail.r(w)
+	var cars0: float = LTRail.expected_cars(w)
+	if not LTTerrain.has(w, "rail"):
+		var nl: Dictionary = rr["new_line"]
+		if str(nl.get("status", "")) == "share" and w.ledger.bal("city") > int(nl["share"]) + LTMoney.dollars(200000.0) and float(t["ambition"]) > 45.0:
+			if bool(_act(w, {"kind": "rail_share"}).get("ok", false)):
+				_say(w, "paid the town's share of a new branch line. Reason: shipping by rail keeps the farms and mills here.")
+		elif (nl.is_empty() or str(nl.get("status", "")) == "declined" and w.day - int(nl["day"]) >= 365) and cars0 >= LTRail.CARS_SHARED * 0.8:
+			if bool(_act(w, {"kind": "rail_new_line"}).get("ok", false)):
+				_say(w, "asked a railroad to build a branch line to town. Reason: the town's shippers could load about %d cars a year." % int(cars0))
+		return
+	# a passenger stop when enough people would ride
+	if LTRail.has_line(w) and not bool(rr["pax_ok"]) and str(rr["pax"].get("status", "")) != "asked" and LTRail.expected_riders(w) >= int(float(LTRail.RIDERS_NEEDED) * 0.9):
+		if str(rr["pax"].get("status", "")) != "declined" or w.day - int(rr["pax"]["day"]) >= 365:
+			if bool(_act(w, {"kind": "rail_stop"}).get("ok", false)):
+				_say(w, "asked the passenger trains to stop here. Reason: about %d riders a year would bring visitors to town." % LTRail.expected_riders(w))
+	if bool(rr["pax_ok"]) and not LTRail.has_station(w) and w.ledger.bal("city") > LTRail.STATION_COST + LTMoney.dollars(150000.0):
+		var busy: bool = false
+		for p in w.projects:
+			if str(p["ptype"]) == "station" and not ["cancelled", "done"].has(str(p["status"])):
+				busy = true
+		if not busy:
+			for l in w.lots:
+				if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city" and LTRail.station_lot_ok(w, l) == "":
+					if not ["civic", "mixed", "industrial", "commercial"].has(str(l["zone"])):
+						_act(w, {"kind": "zone_lot", "lot": int(l["id"]), "zone": "civic"})
+					if bool(_act(w, {"kind": "define_project", "ptype": "station", "target": int(l["id"])}).get("ok", false)):
+						_say(w, "put a passenger station out to bid on %s. Reason: the trains will stop once it is built." % LTGeography.lot_label(w, int(l["id"])))
+					break
 	if int(rr["abandon_day"]) >= 0 and rr["state_request"].is_empty():
 		if bool(_act(w, {"kind": "rail_state"}).get("ok", false)):
 			_say(w, "asked the state to buy the branch line. Reason: the town's farms and mills need the railroad.")

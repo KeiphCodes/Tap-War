@@ -1220,11 +1220,39 @@ func _rail_card(parent: Control, ww: LTWorld) -> void:
 		return
 	var rr: Dictionary = LTRail.r(ww)
 	var mine: bool = not LTMayorAI.is_on(ww) and not bool(ww.city.get("player_out", false))
+	if not LTTerrain.has(ww, "rail"):
+		var nc: VBoxContainer = _card(parent, "Railroad", "None on this map")
+		var nl: Dictionary = rr["new_line"]
+		var stt: String = str(nl.get("status", ""))
+		nc.add_child(_rtl("No railroad reaches %s. Everything ships by truck, which costs about three times as much per ton. A railroad builds a branch line on its own at about %d cars a year of freight, and asks the town to pay part at about %d. The town's shippers would load about %d.\n%s" % [ww.city["name"], int(LTRail.CARS_RAILROAD_PAYS), int(LTRail.CARS_SHARED), int(LTRail.expected_cars(ww)),
+			{"asked": "Waiting for the railroad's answer, due %s." % LTCalendar.short(int(nl.get("due", 0))), "share": "[b]The railroad will build if the town pays %s.[/b]" % _money(int(nl.get("share", 0))), "building": "[b]The railroad is building the line.[/b] Trains by %s." % LTCalendar.short(int(nl.get("done", 0))), "declined": "The railroad said no. Ask again in a year if the town ships more."}.get(stt, "")]))
+		if mine and bool(ww.city.get("incorporated", true)):
+			if stt == "share":
+				nc.add_child(_btn("Pay the town's share", func():
+					show_toast(str(main.act({"kind": "rail_share"})["message"]))
+					_tab_mayor(), "The town board votes on it first."))
+			elif stt == "" or stt == "declined":
+				nc.add_child(_btn("Ask a railroad to build a branch line", func():
+					show_toast(str(main.act({"kind": "rail_new_line"})["message"]))
+					_tab_mayor(), "The railroad answers in about four months."))
+		return
 	var rc: VBoxContainer = _card(parent, "Railroad", "Owned by %s%s" % [rr["owner"], ", run by the %s" % LTRail.SHORT_LINE if str(rr["owner"]) != LTRail.RAILROAD else ""])
 	if not LTRail.has_line(ww):
 		rc.add_child(_lbl("The rails came up. Everything ships by truck.", 13, Color("93a1b5")))
 		return
-	rc.add_child(_rtl("%s. Freight only: no passenger train has run in South Dakota for decades.\n[color=#93a1b5]Cars last year:[/color] %d   [color=#93a1b5]Town shippers would load:[/color] about %d a year" % ["A light branch line" if bool(rr["branch"]) else "A busy main line", int(rr["cars_last"]) if int(rr["cars_last"]) > 0 else int(rr["base_cars"]), int(LTRail.expected_cars(ww))]))
+	var pax: String
+	if LTRail.passenger_service(ww):
+		pax = "[b]Passenger trains stop here twice a day[/b] (%d riders today)." % int(ww.city.get("riders_today", 0))
+	elif bool(rr["pax_ok"]):
+		pax = "The %s agreed to stop here: build a station beside the track (Projects)." % LTRail.PAX_SERVICE
+	else:
+		pax = "Passenger trains pass through without stopping. They would expect about %d riders a year here and want about %d; %s" % [LTRail.expected_riders(ww), LTRail.RIDERS_NEEDED, {"asked": "the city's request is in.", "declined": "they said no for now."}.get(str(rr["pax"].get("status", "")), "the city can ask for a stop.")]
+	rc.add_child(_rtl(pax))
+	if mine and bool(ww.city.get("incorporated", true)) and not bool(rr["pax_ok"]) and str(rr["pax"].get("status", "")) != "asked":
+		rc.add_child(_btn("Ask the passenger trains to stop here", func():
+			show_toast(str(main.act({"kind": "rail_stop"})["message"]))
+			_tab_mayor(), "They answer in about 90 days, on expected riders: townspeople and visitors."))
+	rc.add_child(_rtl("%s.\n[color=#93a1b5]Cars last year:[/color] %d   [color=#93a1b5]Town shippers would load:[/color] about %d a year" % ["A light branch line" if bool(rr["branch"]) else "A busy main line", int(rr["cars_last"]) if int(rr["cars_last"]) > 0 else int(rr["base_cars"]), int(LTRail.expected_cars(ww))]))
 	if int(rr["abandon_day"]) >= 0:
 		rc.add_child(_rtl("[color=#eb6263][b]The railroad has filed to abandon this line.[/b][/color] The rails come up %s unless the state buys it." % LTCalendar.short(int(rr["abandon_day"]))))
 		if mine and rr["state_request"].is_empty():
@@ -1320,7 +1348,17 @@ func _tab_mayor() -> void:
 	if not tt.is_empty():
 		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
 		var land: VBoxContainer = _card(box, "The land")
-		land.add_child(_rtl("%s, %s and %s.\n[color=#93a1b5]Map seed[/color] [b]%d[/b]: type it in New town to play this map again." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
+		var feats: Array = []
+		if LTTerrain.has(ww, "forest"):
+			feats.append(str(tt["forest_name"]))
+		if LTTerrain.has(ww, "mountain"):
+			feats.append(str(tt["park_name"]))
+		feats.append_array(lakes)
+		var missing: Array = []
+		for k in [["forest", "no forest"], ["mountain", "no mountain"], ["lake", "no lake"], ["rail", "no railroad"]]:
+			if not LTTerrain.has(ww, k[0]):
+				missing.append(k[1])
+		land.add_child(_rtl("%s.%s\n[color=#93a1b5]Map seed[/color] [b]%d[/b]: type it in New town to play this map again." % [LTHomes._join(feats) if not feats.is_empty() else "Open prairie in every direction", (" This map has %s, so it plays harder." % LTHomes._join(missing)) if not missing.is_empty() else "", int(tt["seed"])]))
 		var named: Array = []
 		for m in LTTerrain.landmarks(ww):
 			if ["farmstead", "elevator", "church", "schoolhouse"].has(str(m["kind"])):
@@ -1921,6 +1959,8 @@ func _tab_projects() -> void:
 		tlist.insert(0, "mayor_house")
 	if LTRail.has_line(ww) and not LTRail.has_depot(ww) and str(LTRail.r(ww)["agreement"]) == "signed":
 		tlist.append("depot")
+	if LTRail.has_line(ww) and not LTRail.has_station(ww) and bool(LTRail.r(ww)["pax_ok"]):
+		tlist.append("station")
 	for t in tlist:
 		types.add_item("%s (about %s)" % [str(LTProjects.TITLES[t]).replace(" %s", "").replace("%s", "a street"), _money(int(LTProjects.BASE_COST[t]))])
 	box.add_child(types)
@@ -1936,10 +1976,10 @@ func _tab_projects() -> void:
 			var zl: Array = ["civic", "mixed", "park"] if pt == "park" else ["civic", "mixed"]
 			if pt == "mayor_house":
 				zl = LTGeography.ZONES
-			elif pt == "depot":
+			elif pt == "depot" or pt == "station":
 				zl = ["civic", "mixed", "industrial", "commercial"]
 			for l in ww.lots:
-				if str(l["use"]) == "empty" and zl.has(str(l["zone"])) and (pt != "depot" or LTRail.depot_lot_ok(ww, l) == ""):
+				if str(l["use"]) == "empty" and zl.has(str(l["zone"])) and (pt != "depot" or LTRail.depot_lot_ok(ww, l) == "") and (pt != "station" or LTRail.station_lot_ok(ww, l) == ""):
 					tgt.add_item("Lot %d (%s, %s)" % [l["id"], LTGeography.lot_street(ww, int(l["id"]))["name"], l["zone"]])
 					tgt.set_item_metadata(tgt.item_count - 1, int(l["id"]))
 			if tgt.item_count == 0:

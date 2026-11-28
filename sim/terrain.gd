@@ -75,6 +75,24 @@ static func setup(w: LTWorld, map_seed: int, avoid: Rect2) -> void:
 		"park_name": "%s State Park" % ["Eagle Peak", "Granite Ridge", "Elk Mountain", "Thunder Butte", "Iron Hill"][rng.randi_range(0, 4)],
 	}
 	w.config["map_seed"] = map_seed
+	# what this map has at all: some are open prairie with no forest, no mountain,
+	# no lake or no railroad, which makes them harder (drawn separately so the
+	# rest of the map stays the same for the seed)
+	var has: RandomNumberGenerator = RandomNumberGenerator.new()
+	has.seed = map_seed * 104729 + 7
+	var tt0: Dictionary = w.config["terrain"]
+	if has.randf() > 0.75:
+		tt0["forest"] = {"c": Vector2(-9000, -9000), "rx": 1.0, "rz": 1.0, "none": true}
+	if has.randf() > 0.6:
+		tt0["mountain"] = {"c": Vector2(-9000, 9000), "r": 1.0, "peak": 0.0, "none": true}
+	var big_lake: bool = has.randf() < 0.7
+	var pond: bool = has.randf() < 0.6
+	var keep_lakes: Array = []
+	for i in lakes.size():
+		if (i == 0 and big_lake) or (i > 0 and pond):
+			keep_lakes.append(lakes[i])
+	tt0["lakes"] = keep_lakes
+	tt0["rail_present"] = has.randf() < 0.72
 	w.config["terrain"]["avoid"] = [avoid.position.x, avoid.position.y, avoid.size.x, avoid.size.y]
 	w.config["terrain"]["landmarks"] = _make_landmarks(w, map_seed, avoid)
 
@@ -119,6 +137,21 @@ static func forest_value(w: LTWorld, x: float, z: float) -> float:
 
 static func is_forest(w: LTWorld, x: float, z: float) -> bool:
 	return forest_value(w, x, z) > 0.0 and not is_water(w, x, z) and height(w, x, z) < mountain_peak(w) * 0.55
+
+
+## Whether this map has a forest, a mountain or a lake at all.
+static func has(w: LTWorld, feature: String) -> bool:
+	var tt: Dictionary = t(w)
+	if tt.is_empty():
+		return false
+	match feature:
+		"forest", "mountain":
+			return not bool(tt[feature].get("none", false))
+		"lake":
+			return not tt["lakes"].is_empty()
+		"rail":
+			return bool(tt.get("rail_present", true))
+	return false
 
 
 static func mountain_peak(w: LTWorld) -> float:
@@ -199,7 +232,7 @@ static func survey(w: LTWorld, r: Rect2) -> Dictionary:
 		return out
 	# the railroad's right of way: 15 meters each side of the track
 	var rz0: float = rail_z(w)
-	if r.position.y < rz0 + 15.0 and r.end.y > rz0 - 15.0:
+	if has(w, "rail") and not bool(w.city.get("rail", {}).get("removed", false)) and r.position.y < rz0 + 15.0 and r.end.y > rz0 - 15.0:
 		out["ok"] = false
 		out["why"] = "the land is the railroad's right of way, 15 meters each side of the track"
 		return out
@@ -410,13 +443,14 @@ static func _make_landmarks(w: LTWorld, map_seed: int, avoid: Rect2) -> Array:
 				got.append(e)
 		return got
 	var names: Array = LTPeople.LAST_NAMES.duplicate()
+	var has_rail: bool = bool(t(w).get("rail_present", true))
 	for f in place.call("farmstead", rng.randi_range(4, 7), 170.0, false, 0.0):
 		f["name"] = "%s farm" % names[rng.randi_range(0, names.size() - 1)]
 		f["silos"] = rng.randi_range(1, 3)
 		f["barn"] = ["red", "red", "white", "gray"][rng.randi_range(0, 3)]
 		f["cattle"] = rng.randf() < 0.6
 	# the elevator stands on the rail siding by the county road
-	for tries in 80:
+	for tries in (80 if has_rail else 0):
 		var ex: float = rng.randf_range(120.0, MAP_W - 120.0)
 		var ep: Vector2 = Vector2(ex, rz + (14.0 if rz > road_z() else -14.0))
 		if not keep.grow(-40.0).has_point(ep) and water_distance(w, ep.x, ep.y) > 30.0 and height(w, ep.x, ep.y) < BUILD_MAX_HEIGHT:
@@ -442,6 +476,8 @@ static func _make_landmarks(w: LTWorld, map_seed: int, avoid: Rect2) -> Array:
 				continue
 			var face: float = atan2(c0.x - p.x, c0.y - p.y)
 			out.append({"kind": "dock" if i == n else "cabin", "x": p.x, "z": p.y, "rot": face, "name": "public boat ramp" if i == n else "%s cabin" % names[rng.randi_range(0, names.size() - 1)]})
+	if not has(w, "mountain"):
+		return out
 	# a fire lookout near the top of the mountain
 	var m: Dictionary = t(w)["mountain"]
 	var mc: Vector2 = m["c"]
