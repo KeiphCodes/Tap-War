@@ -34,6 +34,7 @@ func _init() -> void:
 	_map_landmarks()
 	_rail_and_growth()
 	_random_land_and_passengers()
+	_lot_leases()
 	_property_lines_and_bank()
 	_apartments_built_for_need()
 	_real_loans()
@@ -773,6 +774,44 @@ func _random_land_and_passengers() -> void:
 	var ok: bool = varied and kinds.size() == 4 and start_blocked.is_empty() and no_rail_seed > 0 and bool(asked["ok"]) and answered and bool(nl["ok"]) and nl_answer == "declined"
 	_check("Map kinds and trains: prairie, mountain town, lake country and north woods maps, each with buildable ground where the town starts; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop", ok,
 		"Of 40 seeds: %s, %s. Start blocked: %s. Passenger stop request: %s -> %s (expects %d riders, needs %d). No-rail seed %d asked for a line: %s" % [str(kinds), str(counts), str(start_blocked), asked["message"].substr(0, 60), rr["pax"].get("status", ""), LTRail.expected_riders(w), LTRail.RIDERS_NEEDED, no_rail_seed, nl_answer], w)
+
+
+func _lot_leases() -> void:
+	# a business on city land pays a fair ground lease; once it owns the land it
+	# pays nothing; the city can keep a lot lease only; a closed owner keeps the land
+	var w: LTWorld = _town(5)
+	var b: Dictionary = {}
+	for x in w.businesses:
+		if str(x["status"]) == "open" and int(x["lot"]) >= 0 and not bool(x.get("home_based", false)) and str(x["type"]) != "landlord":
+			b = x
+			break
+	if b.is_empty():
+		var c0: Dictionary = _adult(w, func(x): return true)
+		var l0: Dictionary = {}
+		for l in w.lots:
+			if str(l["use"]) == "empty" and str(l["owner_kind"]) == "city":
+				l0 = l
+				break
+		b = LTEconomy._new_business(w, "general_store", c0, int(l0["id"]), "sole")
+		b["status"] = "open"
+		l0["use"] = "business"
+		l0["ref"] = int(b["id"])
+	var l: Dictionary = w.lot(int(b["lot"]))
+	l["owner_kind"] = "city"
+	b["free_lot"] = false
+	var rate_ok: bool = absf(float(LTCivic.lot_rent(w, int(l["id"]))) * 12.0 / float(LTGeography.asking_price(w, int(l["id"]))) - 0.06) < 0.002
+	var leasing: bool = LTEconomy.leases_lot(w, b)
+	l["lease_only"] = true
+	var blocked: bool = not LTLand.lot_for_sale_to(w, l)
+	l["lease_only"] = false
+	w.ledger.pay("outside", w.acct_b(b), LTGeography.asking_price(w, int(l["id"])) + LTMoney.dollars(10000.0), "test_capital")
+	var bought: bool = LTLand.buy_next_door(w, "business", int(b["id"]), w.acct_b(b), l, l) >= 0
+	var free_now: bool = not LTEconomy.leases_lot(w, b)
+	LTEconomy.close_business(w, b, "a test")
+	var kept: bool = str(l["owner_kind"]) == "sim" and l.has("for_sale")
+	var ok: bool = rate_ok and leasing and blocked and bought and free_now and kept
+	_check("Land leases: a business on city land pays about 6% a year, owning the land ends the lease, lease-only lots cannot be bought, a closed owner keeps and lists the land", ok,
+		"Rate about 6%%: %s. Leasing at first: %s. Lease-only blocks a sale: %s. Bought: %s, then no lease: %s. After closing, owner kept it for sale: %s." % [rate_ok, leasing, blocked, bought, free_now, kept], w)
 
 
 func _business_buildings() -> void:

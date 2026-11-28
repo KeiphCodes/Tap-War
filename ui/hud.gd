@@ -2933,7 +2933,16 @@ func _lot_text(id: int) -> String:
 		"empty":
 			t += "Empty. You can rezone it. A Sim may build here if the zone fits what they want.\n"
 	if str(l["zone"]) == "commercial" and str(l["use"]) == "empty":
-		t += "Lease if a business opens here: %s a month.\n" % _money(LTCivic.lot_rent(ww, id))
+		t += "Lease if a business opens here: %s a month (about 6%% of the land's value a year)%s.\n" % [_money(LTCivic.lot_rent(ww, id)), ", lease only" if bool(l.get("lease_only", false)) else ", or a business may buy it"]
+	if ["business", "closed"].has(str(l["use"])) and int(l.get("ref", -1)) >= 0:
+		var lb: Dictionary = ww.biz(int(l["ref"]))
+		if not lb.is_empty():
+			if str(l.get("owner_kind", "")) == "business" and int(l.get("owner_id", -1)) == int(lb["id"]):
+				t += "The business owns this land: no lease.\n"
+			elif bool(lb.get("free_lot", false)):
+				t += "The city lets the business use this land free, as an incentive.\n"
+			elif LTEconomy.leases_lot(ww, lb):
+				t += "Leased from the city: %s a month.\n" % _money(LTCivic.lot_rent(ww, id) * (3 if bool(lb.get("building_lease", false)) else 1))
 	t += "Size: %d by %d feet.\n" % [int(LTGeography.lot_frontage(l) * 3.28), int(LTGeography.lot_depth(l) * 3.28)]
 	if l.has("for_sale"):
 		t += "For sale by its owner: %s.\n" % _money(int(l["for_sale"]))
@@ -3340,6 +3349,11 @@ func _lot_form(id: int) -> void:
 	hold.button_pressed = bool(l.get("hold", false))
 	hold.toggled.connect(func(on): _edit_lots(ids.call(), {"hold": on}))
 	inspect_form.add_child(hold)
+	var lease: CheckBox = CheckBox.new()
+	lease.text = "Lease only: a business may rent it from the city but never buy it"
+	lease.button_pressed = bool(l.get("lease_only", false))
+	lease.toggled.connect(func(on): _edit_lots(ids.call(), {"lease_only": on}))
+	inspect_form.add_child(lease)
 	var nm: LineEdit = LineEdit.new()
 	nm.text = str(l["name"])
 	nm.placeholder_text = "a name for the map, optional"

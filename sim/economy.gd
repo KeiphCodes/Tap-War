@@ -687,6 +687,7 @@ static func found_business(w: LTWorld, c: Dictionary, plan: Dictionary) -> void:
 		pr["developer"]["acct"] = escrow
 		pr["developer"]["refund"] = acct
 	w.log_sim(c, "Decided to start %s and hired builders for the building. Reason: %s" % [b["name"], reason], true)
+	LTLand.founder_buys_lot(w, b, c)
 	w.log_biz(b, "Planned by %s on %s. Reason: %s" % [w.full_name(c), LTGeography.lot_label(w, lot_id), reason])
 	w.chronicle_add("%s is putting up a building on %s for %s." % [w.full_name(c), LTGeography.lot_street(w, lot_id)["name"], b["name"]], "business", false, [c["id"]])
 
@@ -1468,15 +1469,25 @@ static func _biz_debt_due(w: LTWorld, b: Dictionary) -> int:
 	return t
 
 
+## A business pays rent for its land unless it owns it: to the city, or to
+## whoever owns the property (a closed business's owner who kept the building).
+static func leases_lot(w: LTWorld, b: Dictionary) -> bool:
+	if bool(b.get("home_based", false)) or int(b.get("lot", -1)) < 0:
+		return false
+	var l: Dictionary = w.lot(int(b["lot"]))
+	return not (str(l.get("owner_kind", "city")) == "business" and int(l.get("owner_id", -1)) == int(b["id"]))
+
+
 static func _month_close(w: LTWorld, b: Dictionary) -> void:
 	var acct: String = w.acct_b(b)
 	var btype: String = str(b["type"])
 	var owner: Dictionary = w.cit(int(b["owners"][0]))
 	# fixed monthly costs
 	if btype != "landlord":
-		if not bool(b["free_lot"]):
+		if not bool(b["free_lot"]) and leases_lot(w, b):
 			var rent: int = LTCivic.lot_rent(w, int(b["lot"])) * (3 if bool(b.get("building_lease", false)) else 1)
-			var pr: int = w.ledger.pay(acct, "city", rent, "lot_leases")
+			var landlord: String = LTCivic.owner_acct(w, w.lot(int(b["lot"])))
+			var pr: int = w.ledger.pay(acct, landlord, rent, "lot_leases" if landlord == "city" else "commercial_rent")
 			b["month_costs"] = int(b["month_costs"]) + pr
 		var util: int = LTMoney.dollars(260.0 if btype != "farm" else 180.0)
 		b["month_costs"] = int(b["month_costs"]) + w.ledger.pay(acct, "outside", util, "business_utilities")
@@ -1644,6 +1655,16 @@ static func close_business(w: LTWorld, b: Dictionary, reason: String) -> void:
 	var l: Dictionary = w.lot(int(b["lot"]))
 	if not bool(b.get("home_based", false)):
 		l["use"] = "closed"
+		# land the business owned stays with its owner, who puts it up for sale
+		if str(l.get("owner_kind", "")) == "business" and int(l.get("owner_id", -1)) == int(b["id"]):
+			if not owner.is_empty() and w.is_present(owner):
+				l["owner_kind"] = "sim"
+				l["owner_id"] = int(owner["id"])
+				l["for_sale"] = LTGeography.asking_price(w, int(l["id"]))
+				w.log_sim(owner, "Kept the building and land of %s and put them up for sale for %s." % [b["name"], LTMoney.fmt(int(l["for_sale"]))], true)
+			else:
+				l["owner_kind"] = "city"
+				l["owner_id"] = -1
 	w.counters["businesses_closed"] = int(w.counters["businesses_closed"]) + 1
 	w.log_biz(b, "Closed. Reason: %s." % reason)
 	w.chronicle_add("%s closed. Reason: %s." % [b["name"], reason], "business", true, b["owners"].duplicate())

@@ -100,7 +100,7 @@ static func buyable_next_door(w: LTWorld, l: Dictionary) -> Array:
 	for n in side_neighbors(w, l):
 		if str(n["use"]) != "empty" or str(n["zone"]) != str(l["zone"]):
 			continue
-		if (str(n["owner_kind"]) == "city" and not bool(n.get("hold", false))) or n.has("for_sale"):
+		if (str(n["owner_kind"]) == "city" and not bool(n.get("hold", false)) and not bool(n.get("lease_only", false))) or n.has("for_sale"):
 			out.append(n)
 	return out
 
@@ -217,9 +217,69 @@ static func split(w: LTWorld, lot_id: int, new_width: float) -> Dictionary:
 # ---------------------------------------------------------------- what owners decide
 
 static func monthly(w: LTWorld) -> void:
+	_lease_buyouts(w)
 	_bigger_yards(w)
 	_splits(w)
 	_lapse(w)
+
+
+# ---------------------------------------------------------------- buy or lease the land
+
+## Whether the city will sell this lot to the business on it.
+static func lot_for_sale_to(w: LTWorld, l: Dictionary) -> bool:
+	return str(l.get("owner_kind", "")) == "city" and not bool(l.get("hold", false)) and not bool(l.get("lease_only", false))
+
+
+## A founder with money to spare and a careful streak buys the land instead of
+## leasing it: more up front, but no rent, and land the bank will lend against.
+static func founder_buys_lot(w: LTWorld, b: Dictionary, c: Dictionary) -> void:
+	var l: Dictionary = w.lot(int(b["lot"]))
+	if l.is_empty() or bool(b.get("free_lot", false)) or bool(b.get("home_based", false)) or not lot_for_sale_to(w, l):
+		return
+	var price: int = LTGeography.asking_price(w, int(l["id"]))
+	var t: Dictionary = c["traits"]
+	var careful: float = float(t["discipline"]) * 0.5 + float(t["intelligence"]) * 0.3 - float(t["risk"]) * 0.3
+	if w.cash(c) < int(float(price) * 1.5) + LTMoney.dollars(20000.0) or careful < 25.0:
+		w.log_biz(b, "Leases the lot from the city for %s a month. Reason: %s." % [LTMoney.fmt(LTCivic.lot_rent(w, int(l["id"]))), "keeping cash free for a risky first year" if careful >= 25.0 else "the owner would rather keep the money working than tie it up in land"])
+		return
+	var acct: String = w.acct_b(b)
+	w.ledger.pay(w.acct_p(c), acct, price, "owner_investment")
+	if LTLand.buy_next_door(w, "business", int(b["id"]), acct, l, l) >= 0:
+		w.log_biz(b, "Bought the lot from the city for %s instead of leasing it. Reason: no rent, and land the bank will lend against." % LTMoney.fmt(price))
+		w.log_sim(c, "Bought the land under %s outright. Reason: careful with money and had it to spare." % b["name"], true)
+
+
+## A business doing well on leased land buys it when it can, if the city sells.
+static func _lease_buyouts(w: LTWorld) -> void:
+	for b in w.businesses:
+		if str(b["status"]) != "open" or bool(b.get("free_lot", false)) or bool(b.get("home_based", false)) or str(b["type"]) == "landlord":
+			continue
+		if not LTEconomy.leases_lot(w, b) or w.day - int(b.get("opened_day", 0)) < 180 or w.day - int(b.get("buyout_asked", -9999)) < 365:
+			continue
+		var l: Dictionary = w.lot(int(b["lot"]))
+		if not lot_for_sale_to(w, l):
+			continue
+		var hist: Array = b.get("month_profit_hist", [])
+		if hist.size() < 3 or int(hist[-1]) <= 0 or int(hist[-2]) <= 0 or int(hist[-3]) <= 0:
+			continue
+		b["buyout_asked"] = w.day
+		var price: int = LTGeography.asking_price(w, int(l["id"]))
+		var rent_year: int = LTCivic.lot_rent(w, int(l["id"])) * 12 * (3 if bool(b.get("building_lease", false)) else 1)
+		var owner: Dictionary = w.cit(int(b["owners"][0]))
+		var t: Dictionary = owner.get("traits", {"discipline": 50, "risk": 50})
+		var keep: int = LTMoney.dollars(15000.0) + int(b.get("month_costs", 0)) * 3
+		if w.biz_cash(b) < price + keep:
+			continue
+		# buying pays back in rent saved; a careful owner likes that more than a gambler does
+		var years: float = float(price) / maxf(1.0, float(rent_year))
+		if years > 14.0 + (float(t.get("discipline", 50)) - float(t.get("risk", 50))) / 10.0:
+			continue
+		if buy_next_door(w, "business", int(b["id"]), w.acct_b(b), l, l) >= 0:
+			b["building_lease"] = false
+			var why: String = "the business has made money and the land pays for itself in about %.0f years of rent saved" % years
+			w.log_biz(b, "Bought the lot it had been leasing from the city for %s. Reason: %s." % [LTMoney.fmt(price), why])
+			if not owner.is_empty():
+				w.log_sim(owner, "Bought the land under %s. Reason: %s." % [b["name"], why], true)
 
 
 static func _count(w: LTWorld, key: String) -> void:
@@ -410,7 +470,7 @@ static func assemble_for(w: LTWorld, b: Dictionary) -> bool:
 	for n in buyable_next_door(w, l):
 		# the business must own its lot to combine; a leased lot cannot be added to
 		if str(l["owner_kind"]) != "business" or int(l["owner_id"]) != int(b["id"]):
-			if str(l["owner_kind"]) == "city" and not bool(l.get("hold", false)):
+			if str(l["owner_kind"]) == "city" and not bool(l.get("hold", false)) and not bool(l.get("lease_only", false)):
 				if buy_next_door(w, "business", int(b["id"]), acct, l, l) < 0:
 					return false
 			else:

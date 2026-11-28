@@ -97,8 +97,9 @@ static func business_tax_rate(w: LTWorld) -> float:
 	return law(w, "business_tax")
 
 
+## A ground lease, as real ones run: about 6% of the land's value a year.
 static func lot_rent(w: LTWorld, lot_id: int) -> int:
-	return int(float(LTGeography.asking_price(w, lot_id)) * 0.008)
+	return int(float(LTGeography.asking_price(w, lot_id)) * 0.06 / 12.0)
 
 
 static func has_service(w: LTWorld, kind: String) -> bool:

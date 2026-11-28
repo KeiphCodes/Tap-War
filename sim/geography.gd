@@ -926,6 +926,8 @@ static func edit_lots(w: LTWorld, ids: Array, changes: Dictionary) -> Dictionary
 			l["price_pct"] = clampi(int(changes["price_pct"]), 25, 300)
 		if changes.has("hold"):
 			l["hold"] = bool(changes["hold"])
+		if changes.has("lease_only"):
+			l["lease_only"] = bool(changes["lease_only"])
 		if changes.has("name"):
 			l["name"] = str(changes["name"]).strip_edges().left(40)
 		done += 1
