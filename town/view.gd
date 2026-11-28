@@ -982,7 +982,7 @@ func _build_forest() -> void:
 					if not buckets.has(key):
 						buckets[key] = []
 					buckets[key].append(rr)
-	var sig: String = "%s|%d|%d" % [_season, built.size(), int(_snow)]
+	var sig: String = "%s|%d|%d|%d" % [_season, built.size(), int(_snow), w.roads.size()]
 	if sig == _trees_sig and pine_mm != null:
 		return
 	_trees_sig = sig
@@ -1025,6 +1025,7 @@ func _build_forest() -> void:
 		x += step
 	pine_mm = _tree_batch(pines, true)
 	leaf_mm = _tree_batch(leafy, false)
+	_build_landmarks(buckets)
 
 
 func _tree_batch(xfs: Array, pine: bool) -> MultiMeshInstance3D:
@@ -3028,3 +3029,200 @@ func focus_sim(cid: int, hour: float) -> void:
 
 func _is_night() -> bool:
 	return _last_hour < 6.0 or _last_hour > 19.5
+
+
+# ------------------------------------------------------------------ what was here before the town
+
+var landmark_root: Node3D
+
+
+## Something the town has built is in the way: a lot, or a street.
+func _taken(buckets: Dictionary, p: Vector2, r: float) -> bool:
+	for bx in range(int((p.x - r) / 50.0), int((p.x + r) / 50.0) + 1):
+		for bz in range(int((p.y - r) / 50.0), int((p.y + r) / 50.0) + 1):
+			for rr in buckets.get(bz * 1000 + bx, []):
+				if (rr as Rect2).grow(r).has_point(p):
+					return true
+	for sg in w.roads:
+		if bool(sg.get("removed", false)) or str(w.streets[int(sg["street"])]["kind"]) == "highway":
+			continue
+		var a: Vector2 = Vector2(float(w.road_nodes[int(sg["a"])]["x"]), float(w.road_nodes[int(sg["a"])]["y"])) * CELL
+		var b: Vector2 = Vector2(float(w.road_nodes[int(sg["b"])]["x"]), float(w.road_nodes[int(sg["b"])]["y"])) * CELL
+		if Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p) < r:
+			return true
+	return false
+
+
+## The farms, elevator, church, schoolhouse, windmills, cabins, lookout, the
+## railroad and the power line along the county road, from the map seed. Anything
+## the town builds over is gone.
+func _build_landmarks(buckets: Dictionary) -> void:
+	if landmark_root != null:
+		landmark_root.queue_free()
+	landmark_root = Node3D.new()
+	ground_root.add_child(landmark_root)
+	var marks: Array = LTTerrain.landmarks(w)
+	if marks.is_empty():
+		return
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = int(LTTerrain.t(w)["seed"]) + 99
+	var ms: Vector2 = map_size()
+	var rz: float = LTTerrain.road_z()
+	var leaf: Color = _leaf_color()
+	_batch_begin()
+	# the railroad: ballast, ties and two rails
+	var rail_z: float = LTTerrain.rail_z(w)
+	var x: float = 0.0
+	while x < ms.x:
+		var mid: Vector2 = Vector2(x + 15.0, rail_z)
+		if not _taken(buckets, mid, 18.0) and not LTTerrain.is_water(w, mid.x, mid.y):
+			var gy: float = LTTerrain.height(w, mid.x, mid.y)
+			_bxf = Transform3D(Basis.IDENTITY, Vector3(mid.x, gy, mid.y))
+			_box(landmark_root, Vector3(30.0, 0.5, 4.4), Vector3(0, 0.2, 0), Color(0.45, 0.43, 0.4))
+			for k in 10:
+				_box(landmark_root, Vector3(0.3, 0.12, 2.6), Vector3(-13.5 + float(k) * 3.0, 0.5, 0), Color(0.33, 0.25, 0.18))
+			for sz in [-0.72, 0.72]:
+				_box(landmark_root, Vector3(30.0, 0.14, 0.1), Vector3(0, 0.62, sz), Color(0.5, 0.48, 0.46))
+		x += 30.0
+	# the power line along the county road
+	var side: float = -13.0 if rail_z > rz else 13.0
+	x = 20.0
+	while x < ms.x:
+		var pp: Vector2 = Vector2(x, rz + side)
+		if not _taken(buckets, pp, 6.0) and not LTTerrain.is_water(w, pp.x, pp.y):
+			_bxf = Transform3D(Basis.IDENTITY, Vector3(pp.x, LTTerrain.height(w, pp.x, pp.y), pp.y))
+			_cyl(landmark_root, 0.16, 9.0, Vector3(0, 4.5, 0), Color(0.4, 0.3, 0.2))
+			_box(landmark_root, Vector3(0.15, 0.15, 2.4), Vector3(0, 8.6, 0), Color(0.4, 0.3, 0.2))
+			for wz in [-1.0, 1.0]:
+				_box(landmark_root, Vector3(45.0, 0.05, 0.05), Vector3(22.5, 8.4, wz), Color(0.15, 0.15, 0.15))
+		x += 45.0
+	for m in marks:
+		var p: Vector2 = Vector2(float(m["x"]), float(m["z"]))
+		var kind: String = str(m["kind"])
+		var r: float = {"farmstead": 45.0, "elevator": 22.0, "church": 24.0, "schoolhouse": 12.0, "windmill": 6.0, "cabin": 8.0, "dock": 8.0, "lookout": 6.0}.get(kind, 10.0)
+		if _taken(buckets, p, r):
+			continue
+		_bxf = Transform3D(Basis(Vector3.UP, float(m["rot"])), Vector3(p.x, LTTerrain.height(w, p.x, p.y), p.y))
+		match kind:
+			"farmstead":
+				_farmstead(m, rng, leaf, rz)
+			"elevator":
+				for i in 4:
+					_cyl(landmark_root, 4.0, 30.0, Vector3(-12.0 + float(i) * 8.0, 15.0, 0), Color(0.8, 0.78, 0.74))
+				_box(landmark_root, Vector3(7.0, 9.0, 7.0), Vector3(0, 34.5, 0), Color(0.78, 0.76, 0.72))
+				_roof(landmark_root, Vector3(7.4, 2.0, 7.4), Vector3(0, 40.0, 0), Color(0.35, 0.36, 0.38))
+				_box(landmark_root, Vector3(10.0, 4.0, 7.0), Vector3(22.0, 2.0, 4.0), Color(0.72, 0.7, 0.66))
+				_box(landmark_root, Vector3(18.0, 0.3, 4.0), Vector3(4.0, 0.15, 9.0), Color(0.5, 0.5, 0.5))
+			"church":
+				_box(landmark_root, Vector3(8.0, 6.0, 14.0), Vector3(0, 3.0, 0), Color(0.95, 0.94, 0.9))
+				_roof(landmark_root, Vector3(8.6, 4.0, 14.6), Vector3(0, 8.0, 0), Color(0.3, 0.3, 0.32), PI * 0.5)
+				_box(landmark_root, Vector3(3.0, 9.0, 3.0), Vector3(0, 4.5, 8.0), Color(0.95, 0.94, 0.9))
+				_roof(landmark_root, Vector3(3.2, 6.0, 3.2), Vector3(0, 12.0, 8.0), Color(0.3, 0.3, 0.32))
+				_box(landmark_root, Vector3(1.6, 2.6, 0.1), Vector3(0, 1.3, 9.55), Color(0.45, 0.28, 0.15))
+				for i in 6:
+					_box(landmark_root, Vector3(0.1, 2.2, 1.2), Vector3(4.05, 3.4, -5.0 + float(i) * 2.0), Color(0.55, 0.6, 0.75))
+				# the cemetery beside it, fenced, with rows of stones
+				for row in 4:
+					for col in 6:
+						_box(landmark_root, Vector3(0.6, 0.8, 0.2), Vector3(10.0 + float(col) * 2.0, 0.4, -6.0 + float(row) * 3.0), Color(0.6, 0.6, 0.62).darkened(rng.randf() * 0.25))
+				for fx in [8.5, 21.5]:
+					_box(landmark_root, Vector3(0.1, 1.0, 14.0), Vector3(fx, 0.5, -1.5), Color(0.2, 0.2, 0.2))
+				for fz in [-8.5, 5.5]:
+					_box(landmark_root, Vector3(13.0, 1.0, 0.1), Vector3(15.0, 0.5, fz), Color(0.2, 0.2, 0.2))
+				_tree(Vector3(23.0, 0, -7.0), leaf, 7.0)
+				_tree(Vector3(-7.0, 0, -6.0), leaf, 6.0)
+			"schoolhouse":
+				_box(landmark_root, Vector3(6.0, 3.6, 8.0), Vector3(0, 1.8, 0), Color(0.82, 0.78, 0.7))
+				_roof(landmark_root, Vector3(6.6, 2.4, 8.6), Vector3(0, 4.8, 0), Color(0.4, 0.36, 0.32), PI * 0.5)
+				_box(landmark_root, Vector3(1.4, 1.6, 1.4), Vector3(0, 6.4, 3.0), Color(0.82, 0.78, 0.7))
+				_box(landmark_root, Vector3(1.2, 2.1, 0.1), Vector3(0, 1.05, 4.05), Color(0.35, 0.25, 0.18))
+				_box(landmark_root, Vector3(1.0, 2.0, 1.0), Vector3(6.0, 1.0, -4.0), Color(0.5, 0.4, 0.3))
+				_tree(Vector3(-5.0, 0, -4.0), leaf, 6.5)
+			"windmill":
+				_windmill(Vector3.ZERO)
+			"cabin":
+				_box(landmark_root, Vector3(6.0, 3.4, 5.0), Vector3(0, 1.7, 0), Color(0.48, 0.32, 0.18))
+				_roof(landmark_root, Vector3(6.6, 2.2, 5.6), Vector3(0, 4.5, 0), Color(0.22, 0.32, 0.24))
+				_box(landmark_root, Vector3(2.2, 1.0, 0.1), Vector3(-1.2, 1.9, 2.55), Color(0.95, 0.85, 0.55))
+				_box(landmark_root, Vector3(1.4, 0.2, 14.0), Vector3(0, 0.3, 10.0), Color(0.55, 0.42, 0.28))
+				_box(landmark_root, Vector3(1.0, 0.5, 3.2), Vector3(1.4, 0.35, 15.0), Color(0.85, 0.85, 0.88))
+			"dock":
+				_box(landmark_root, Vector3(4.5, 0.12, 14.0), Vector3(0, 0.1, 6.0), Color(0.68, 0.67, 0.64))
+				_box(landmark_root, Vector3(1.4, 0.3, 14.0), Vector3(3.4, 0.35, 8.0), Color(0.55, 0.42, 0.28))
+				_box(landmark_root, Vector3(12.0, 0.06, 10.0), Vector3(0, 0.06, -6.0), Color(0.6, 0.57, 0.5))
+				_box(landmark_root, Vector3(2.0, 1.4, 0.1), Vector3(-4.0, 1.4, -1.0), Color(0.2, 0.4, 0.25))
+			"lookout":
+				for lx in [-1.6, 1.6]:
+					for lz in [-1.6, 1.6]:
+						_box(landmark_root, Vector3(0.25, 13.0, 0.25), Vector3(lx, 6.5, lz), Color(0.4, 0.3, 0.22))
+				_box(landmark_root, Vector3(4.2, 3.0, 4.2), Vector3(0, 14.5, 0), Color(0.55, 0.62, 0.7))
+				_box(landmark_root, Vector3(4.6, 0.3, 4.6), Vector3(0, 13.0, 0), Color(0.4, 0.3, 0.22))
+				_roof(landmark_root, Vector3(4.8, 1.6, 4.8), Vector3(0, 16.8, 0), Color(0.3, 0.3, 0.32))
+	_bxf = Transform3D.IDENTITY
+	_batch_end(landmark_root)
+	# names, read up close
+	for m in marks:
+		var p2: Vector2 = Vector2(float(m["x"]), float(m["z"]))
+		if ["farmstead", "elevator", "church", "schoolhouse"].has(str(m["kind"])) and not _taken(buckets, p2, 30.0):
+			var lb: Label3D = _sign(landmark_root, str(m["name"]), Vector3(p2.x, LTTerrain.height(w, p2.x, p2.y) + {"elevator": 46.0, "church": 18.0}.get(str(m["kind"]), 12.0), p2.y), 30, Color(1, 1, 1, 0.9))
+			lb.pixel_size = 0.03
+			lb.visibility_range_end = 260.0
+
+
+func _tree(at: Vector3, leaf: Color, h: float) -> void:
+	_cyl(landmark_root, 0.25, h * 0.5, at + Vector3(0, h * 0.25, 0), Color(0.35, 0.25, 0.15))
+	_ball(landmark_root, h * 0.34, at + Vector3(0, h * 0.68, 0), leaf)
+
+
+func _windmill(at: Vector3) -> void:
+	for lx in [-0.8, 0.8]:
+		for lz in [-0.8, 0.8]:
+			_box(landmark_root, Vector3(0.12, 10.0, 0.12), at + Vector3(lx * 0.6, 5.0, lz * 0.6), Color(0.55, 0.55, 0.57), false, Vector3(lz * -0.06, 0, lx * 0.06))
+	for i in 8:
+		var a: float = TAU * float(i) / 8.0
+		_box(landmark_root, Vector3(0.3, 1.6, 0.05), at + Vector3(sin(a) * 0.9, 10.4 + cos(a) * 0.9, 0.5), Color(0.75, 0.75, 0.77), false, Vector3(0, 0, -a))
+	_box(landmark_root, Vector3(0.1, 0.8, 2.2), at + Vector3(0, 10.4, -1.2), Color(0.7, 0.2, 0.15))
+	_cyl(landmark_root, 1.8, 0.7, at + Vector3(2.6, 0.35, 1.0), Color(0.55, 0.57, 0.6))
+	_cyl(landmark_root, 1.7, 0.05, at + Vector3(2.6, 0.68, 1.0), Color(0.86, 0.9, 0.95) if _snow else Color(0.25, 0.42, 0.55))
+
+
+## A working farm: the house, a barn, silos, a machine shed, a windbreak of trees
+## to the back, a fenced pasture with cattle, round bales and a gravel drive out
+## to the county road.
+func _farmstead(m: Dictionary, rng: RandomNumberGenerator, leaf: Color, rz: float) -> void:
+	var barn: Color = {"red": Color(0.62, 0.16, 0.12), "white": Color(0.92, 0.91, 0.88), "gray": Color(0.55, 0.55, 0.56)}.get(str(m.get("barn", "red")), Color(0.62, 0.16, 0.12))
+	_box(landmark_root, Vector3(8.0, 5.0, 7.0), Vector3(-10.0, 2.5, 0), Color(0.93, 0.9, 0.82))
+	_roof(landmark_root, Vector3(8.6, 2.6, 7.6), Vector3(-10.0, 6.3, 0), Color(0.3, 0.3, 0.33))
+	_box(landmark_root, Vector3(1.1, 2.1, 0.1), Vector3(-10.0, 1.05, 3.55), Color(0.4, 0.28, 0.18))
+	for wx in [-12.5, -7.5]:
+		_box(landmark_root, Vector3(1.4, 1.2, 0.1), Vector3(wx, 2.8, 3.55), Color(0.5, 0.6, 0.72))
+	_box(landmark_root, Vector3(12.0, 7.0, 16.0), Vector3(10.0, 3.5, -10.0), barn)
+	_roof(landmark_root, Vector3(12.8, 5.0, 16.6), Vector3(10.0, 9.5, -10.0), Color(0.28, 0.28, 0.3), PI * 0.5)
+	_box(landmark_root, Vector3(4.0, 4.5, 0.1), Vector3(10.0, 2.25, -1.95), barn.lightened(0.5))
+	for i in int(m.get("silos", 1)):
+		_cyl(landmark_root, 2.2, 14.0, Vector3(19.5 + float(i) * 5.0, 7.0, -14.0), Color(0.78, 0.76, 0.72))
+		_ball(landmark_root, 2.2, Vector3(19.5 + float(i) * 5.0, 14.0, -14.0), Color(0.6, 0.62, 0.64))
+	_box(landmark_root, Vector3(14.0, 5.0, 9.0), Vector3(-8.0, 2.5, -20.0), Color(0.7, 0.72, 0.74))
+	_cyl(landmark_root, 0.1, 7.0, Vector3(0.0, 3.5, -3.0), Color(0.35, 0.35, 0.35))
+	# the windbreak: rows of trees on the back and west, as every prairie farm has
+	for i in 12:
+		_tree(Vector3(-28.0 + float(i) * 5.0 + rng.randf_range(-1.0, 1.0), 0, -34.0), leaf.lerp(Color(0.16, 0.32, 0.18), 0.5), rng.randf_range(7.0, 10.0))
+	for i in 7:
+		_tree(Vector3(-32.0, 0, -28.0 + float(i) * 5.0 + rng.randf_range(-1.0, 1.0)), leaf.lerp(Color(0.16, 0.32, 0.18), 0.5), rng.randf_range(7.0, 10.0))
+	# pasture and stock
+	if bool(m.get("cattle", false)):
+		for fx in [24.0, 54.0]:
+			_box(landmark_root, Vector3(0.08, 1.1, 30.0), Vector3(fx, 0.55, 2.0), Color(0.45, 0.35, 0.25))
+		for fz in [-13.0, 17.0]:
+			_box(landmark_root, Vector3(30.0, 1.1, 0.08), Vector3(39.0, 0.55, fz), Color(0.45, 0.35, 0.25))
+		for i in 7:
+			var cp: Vector3 = Vector3(rng.randf_range(27.0, 51.0), 0.0, rng.randf_range(-10.0, 14.0))
+			var col: Color = [Color(0.12, 0.1, 0.09), Color(0.42, 0.22, 0.12), Color(0.85, 0.82, 0.76)][rng.randi_range(0, 2)]
+			_box(landmark_root, Vector3(1.8, 1.0, 0.8), cp + Vector3(0, 0.9, 0), col, false, Vector3(0, rng.randf_range(0.0, TAU), 0))
+	if _season == "Summer" or _season == "Fall":
+		for i in 6:
+			_cyl(landmark_root, 0.85, 1.5, Vector3(rng.randf_range(-40.0, -20.0), 0.75, rng.randf_range(6.0, 26.0)), Color(0.78, 0.68, 0.4))
+	# the drive out to the county road
+	var dist: float = absf(rz - float(m["z"])) - 9.0
+	if dist > 4.0 and dist < 320.0:
+		_box(landmark_root, Vector3(3.6, 0.06, dist), Vector3(-2.0, 0.07, 4.0 + dist * 0.5), Color(0.62, 0.58, 0.5))

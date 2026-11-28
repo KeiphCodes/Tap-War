@@ -497,11 +497,12 @@ static func wear_roads(w: LTWorld) -> void:
 		wx = 2.2
 	elif w.weather == "Rain":
 		wx = 1.2
+	var street_crew: float = 2.0 - LTGov.factor(w, "street_super")
 	for s in w.roads:
 		if bool(s.get("planned", false)) or bool(s.get("removed", false)):
 			continue
 		var q: float = float(s["quality"])
-		var rate: float = 0.02 + (1.0 - q) * (1.0 - q) * 0.22
+		var rate: float = (0.02 + (1.0 - q) * (1.0 - q) * 0.22) * street_crew
 		var sf: String = str(w.streets[int(s["street"])].get("surface", "asphalt"))
 		if sf != "asphalt":
 			rate *= float(LTProjects.SURFACES[sf]["wear"])

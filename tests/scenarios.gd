@@ -30,6 +30,8 @@ func _init() -> void:
 	_custom_homes()
 	_business_buildings()
 	_business_rooms()
+	_town_government()
+	_map_landmarks()
 	_property_lines_and_bank()
 	_apartments_built_for_need()
 	_real_loans()
@@ -599,6 +601,56 @@ func _business_rooms() -> void:
 		and LTBuildings.bottleneck(greedy) == "kitchen" and LTBuildings.capacity(greedy) < LTBuildings.capacity(cafe) and front_ok
 	_check("Business rooms: every kind of business has its own rooms, equipment and code items, and a cramped kitchen is the bottleneck", ok,
 		"Without their own rooms or equipment: %s. Balanced cafe serves %d a day; one with seats crammed in serves %d (%s)." % [str(missing), int(LTBuildings.capacity(cafe)), int(LTBuildings.capacity(greedy)), LTBuildings.capacity_text(greedy)], w)
+
+
+func _town_government() -> void:
+	# a board is elected once the town is big enough, it votes on laws and
+	# confirms appointments, the mayor is limited to two terms and an open race
+	# makes a new mayor; a mayor who grabs power loses the town's trust
+	var w: LTWorld = _town(5)
+	w.apply_action({"kind": "elections", "on": true})
+	w.run_days(65)
+	var gv: Dictionary = LTGov.g(w)
+	var board_n: int = gv["board"].size()
+	var law: Dictionary = w.apply_action({"kind": "set_law", "law": "school_funding", "value": 1.5})
+	var voted: bool = gv["votes"].size() >= 1
+	var nom: Array = LTGov.nominees(w, "finance_officer")
+	var ap: Dictionary = w.apply_action({"kind": "appoint", "role": "finance_officer", "citizen_id": int(nom[0]["id"])}) if not nom.is_empty() else {"ok": false, "message": "nobody"}
+	# the end of a second term: an open race and a new mayor
+	gv["mayor_terms"] = 2
+	w.city["held_election"] = true
+	w.city["next_election_day"] = w.day + 62
+	var old: String = str(w.player["name"])
+	w.run_days(64)
+	var new_mayor: bool = str(w.player["name"]) != old and bool(w.city.get("player_out", false)) and LTMayorAI.is_on(w)
+	# a separate town where the mayor rules by decree
+	var w2: LTWorld = _town(5)
+	w2.apply_action({"kind": "elections", "on": true})
+	w2.city["held_election"] = true
+	var before: float = LTCivic.approval(w2)
+	var dc: Dictionary = w2.apply_action({"kind": "decree", "why": "test"})
+	var after: float = LTCivic.approval(w2)
+	var ok: bool = board_n == 3 and voted and bool(ap.get("ok", false)) == LTGov.g(w)["officials"].has("finance_officer") and new_mayor and bool(dc["ok"]) and not bool(w2.city["elections"]) and after < before - 10.0
+	_check("Town government: an elected board votes on laws and appointments, two terms and out, and ruling by decree costs the town's trust", ok,
+		"Board of %d. School funding vote: %s Appointment: %s After two terms: %s took over from %s. Decree: approval %d to %d." % [board_n, law["message"].substr(0, 120), ap["message"].substr(0, 100), w.player["name"], old, int(before), int(after)], w)
+
+
+func _map_landmarks() -> void:
+	# every map seed comes with the county already settled around it, the same
+	# way each time, and none of it on water or where the town starts
+	var w: LTWorld = LTWorld.new()
+	w.new_town(11, {}, {"start": "founder"})
+	var a: Array = LTTerrain.landmarks(w)
+	var w2: LTWorld = LTWorld.new()
+	w2.new_town(11, {}, {"start": "founder"})
+	var kinds: Dictionary = {}
+	var bad: int = 0
+	for m in a:
+		kinds[str(m["kind"])] = true
+		if LTTerrain.is_water(w, float(m["x"]), float(m["z"])):
+			bad += 1
+	var ok: bool = kinds.has("farmstead") and kinds.has("elevator") and kinds.has("church") and kinds.has("lookout") and bad == 0 and a == LTTerrain.landmarks(w2)
+	_check("Map landmarks: each map seed has farms, a grain elevator on the railroad, a country church, cabins and a lookout, the same every time", ok, "%d landmarks: %s. On water: %d." % [a.size(), str(kinds.keys()), bad], w)
 
 
 func _business_buildings() -> void:

@@ -215,7 +215,9 @@ func new_town(p_seed: int, p_config: Dictionary = {}, p_mode: Dictionary = {}) -
 		for k in ["name", "pronouns", "age", "hometown", "traits", "mayor_seed"]:
 			player[k] = pe[k]
 		player["sim_mayor"] = true
-		city["elections"] = bool(pe["elections"])
+		# a Sim mayor stands for election like anyone; whether they ever give up
+		# power is their own choice later
+		city["elections"] = true
 	if str(mode["start"]) == "founder":
 		LTFounder.setup(self)
 	else:
@@ -273,6 +275,7 @@ func tick_day() -> void:
 	if LTCalendar.weekday(day) == "Sunday":
 		LTCivic.newspaper(self)
 	LTCivic.elections_daily(self)
+	LTGov.daily(self)
 	LTFounder.daily(self)
 	LTMayorAI.daily(self)
 	LTEconomy.analyze_market(self)
@@ -294,6 +297,10 @@ func apply_action(a: Dictionary) -> Dictionary:
 	var act: Dictionary = a.duplicate(true)
 	act["day"] = day
 	var result: Dictionary = {"ok": false, "message": "Unknown action."}
+	# the town board votes on laws, bonds and loans before they happen
+	var board: Dictionary = LTGov.check_action(self, act)
+	if not board.is_empty():
+		return board
 	match str(act.get("kind", "")):
 		"set_law":
 			result = LTCivic.set_law(self, str(act["law"]), act["value"])
@@ -332,7 +339,16 @@ func apply_action(a: Dictionary) -> Dictionary:
 			result = LTGeography.plot_lots(self, float(act["x0"]), float(act["z0"]), float(act["x1"]), float(act["z1"]), str(act.get("zone", "residential")), float(act.get("width", 0.0)))
 		"unplot":
 			result = LTGeography.unplot(self, int(act["lot"]))
+		"appoint":
+			result = LTGov.appoint(self, str(act["role"]), int(act["citizen_id"]))
+		"charter":
+			result = LTGov.propose_charter(self, str(act["change"]))
+		"decree":
+			result = LTGov.declare_decree(self, str(act.get("why", "the mayor wanted a free hand")))
 		"elections":
+			if not bool(act["on"]) and bool(city.get("elections", false)) and bool(city.get("incorporated", true)) and int(city.get("next_election_day", 0)) < 99999999 and bool(city.get("held_election", false)):
+				result = LTGov.declare_decree(self, "the mayor called off elections")
+				return result
 			city["elections"] = bool(act["on"])
 			if bool(act["on"]) and int(city["next_election_day"]) <= day:
 				city["next_election_day"] = day + 365
@@ -342,7 +358,9 @@ func apply_action(a: Dictionary) -> Dictionary:
 		"decide_variance":
 			result = LTHomes.decide(self, int(act["variance_id"]), bool(act["approve"]))
 		"take_over":
-			if not bool(mode.get("autonomous", false)):
+			if bool(city.get("player_out", false)):
+				result = {"ok": false, "message": "You are not the mayor any more. %s won the office and runs the town." % player["name"]}
+			elif not bool(mode.get("autonomous", false)):
 				result = {"ok": false, "message": "You already run this town."}
 			else:
 				player["player_took_over"] = bool(act["on"])

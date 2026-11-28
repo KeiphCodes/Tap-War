@@ -1153,6 +1153,65 @@ func _hist_col(key: String) -> Array:
 	return out
 
 
+
+## Town government: the form, the mayor's terms, the board and its votes, the
+## appointed officials, and the charter.
+func _gov_card(parent: Control, ww: LTWorld) -> void:
+	var gv: Dictionary = LTGov.g(ww)
+	var mine: bool = not LTMayorAI.is_on(ww) and not bool(ww.city.get("player_out", false))
+	var form: String = "Rule by decree since %s" % LTCalendar.short(int(gv["decree_day"])) if LTGov.by_decree(ww) else ("Elected mayor and town board" if bool(ww.city.get("elections", false)) else "Appointed for life: no elections")
+	var gc: VBoxContainer = _card(parent, "Town government", form)
+	if not bool(ww.city.get("incorporated", true)):
+		gc.add_child(_lbl("The county governs the settlement until it incorporates at %d residents." % LTFounder.INCORPORATE_AT, 13, Color("93a1b5")))
+		return
+	var lim: int = int(gv["term_limit"])
+	gc.add_child(_rtl("[b]Mayor %s[/b]   [color=#93a1b5]%s[/color]" % [ww.player["name"], ("term %d, charter allows %d in a row%s" % [maxi(1, int(gv["mayor_terms"]) + (0 if bool(ww.city.get("held_election", false)) else 1)), lim, "" if LTGov.can_run(ww) else ": cannot run again"]) if lim > 0 else "no term limits"]))
+	# the board
+	if not gv["board"].is_empty():
+		var names: Array = []
+		for st in gv["board"]:
+			names.append("%s [color=#93a1b5](to %s)[/color]" % [sim_link(int(st["cid"])), LTCalendar.short(int(st["ends"]))])
+		gc.add_child(_rtl("[b]Town board[/b]  " + ", ".join(names)))
+		if int(gv["board_next"]) >= 0:
+			gc.add_child(_lbl("Next board election %s. It votes on laws, bonds, city loans and the mayor's appointments." % LTCalendar.short(int(gv["board_next"])), 13, Color("93a1b5")))
+		var vt: String = ""
+		for i in range(gv["votes"].size() - 1, maxi(-1, gv["votes"].size() - 6), -1):
+			var v: Dictionary = gv["votes"][i]
+			vt += "%s %s  %d to %d  [color=#93a1b5]%s[/color]\n" % ["[color=#0aac23]passed[/color]" if bool(v["passed"]) else "[color=#eb6263]failed[/color]", str(v["what"]), int(v["yes"]), int(v["no"]), LTCalendar.short(int(v["day"]))]
+		if vt != "":
+			gc.add_child(_rtl(vt.strip_edges()))
+	elif bool(ww.city.get("elections", false)):
+		gc.add_child(_lbl("A town board of %d is elected once %d people live here (now %d)%s." % [LTGov.board_size(ww), LTGov.BOARD_AT, ww.residents(), ", election %s" % LTCalendar.short(int(gv["board_next"])) if int(gv["board_next"]) >= 0 else ""], 13, Color("93a1b5")))
+	# officials
+	gc.add_child(_lbl("Appointed officials", 14, Color("e8edf4")))
+	for role in LTGov.ROLES:
+		var cfg: Dictionary = LTGov.ROLES[role]
+		var cid: int = int(gv["officials"].get(role, -1))
+		if cid >= 0:
+			gc.add_child(_rtl("%s: %s  [color=#93a1b5]%d%% qualified, %s[/color]" % [cfg["label"], sim_link(cid), int(LTGov.quality(ww.cit(cid), role) * 100.0), cfg["does"]]))
+		else:
+			gc.add_child(_rtl("%s: [color=#e8c35a]vacant[/color]  [color=#93a1b5]%s[/color]" % [cfg["label"], cfg["does"]]))
+			if mine:
+				var hb: HBoxContainer = HBoxContainer.new()
+				gc.add_child(hb)
+				for c in LTGov.nominees(ww, role):
+					var cc: int = int(c["id"])
+					var rr: String = role
+					hb.add_child(_btn("%s %d%%" % [ww.full_name(c), int(LTGov.quality(c, role) * 100.0)], func():
+						show_toast(str(main.act({"kind": "appoint", "role": rr, "citizen_id": cc})["message"]))
+						_tab_mayor(), "Nominate for %s%s." % [str(cfg["label"]).to_lower(), "; the board votes to confirm" if LTGov.board_seated(ww) else ""]))
+	# the charter
+	if not gv["referendum"].is_empty():
+		gc.add_child(_rtl("[b]On the ballot %s:[/b] %s" % [LTCalendar.short(int(gv["referendum"]["day"])), gv["referendum"]["question"]]))
+	if mine and bool(ww.city.get("elections", false)) and gv["referendum"].is_empty():
+		gc.add_child(_btn("Ask voters to drop term limits" if lim > 0 else "Ask voters to restore term limits", func():
+			show_toast(str(main.act({"kind": "charter", "change": "no_term_limits" if lim > 0 else "term_limits"})["message"]))
+			_tab_mayor(), "A charter amendment: a special election in 60 days decides."))
+	if mine and bool(ww.city.get("elections", false)) and bool(ww.city.get("held_election", false)):
+		gc.add_child(_btn("Cancel elections and rule by decree", func():
+			show_toast(str(main.act({"kind": "decree", "why": "the mayor wanted a free hand"})["message"]))
+			_tab_mayor(), "No more elections or board. Trust falls hard, people protest, and the state courts can order elections back."))
+
 func _tab_mayor() -> void:
 	var box: VBoxContainer = tab_boxes["Mayor"]
 	_clear(box)
@@ -1206,8 +1265,9 @@ func _tab_mayor() -> void:
 		el.add_child(_lbl("Approval above 50 usually wins. It moves with happiness, trust in the city and how petitions are answered.", 13, Color("93a1b5")))
 	else:
 		el.add_child(_lbl("You are mayor for as long as you like. Elections can be turned on when starting a new town.", 13, Color("93a1b5")))
-	if not bool(ww.city.get("mayor_in_office", true)):
-		el.add_child(_rtl("[color=#ef6b5b][b]You lost the election.[/b] The town goes on. You can keep watching, or start a new town.[/color]"))
+	if bool(ww.city.get("player_out", false)) or not bool(ww.city.get("mayor_in_office", true)):
+		el.add_child(_rtl("[color=#ef6b5b][b]You are out of office.[/b] %s is mayor now and runs the town. You can keep watching, or start a new town.[/color]" % ww.player["name"]))
+	_gov_card(row, ww)
 	# milestones
 	var mc: VBoxContainer = _card(box, "Milestones", "%d of %d reached" % [done_n, ms.size()])
 	var mg: GridContainer = _cols(mc, 2 if wide else 1)
@@ -1220,6 +1280,12 @@ func _tab_mayor() -> void:
 		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
 		var land: VBoxContainer = _card(box, "The land")
 		land.add_child(_rtl("%s, %s and %s.\n[color=#93a1b5]Map seed[/color] [b]%d[/b]: type it in New town to play this map again." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
+		var named: Array = []
+		for m in LTTerrain.landmarks(ww):
+			if ["farmstead", "elevator", "church", "schoolhouse"].has(str(m["kind"])):
+				named.append(str(m["name"]))
+		if not named.is_empty():
+			land.add_child(_rtl("[color=#93a1b5]Here before the town:[/color] %s, the railroad and the power line along the county road, windmills, lake cabins and a fire lookout on the mountain." % ", ".join(named)))
 
 
 # ================================================================ Budget

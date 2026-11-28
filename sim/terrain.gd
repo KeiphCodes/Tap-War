@@ -75,6 +75,8 @@ static func setup(w: LTWorld, map_seed: int, avoid: Rect2) -> void:
 		"park_name": "%s State Park" % ["Eagle Peak", "Granite Ridge", "Elk Mountain", "Thunder Butte", "Iron Hill"][rng.randi_range(0, 4)],
 	}
 	w.config["map_seed"] = map_seed
+	w.config["terrain"]["avoid"] = [avoid.position.x, avoid.position.y, avoid.size.x, avoid.size.y]
+	w.config["terrain"]["landmarks"] = _make_landmarks(w, map_seed, avoid)
 
 
 static func _inset(corner: Vector2, ix: float, iz: float) -> Vector2:
@@ -321,4 +323,117 @@ static func trail(w: LTWorld) -> Array:
 		# switchbacks up the slope
 		var side: Vector2 = Vector2(-toward.y, toward.x) * sin(k * PI * 5.0) * 30.0 * (1.0 - k)
 		out.append(start.lerp(c, k * 0.97) + side)
+	return out
+
+
+# ---------------------------------------------------------------- what was here first
+
+## The county around the town was settled long before it: farmsteads with a red
+## barn, silos and a windbreak of trees, a grain elevator on the railroad, a white
+## country church with its cemetery, the old one room schoolhouse, windmills over
+## stock tanks, cabins on the lake and a fire lookout on the mountain. Each map
+## seed lays them out its own way. They belong to the neighbors and the county.
+static func landmarks(w: LTWorld) -> Array:
+	var tt: Dictionary = t(w)
+	if tt.is_empty():
+		return []
+	_find_road_z(w)
+	if not tt.has("landmarks"):
+		var av: Array = tt.get("avoid", [MAP_W * 0.5 - 300.0, MAP_H * 0.5 - 180.0, 600.0, 360.0])
+		tt["landmarks"] = _make_landmarks(w, int(tt["seed"]), Rect2(float(av[0]), float(av[1]), float(av[2]), float(av[3])))
+	return tt["landmarks"]
+
+
+static var _road_z: float = MAP_H * 0.5
+
+
+## Where the county road runs across the map.
+static func road_z() -> float:
+	return _road_z
+
+
+static func _find_road_z(w: LTWorld) -> void:
+	if w.config.has("exit_node") and not w.road_nodes.is_empty():
+		_road_z = float(w.road_nodes[int(w.config["exit_node"])]["y"]) * LTGeography.GRID
+	else:
+		_road_z = MAP_H * 0.5
+
+
+static func rail_z(w: LTWorld) -> float:
+	return float(t(w).get("rail_z", road_z() - 70.0))
+
+
+static func _make_landmarks(w: LTWorld, map_seed: int, avoid: Rect2) -> Array:
+	_find_road_z(w)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = map_seed * 7919 + 17
+	var out: Array = []
+	var keep: Rect2 = avoid.grow(110.0)
+	var rz: float = road_z() + (-1.0 if rng.randf() < 0.5 else 1.0) * rng.randf_range(55.0, 85.0)
+	t(w)["rail_z"] = rz
+	var fits: Callable = func(p: Vector2, gap: float, wooded_ok: bool) -> bool:
+		if p.x < 40.0 or p.y < 40.0 or p.x > MAP_W - 40.0 or p.y > MAP_H - 40.0 or keep.has_point(p):
+			return false
+		if absf(p.y - road_z()) < 32.0 or absf(p.y - rz) < 22.0:
+			return false
+		if water_distance(w, p.x, p.y) < 18.0 or height(w, p.x, p.y) > BUILD_MAX_HEIGHT * 0.8 or slope(w, p.x, p.y) > 0.12:
+			return false
+		if not wooded_ok and forest_value(w, p.x, p.y) > -0.05:
+			return false
+		for o in out:
+			if p.distance_to(Vector2(float(o["x"]), float(o["z"]))) < gap:
+				return false
+		return true
+	var place: Callable = func(kind: String, n: int, gap: float, wooded_ok: bool, near_road: float) -> Array:
+		var got: Array = []
+		for tries in n * 60:
+			if got.size() >= n:
+				break
+			var p: Vector2 = Vector2(rng.randf_range(60.0, MAP_W - 60.0), rng.randf_range(60.0, MAP_H - 60.0))
+			if near_road > 0.0:
+				p.y = road_z() + (-1.0 if rng.randf() < 0.5 else 1.0) * rng.randf_range(40.0, near_road)
+			if fits.call(p, gap, wooded_ok):
+				# face the county road, the way farmhouses and churches were set
+				var e: Dictionary = {"kind": kind, "x": p.x, "z": p.y, "rot": 0.0 if p.y < road_z() else PI}
+				out.append(e)
+				got.append(e)
+		return got
+	var names: Array = LTPeople.LAST_NAMES.duplicate()
+	for f in place.call("farmstead", rng.randi_range(4, 7), 170.0, false, 0.0):
+		f["name"] = "%s farm" % names[rng.randi_range(0, names.size() - 1)]
+		f["silos"] = rng.randi_range(1, 3)
+		f["barn"] = ["red", "red", "white", "gray"][rng.randi_range(0, 3)]
+		f["cattle"] = rng.randf() < 0.6
+	# the elevator stands on the rail siding by the county road
+	for tries in 80:
+		var ex: float = rng.randf_range(120.0, MAP_W - 120.0)
+		var ep: Vector2 = Vector2(ex, rz + (14.0 if rz > road_z() else -14.0))
+		if not keep.grow(-40.0).has_point(ep) and water_distance(w, ep.x, ep.y) > 30.0 and height(w, ep.x, ep.y) < BUILD_MAX_HEIGHT:
+			out.append({"kind": "elevator", "x": ep.x, "z": ep.y, "rot": 0.0, "name": "%s Grain Co op elevator" % ["Farmers", "Prairie", "Valley", "Dakota"][rng.randi_range(0, 3)]})
+			break
+	for c in place.call("church", 1, 220.0, false, 140.0):
+		c["name"] = "%s Lutheran Church and cemetery" % ["St. John's", "Trinity", "Zion", "Our Savior's", "Bethany"][rng.randi_range(0, 4)]
+	for c in place.call("schoolhouse", 1, 200.0, false, 0.0):
+		c["name"] = "District %d schoolhouse, closed since %d" % [rng.randi_range(3, 41), rng.randi_range(1952, 1968)]
+	for c in place.call("windmill", rng.randi_range(2, 4), 120.0, false, 0.0):
+		c["name"] = "windmill and stock tank"
+	# cabins and a boat ramp on the big lake
+	var lakes: Array = t(w)["lakes"]
+	if not lakes.is_empty():
+		var lk: Dictionary = lakes[0]
+		var c0: Vector2 = lk["c"]
+		var n: int = rng.randi_range(2, 4)
+		var a0: float = rng.randf_range(0.0, TAU)
+		for i in n + 1:
+			var a: float = a0 + float(i) * 0.38
+			var p: Vector2 = c0 + Vector2(cos(a) * (float(lk["rx"]) + 22.0), sin(a) * (float(lk["rz"]) + 22.0))
+			if keep.has_point(p) or height(w, p.x, p.y) > BUILD_MAX_HEIGHT:
+				continue
+			var face: float = atan2(c0.x - p.x, c0.y - p.y)
+			out.append({"kind": "dock" if i == n else "cabin", "x": p.x, "z": p.y, "rot": face, "name": "public boat ramp" if i == n else "%s cabin" % names[rng.randi_range(0, names.size() - 1)]})
+	# a fire lookout near the top of the mountain
+	var m: Dictionary = t(w)["mountain"]
+	var mc: Vector2 = m["c"]
+	var lp: Vector2 = mc + Vector2(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0)).normalized() * float(m["r"]) * 0.12
+	out.append({"kind": "lookout", "x": lp.x, "z": lp.y, "rot": 0.0, "name": "fire lookout tower"})
 	return out

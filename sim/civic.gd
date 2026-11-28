@@ -292,7 +292,7 @@ static func _month_budget(w: LTWorld) -> void:
 	# trust in the city drifts toward how life is going and how services feel
 	for c in w.citizens:
 		if w.is_present(c) and w.age_years(c) >= 16:
-			var target: float = LTPeople.happiness(c) * 0.6 + safety_level(w) * 0.2 + (10.0 if has_service(w, "school") else 0.0) + (6.0 if has_service(w, "clinic") else 0.0)
+			var target: float = LTPeople.happiness(c) * 0.6 - LTGov.trust_penalty(w) + safety_level(w) * 0.2 + (10.0 if has_service(w, "school") else 0.0) + (6.0 if has_service(w, "clinic") else 0.0)
 			c["trust_city"] = float(c["trust_city"]) + (target - float(c["trust_city"])) * 0.08
 	if w.ledger.bal("city") < LTMoney.dollars(10000.0):
 		w.chronicle_add("City budget crisis: only %s left in the city account." % LTMoney.fmt(w.ledger.bal("city")), "city", true, [])
@@ -1265,7 +1265,7 @@ static func issue_bond(w: LTWorld, amount: int, purpose: String) -> Dictionary:
 	var rating: String = LTFinance.city_credit_rating(w)
 	if rating == "C":
 		return {"ok": false, "message": "Investors will not buy bonds from a city rated C."}
-	var rate: float = 0.038 + (0.0 if rating == "A" else 0.012) + (1.0 - LTRegion.index(w)) * 0.02
+	var rate: float = 0.038 + (0.0 if rating == "A" else 0.012) + (1.0 - LTRegion.index(w)) * 0.02 - (LTGov.factor(w, "finance_officer") - 1.0) * 0.05
 	var d: Dictionary = LTFinance.new_debt(w, "city", 0, "bondholders", -1, "city_bond", amount, rate, 240, "", -1, [])
 	w.ledger.pay("outside", "city", amount, "bond_sales")
 	w.city["bonds"].append(int(d["id"]))
@@ -1340,7 +1340,11 @@ static func elections_daily(w: LTWorld) -> void:
 	if not bool(w.city.get("elections", false)) or not bool(w.city.get("mayor_in_office", true)) or not bool(w.city.get("incorporated", true)):
 		return
 	var eday: int = int(w.city["next_election_day"])
+	LTGov.sim_mayor_plans(w)
 	if w.day == eday - 60:
+		LTGov.before_election(w)
+		if not bool(w.city.get("elections", false)):
+			return
 		_find_challenger(w)
 	elif w.day == eday:
 		_hold_election(w)
@@ -1358,7 +1362,26 @@ static func elections_daily(w: LTWorld) -> void:
 static func _find_challenger(w: LTWorld) -> void:
 	var best: Dictionary = {}
 	var bs: float = -1.0
+	var open: bool = not LTGov.can_run(w)
+	w.city["open_seat"] = open
+	w.city.erase("second")
+	var second: Dictionary = {}
+	var ss: float = -1.0
 	for c in w.citizens:
+		if int(c["id"]) == LTGov.mayor_citizen(w):
+			continue
+		if open and w.is_present(c) and w.age_years(c) >= 25:
+			# with nobody to run against, the race draws the town's natural leaders
+			var sc2: float = float(c["traits"]["ambition"]) * 0.5 + float(c["traits"]["sociability"]) * 0.4 + float(c["rel"].size()) * 1.2 + w.rng.randf_range(0.0, 20.0)
+			if sc2 > bs:
+				second = best
+				ss = bs
+				bs = sc2
+				best = c
+			elif sc2 > ss:
+				ss = sc2
+				second = c
+			continue
 		if w.is_present(c) and w.age_years(c) >= 30:
 			var sc: float = float(c["traits"]["ambition"]) * 0.5 + float(c["traits"]["sociability"]) * 0.4 + float(c["reputation"] if c.has("reputation") else 50) * 0.1 + (100.0 - float(c["trust_city"])) * 0.4
 			if sc > bs:
@@ -1372,11 +1395,52 @@ static func _find_challenger(w: LTWorld) -> void:
 			platform = "doing what the city refused: %s" % str(p["title"]).to_lower()
 	w.city["challenger"] = int(best["id"])
 	w.city["platform"] = platform
+	if open and not second.is_empty():
+		w.city["second"] = int(second["id"])
+		w.chronicle_add("Two run for the open mayor's seat: %s and %s. The election is in 60 days." % [w.full_name(best), w.full_name(second)], "election", true, [best["id"], second["id"]])
+		return
 	w.log_sim(best, "Announced a run for mayor on a platform of %s. Reason: ambition and frustration with city hall." % platform, true)
 	w.chronicle_add("%s is running for mayor, promising %s. The election is in 60 days." % [w.full_name(best), platform], "election", true, [best["id"]])
 
 
+static func _open_race(w: LTWorld) -> void:
+	var a: Dictionary = w.cit(int(w.city.get("challenger", -1)))
+	var b: Dictionary = w.cit(int(w.city.get("second", -1)))
+	w.city["next_election_day"] = w.day + 365 * int(w.city["term_years"])
+	w.city["open_seat"] = false
+	if a.is_empty() or not w.is_present(a):
+		a = b
+		b = {}
+	if a.is_empty() or not w.is_present(a):
+		w.chronicle_add("Nobody ran for mayor. %s stays on until someone does." % w.player["name"], "election", true, [])
+		return
+	var va: int = 0
+	var vb: int = 0
+	for c in w.citizens:
+		if not w.is_present(c) or w.age_years(c) < 18 or w.rng.randf() < 0.35:
+			continue
+		var sa: float = w.rng.randf_range(0.0, 30.0) + float(a["traits"]["sociability"]) * 0.2
+		var sb: float = w.rng.randf_range(0.0, 30.0) + (float(b["traits"]["sociability"]) * 0.2 if not b.is_empty() else -999.0)
+		if c["rel"].has(int(a["id"])):
+			sa += float(c["rel"][int(a["id"])]["affection"]) * 0.4
+		if not b.is_empty() and c["rel"].has(int(b["id"])):
+			sb += float(c["rel"][int(b["id"])]["affection"]) * 0.4
+		if sa >= sb:
+			va += 1
+		else:
+			vb += 1
+	var win: Dictionary = a if va >= vb else b
+	var lose: Dictionary = b if va >= vb else a
+	var total: int = maxi(1, va + vb)
+	w.city["held_election"] = true
+	w.chronicle_add("%s won the open race for mayor with %d%% of the vote%s." % [w.full_name(win), maxi(va, vb) * 100 / total, " against %s" % w.full_name(lose) if not lose.is_empty() else ""], "election", true, [win["id"]])
+	LTGov.new_mayor(w, win, "won the open seat after %s reached the two term limit" % w.player["name"])
+
+
 static func _hold_election(w: LTWorld) -> void:
+	if bool(w.city.get("open_seat", false)):
+		_open_race(w)
+		return
 	var yes: int = 0
 	var no: int = 0
 	var ch: Dictionary = w.cit(int(w.city.get("challenger", -1)))
@@ -1400,7 +1464,12 @@ static func _hold_election(w: LTWorld) -> void:
 	var first: bool = not bool(w.city.get("held_election", false))
 	w.city["held_election"] = true
 	if yes >= no:
+		LTGov.g(w)["mayor_terms"] = int(LTGov.g(w)["mayor_terms"]) + 1
 		w.chronicle_add("%s won %s with %d%% of the vote against %s." % [w.player.get("name", "The mayor"), "the town's first election" if first else "reelection", yes * 100 / total, who], "election", true, [])
 	else:
-		w.city["mayor_in_office"] = false
-		w.chronicle_add("%s lost the election to %s, %d%% to %d%%. The town will go on without you, and you still live here." % [w.player.get("name", "The mayor"), who, no * 100 / total, yes * 100 / total], "election", true, [])
+		var was_player: bool = not LTMayorAI.is_on(w)
+		w.chronicle_add("%s lost the election to %s, %d%% to %d%%.%s" % [w.player.get("name", "The mayor"), who, no * 100 / total, yes * 100 / total, " The town goes on with a new mayor, and you still live here." if was_player else ""], "election", true, [])
+		if not ch.is_empty() and w.is_present(ch):
+			LTGov.new_mayor(w, ch, "won the election on a platform of %s" % str(w.city.get("platform", "change")))
+		else:
+			w.city["mayor_in_office"] = false

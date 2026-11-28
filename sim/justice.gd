@@ -56,7 +56,7 @@ static func anonymity(w: LTWorld) -> float:
 
 static func detection(w: LTWorld, kind: String) -> float:
 	# neighbors are the best police a small town has
-	var base: float = LTCivic.enforcement(w) + (1.0 - anonymity(w)) * 0.3
+	var base: float = LTCivic.enforcement(w) * LTGov.factor(w, "police_chief") + (1.0 - anonymity(w)) * 0.3
 	match kind:
 		"fraud", "tax_evasion":
 			base *= 0.5
