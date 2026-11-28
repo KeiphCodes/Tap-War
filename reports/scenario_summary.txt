@@ -1,32 +1,32 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T05:49:39 by tests/scenarios.gd.
+Generated 2026-11-28T05:58:50 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
-  Kevin Perez was charged with burglary. Case status: acquitted. Sentence: . Job before: nursing aide, job now: nursing aide. Trail: Charged with burglary: broke into a neighbor's home (test). / Found not guilty.
+  Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 95 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 95 days in the county jail.
 
 [PASS] Divorce: the household splits, child support is set by income, and bankruptcy cannot erase it
   Sara Martin and George Martin divorced. Child support: $802 a month, owed by Sara Martin, status after the payer's bankruptcy: 60 days late.
 
 [PASS] Addiction: a heavy habit costs money and health until the Sim chooses treatment, which lowers it
-  Diane Perez started with a drinking level of 75. After 120 days: level 3, went to treatment: true, cash $8,645 to $13,956.
+  Diane Perez started with a drinking level of 75. After 120 days: level 2, went to treatment: true, cash $8,673 to $5,896.
 
 [PASS] Pregnancy: about nine months, prenatal visits, a birth, and maternity leave
-  Sara Martin was due Sep 29, Y1. Children 2 to 3. On leave until Nov 10, Y1.
+  Sara Martin was due Oct 15, Y1. Children 2 to 3. On leave until Nov 26, Y1.
 
 [PASS] A Sim run clinic captures doctor visits that used to leave town
-  Perez Family Clinic opened. Revenue so far $1,723. Medical spending kept in town recently: $1,113.
+  Perez Medical opened. Revenue so far $1,794. Medical spending kept in town recently: $936.
 
 [PASS] Supply chain: farm grain to the mill, flour to the bakery, bread to the grocery, all paid through the ledger
-  Farm Perez Acres revenue $4,436. Mill Brown Mill revenue $928. Bakery Brown Bread Co revenue $4,996. Grocery Perez Foods supplier: Perez Acres and Valley Wholesale.
+  Farm Perez Acres revenue $2,722. Mill Brown Mill revenue $913. Bakery Brown Bread Co revenue $137. Grocery Perez Market supplier: Perez Acres and Valley Wholesale.
 
 [PASS] A chartered local bank lends to townspeople and the interest stays in town
-  Perez Savings Bank lent $1,299 to Kevin Perez. Creditor on the record: Perez Savings Bank. Paid back so far: $94.
+  Perez Savings Bank lent $1,299 to Kevin Perez. Creditor on the record: Perez Savings Bank. Paid back so far: $95.
 
 [PASS] Plotting land: the mayor lays a new street and an alley at the edge of town, contractors build them, and new lots on them reach the rest of town
-  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 7.8 minutes. The new street is done, condition 50.
+  "Build Elm Street (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. "Build Alley 1 (100 m)" is drawn and out to bid until Jan 24, Y1. Award it on the Projects tab. Plotted 3 residential lots. Tap one to set its price and details. 1 was skipped because a road or another lot was in the way. Lots 80 to 83. Travel from lot 0 to a new lot: 10.3 minutes. The new street is done, condition 69.
 
 [PASS] City bonds, bus service and the new laws all work, and a small town cannot charter a bank
-  Bonds: Sold $200,000 in bonds at 3.8%. $1,191 a month for 20 years. Bus: riders paid $1,185 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 73 people: The state will not charter a bank for a town under 120 people. The town has 73.
+  Bonds: Sold $200,000 in bonds at 3.8%. $1,191 a month for 20 years. Bus: riders paid $1,170 in fares. Health code: Passed. Food shops, bars, clinics, child care and the motel. Inspectors visit mo Bank charter for 72 people: The state will not charter a bank for a town under 120 people. The town has 73.
 
 [PASS] Elections mode: a challenger runs on real grievances, Sims vote, the result stands
   Challenger: Linda Martinez. Platform: lower taxes and less waste. Mayor still in office: true.
@@ -35,31 +35,31 @@ Generated 2026-11-28T05:49:39 by tests/scenarios.gd.
   County Medical Center failed. 9 town Sims worked there and all are now looking for work.
 
 [PASS] Storms: ordinary thunderstorms only damage run down or cheap buildings, severe storms hit those far harder, owners and insurers pay real repair bills
-  Twenty ordinary thunderstorms: average loss 2.6 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 18.1 on weak, 1.8 on sound. Repairs paid: $108,045. Insurance claims: 23.
+  Twenty ordinary thunderstorms: average loss 3.2 condition points on weak buildings, 0.0 on sound ones. Four severe storms: 22.0 on weak, 2.1 on sound. Repairs paid: $130,562. Insurance claims: 25.
 
 [PASS] Saves carry every new system (cases, region, spend book, pregnancies, addictions) and continue identically
-  Hashes after 100 more days: 1801453770 and 1801453770.
+  Hashes after 100 more days: 3832315104 and 3832315104.
 
 [PASS] Every business type opens, runs for two months, and keeps the ledger balanced
   Opened: grocery, cafe, general_store, farm, construction, clinic, pharmacy, private_school, repair_shop, factory, warehouse, trucking, hotel, bar, childcare, funeral_home, law_office, real_estate, mill, bakery, bank, outfitter, marina, campground, guide_service, sawmill, quarry, gold_mine. Could not open: none. Still open after 60 days: 28.
 
 [PASS] Found a town on open land: only the county road at first, the mayor draws roads and plots lots, settlers build, the town incorporates and votes
-  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 563. Residents after two years: 38. Election: Sam Dakota won the town's first election with 92% of the vote against George Williams. Milestones: ["first_settler", "home", "incorporated", "balanced", "first_business"]
+  Started with 1 resident, $1,000,000, no lots, and 1 road. Drew Main Street and Elm Street. Plotted 26 lots. Mayor's house on lot 25. Incorporated on day 378. Residents after two years: 47. Election: Sam Dakota won the town's first election with 60% of the vote against Timothy Sanchez. Milestones: ["first_settler", "home", "incorporated", "first_business", "balanced"]
 
 [PASS] Real calendar: day one is today's date, and the date to match is found exactly
   Day one reads 11-28. The game day for today is 1. Forty days later it reads month 1 of 2027.
 
 [PASS] Contracts and lot details: drawn roads are drafts until the mayor presses Go live; the mayor sets surface, width, sidewalks, lights, deadline and budget, and lot price and hold, and each one changes the outcome
-  Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $60,000, concrete avenue with sidewalks and lights $139,799, gravel lane $24,000. Built: concrete avenue quality 48, 0.1 minutes a block; gravel lane quality 18, 0.2 minutes a block. Deadline 30 days: bids promised [21, 21, 23] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $87,000. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
+  Draft stayed private for 19 days: true. After Go live: "Build Main Street (60 m)" is live. Contractors have until Feb 2, Y1 to bid., 3 bids. Fair price for 6 blocks: standard $74,000, concrete avenue with sidewalks and lights $172,419, gravel lane $29,600. Built: concrete avenue quality 29, 0.1 minutes a block; gravel lane quality 22, 0.2 minutes a block. Deadline 30 days: bids promised [22, 22, 24] days. Changing terms after bids: Contract updated: Two lane street, asphalt. Budget ceiling $107,300. The bids were for the old terms, so they were set aside and the contract is a draft again. Press Go live to send it back out to bid. Signed contract: The contract is signed. Its terms can no longer change. Lots: held lot kept by the city: true, half price lot sold: true.
 
 [PASS] Sim mayor: a seeded Sim founds the town, lays roads, awards contracts and logs each reason, and the player can take over
-  Tina Martin (content, cautious, kind, greedy, outgoing) made 9 decisions in 300 days. Streets 3, projects under way or done 8, residents 20. Take over: You are the mayor now. Every decision is yours until you hand it back.
+  Tina Martin (content, cautious, kind, greedy, outgoing) made 9 decisions in 300 days. Streets 3, projects under way or done 12, residents 20. Take over: You are the mayor now. Every decision is yours until you hand it back.
 
 [PASS] Custom homes: families design houses room by room that fit their lots, remodel as life changes, and ask the mayor for variances
   22 of 22 houses fit their lots. Perez family: Farmhouse, 3 bedrooms, 2.5 baths, 1,615 sq ft, 2 car detached garage, basement, front porch became Farmhouse, 4 bedrooms, 2.5 baths, 1,776 sq ft, 2 car detached garage, basement, front porch. Variance: Variance granted. The Perez family can build a back deck.
 
 [PASS] Business buildings: owners design them room by room within their money, rooms set how many they serve, and busy ones add on
-  Lean cafe: 1,500 sq ft, 60 seats, but the kitchen only keeps up with about 125 customers a day, 4 parking spaces. With money to spare: 1,500 sq ft, 60 seats, but the kitchen only keeps up with about 125 customers a day, outdoor patio seating, 5 parking spaces. Perez Diner grew from 800 to 1200 sq ft.
+  Lean cafe: 1,500 sq ft, 60 seats, but the kitchen only keeps up with about 125 customers a day, 4 parking spaces. With money to spare: 1,500 sq ft, 60 seats, but the kitchen only keeps up with about 125 customers a day, outdoor patio seating, 5 parking spaces. Perez Kitchen grew from 800 to 1200 sq ft.
 
 [PASS] Business rooms: every kind of business has its own rooms, equipment and code items, and a cramped kitchen is the bottleneck
   Without their own rooms or equipment: []. Balanced cafe serves 165 a day; one with seats crammed in serves 125 (60 seats, but the kitchen only keeps up with about 125 customers a day).
@@ -67,22 +67,22 @@ Generated 2026-11-28T05:49:39 by tests/scenarios.gd.
 [PASS] Town government: an elected board votes on laws and appointments, two terms and out, and ruling by decree costs the town's trust
   Board of 3. School funding vote: Passed. 10 students. Their education grows faster each school day. The effect shows up years from now when they are adul Appointment: Mayor Sam Dakota appointed William Harris as finance officer. The finance officer keeps the city's b After two terms: Linda Martinez took over from Sam Dakota. Decree: approval 62 to 47.
 
-[PASS] Map landmarks: each map seed has farms and a country church, an elevator if it has a railroad, a lookout if it has a mountain, the same every time
-  14 landmarks: ["farmstead", "church", "schoolhouse", "windmill", "cabin", "dock"]. On water: 0.
+[FAIL] Map landmarks: each map seed has farms and a country church, an elevator if it has a railroad, a lookout if it has a mountain, the same every time
+  12 landmarks: ["farmstead", "elevator", "church", "schoolhouse", "windmill", "lookout"]. On water: 0.
 
 [PASS] Railroad and growth: shippers build spurs, the city gets a loading track only through the railroad's agreement and beside the tracks, lines can be abandoned, the right of way stays clear, full lots build up to the height limit, farms buy land
   Spur: rail costs about a third of trucking per ton; the $231,340 spur pays for itself in about 3 years. Right of way: the land is the railroad's right of way, 15 meters each side of the track. Before an agreement: The railroad has to agree to serve it first (Mayor tab, Railroad).. Railroad signed: true. Lot far from the track: A loading track has to sit beside the main line: this lot is 237 meters away. Pick a lot within 60 meters of the track.. Line abandoned and spur gone: true. Up to 2 stories: false, up to 6: true (3 stories). Farm acres: 320.
 
-[PASS] Random land and trains: maps differ in forest, mountain, lakes and railroad; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop
-  Of 40 seeds: { "forest": 26, "mountain": 24, "lake": 33, "rail": 31 }. Passenger stop request: Asked. The service expects about 2396 riders a year here and -> declined (expects 2396 riders, needs 3000). No-rail seed 4 asked for a line: declined
+[PASS] Map kinds and trains: prairie, mountain town, lake country and north woods maps, each with buildable ground where the town starts; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop
+  Of 40 seeds: { "prairie": 17, "lakes": 6, "mountain": 8, "woods": 9 }, { "forest": 36, "mountain": 16, "lake": 34, "rail": 29 }. Start blocked: []. Passenger stop request: Asked. The service expects about 3896 riders a year here and -> agreed (expects 3896 riders, needs 3000). No-rail seed 5 asked for a line: declined
 
 [PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
-  Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 25% of income. Business: SBA 7(a) loan at 11.7%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
+  Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 26% of income. Business: SBA 7(a) loan at 12.0%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
 
 [PASS] Apartments: a Sim builds homes designed for who is waiting, each unit with its own rent, and renters move in
-  Perez's apartments: 4 homes. Walk up, 1 story: 2 one-bedrooms, 2 two-bedrooms. With laundry room and playground. Rents $787 to $959. 4 of 4 rented. Why: as many homes as the zoning allows, 4; a playground for the kids who will live there; accessible ground floor units, as fair housing rules require; rents kept affordable under a USDA rural rental housing loan.
+  Perez's apartments: 4 homes. Walk up, 1 story: 2 one-bedrooms, 2 two-bedrooms. With laundry room and playground. Rents $783 to $954. 4 of 4 rented. Why: as many homes as the zoning allows, 4; a playground for the kids who will live there; accessible ground floor units, as fair housing rules require; rents kept affordable under a USDA rural rental housing loan.
 
 [PASS] Real loans: the bank offers products, the borrower picks with a reason, adjustable rates reset within caps, balloons refinance, mortgage insurance drops at 78%
   Offers: 30-year fixed, 15-year fixed, 5/1 adjustable (ARM), 30-year fixed, 1 point paid. Picked 5/1 adjustable (ARM): took the adjustable rate for the lower start, betting on moving or rates staying put. ARM 5.75% to 7.75%. Balloon refinanced: true. Insurance $79 then $0.
 
-RESULT: ALL SCENARIOS PASS
+RESULT: SOME SCENARIOS FAILED

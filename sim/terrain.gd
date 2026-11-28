@@ -22,6 +22,7 @@ static var _noise: FastNoiseLite = null
 
 ## Lays out the land from the map seed, keeping clear of the town and the county road.
 static func setup(w: LTWorld, map_seed: int, avoid: Rect2) -> void:
+	_find_road_z(w)
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = map_seed
 	var corners: Array = [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]
@@ -76,6 +77,7 @@ static func setup(w: LTWorld, map_seed: int, avoid: Rect2) -> void:
 	}
 	w.config["map_seed"] = map_seed
 	_pick_kind(w, map_seed, avoid, keep_out, road_band, lakes)
+	w.config["terrain"]["road_z"] = _road_z
 	w.config["terrain"]["avoid"] = [avoid.position.x, avoid.position.y, avoid.size.x, avoid.size.y]
 	w.config["terrain"]["landmarks"] = _make_landmarks(w, map_seed, avoid)
 
@@ -107,6 +109,7 @@ static func _pick_kind(w: LTWorld, map_seed: int, avoid: Rect2, keep_out: Rect2,
 	var p_lake: float = {"prairie": 0.6, "mountain": 0.4, "lakes": 1.0, "woods": 0.6}[kind]
 	var p_pond: float = {"prairie": 0.5, "mountain": 0.3, "lakes": 1.0, "woods": 0.5}[kind]
 	var p_rail: float = {"prairie": 0.8, "mountain": 0.55, "lakes": 0.7, "woods": 0.6}[kind]
+	var rail_on: bool = has_rng.randf() < p_rail
 	var forest_on: bool = has_rng.randf() < p_forest
 	var mount_on: bool = has_rng.randf() < p_mount
 	var big_lake: bool = has_rng.randf() < p_lake
@@ -181,7 +184,7 @@ static func _pick_kind(w: LTWorld, map_seed: int, avoid: Rect2, keep_out: Rect2,
 	tt0["lakes"] = keep_lakes
 	tt0["mountains"] = mountains
 	tt0["forests"] = forests
-	tt0["rail_present"] = has_rng.randf() < p_rail
+	tt0["rail_present"] = rail_on
 
 
 static func _inset(corner: Vector2, ix: float, iz: float) -> Vector2:
@@ -227,7 +230,7 @@ static func forest_value(w: LTWorld, x: float, z: float) -> float:
 		return -1.0
 	var v: float = best + noise(w).get_noise_2d(x, z) * 0.45
 	# the county road and the railroad are cut through the trees
-	if absf(z - road_z()) < 18.0 or (tt.has("rail_z") and bool(tt.get("rail_present", true)) and absf(z - float(tt["rail_z"])) < 14.0):
+	if absf(z - float(tt.get("road_z", road_z()))) < 18.0 or (tt.has("rail_z") and bool(tt.get("rail_present", true)) and absf(z - float(tt["rail_z"])) < 14.0):
 		v = minf(v, -0.2)
 	return v
 
@@ -520,7 +523,9 @@ static func road_z() -> float:
 
 
 static func _find_road_z(w: LTWorld) -> void:
-	if w.config.has("exit_node") and not w.road_nodes.is_empty():
+	if t(w).has("road_z"):
+		_road_z = float(t(w)["road_z"])
+	elif w.config.has("exit_node") and not w.road_nodes.is_empty():
 		_road_z = float(w.road_nodes[int(w.config["exit_node"])]["y"]) * LTGeography.GRID
 	else:
 		_road_z = MAP_H * 0.5
