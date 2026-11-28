@@ -3076,6 +3076,18 @@ func _is_night() -> bool:
 var landmark_root: Node3D
 
 
+## A town street (not the county road itself) passes within r meters.
+func _street_near(p: Vector2, r: float) -> bool:
+	for sg in w.roads:
+		if bool(sg.get("removed", false)) or str(w.streets[int(sg["street"])]["kind"]) == "highway":
+			continue
+		var a: Vector2 = Vector2(float(w.road_nodes[int(sg["a"])]["x"]), float(w.road_nodes[int(sg["a"])]["y"])) * CELL
+		var b: Vector2 = Vector2(float(w.road_nodes[int(sg["b"])]["x"]), float(w.road_nodes[int(sg["b"])]["y"])) * CELL
+		if Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p) < r + _road_width(int(sg["street"])) * 0.5:
+			return true
+	return false
+
+
 ## Something the town has built is in the way: a lot, or a street.
 func _taken(buckets: Dictionary, p: Vector2, r: float) -> bool:
 	for bx in range(int((p.x - r) / 50.0), int((p.x + r) / 50.0) + 1):
@@ -3132,18 +3144,33 @@ func _build_landmarks(buckets: Dictionary) -> void:
 			for sz in [-0.72, 0.72]:
 				_box(landmark_root, Vector3(30.0, 0.14, 0.1), Vector3(0, 0.62, sz), Color(0.5, 0.48, 0.46))
 		x += 30.0
-	# the power line along the county road
-	var side: float = -13.0 if rail_z > rz else 13.0
+	# the power line along the county road: poles stand on the shoulder inside the
+	# road's own right of way (pavement 4.5 m from the center, right of way 8 m),
+	# so the wires never cross anyone's lot; a pole steps aside where a street meets the road
+	var side: float = (-1.0 if rail_z > rz else 1.0) * (float(LTGeography.ROW_HALF["highway"]) - 1.2)
+	var poles: Array = []
 	x = 20.0
 	while x < ms.x:
-		var pp: Vector2 = Vector2(x, rz + side)
-		if not _taken(buckets, pp, 6.0) and not LTTerrain.is_water(w, pp.x, pp.y):
-			_bxf = Transform3D(Basis.IDENTITY, Vector3(pp.x, LTTerrain.height(w, pp.x, pp.y), pp.y))
-			_cyl(landmark_root, 0.16, 9.0, Vector3(0, 4.5, 0), Color(0.4, 0.3, 0.2))
-			_box(landmark_root, Vector3(0.15, 0.15, 2.4), Vector3(0, 8.6, 0), Color(0.4, 0.3, 0.2))
-			for wz in [-1.0, 1.0]:
-				_box(landmark_root, Vector3(45.0, 0.05, 0.05), Vector3(22.5, 8.4, wz), Color(0.15, 0.15, 0.15))
+		var px: float = x
+		for tries in 4:
+			if not _street_near(Vector2(px, rz + side), 5.0):
+				break
+			px += 9.0
+		var pp: Vector2 = Vector2(px, rz + side)
+		if not LTTerrain.is_water(w, pp.x, pp.y) and not _street_near(pp, 5.0):
+			poles.append(pp)
 		x += 45.0
+	for i in poles.size():
+		var pp2: Vector2 = poles[i]
+		_bxf = Transform3D(Basis.IDENTITY, Vector3(pp2.x, LTTerrain.height(w, pp2.x, pp2.y), pp2.y))
+		_cyl(landmark_root, 0.16, 9.0, Vector3(0, 4.5, 0), Color(0.4, 0.3, 0.2))
+		_box(landmark_root, Vector3(0.15, 0.15, 1.6), Vector3(0, 8.6, 0), Color(0.4, 0.3, 0.2))
+		if i + 1 < poles.size():
+			var nx: Vector2 = poles[i + 1]
+			var span: float = nx.x - pp2.x
+			if span < 70.0:
+				for wz in [-0.6, 0.6]:
+					_box(landmark_root, Vector3(span, 0.05, 0.05), Vector3(span * 0.5, 8.45, wz), Color(0.15, 0.15, 0.15))
 	# spur tracks from the main line to the businesses that built them
 	for b in w.businesses:
 		if not bool(b.get("rail_spur", false)) or str(b["status"]) == "closed":
