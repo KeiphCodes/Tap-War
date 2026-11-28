@@ -1,5 +1,5 @@
 LIVING TOWN REALISM CHECK
-Generated 2026-11-28T06:05:19 by tests/realism.gd.
+Generated 2026-11-28T06:14:56 by tests/realism.gd.
 
 Weather, 200 simulated years:
 [PASS] Thunderstorm days a year: 39.15  (allowed 30.00 to 50.00; real: about 40 in Sioux Falls)
@@ -13,30 +13,30 @@ Weather, 200 simulated years:
 County economy, 100 simulated years:
 [PASS] Major county employers that close, per employer per year (%): 1.50  (allowed 0.50 to 4.00; real: about 1 to 3% of large plants a year)
 
-A town of about 727 people (553 adults, 392 workers, 334 homes, 139 renting, 20 businesses), 3 simulated years:
+A town of about 732 people (557 adults, 391 workers, 334 homes, 134 renting, 22 businesses), 3 simulated years:
 Starting population: 704 people.
 [PASS] Share of people under 10 (%): 15.20  (allowed 9.00 to 16.00; real: about 13 in rural South Dakota)
 [PASS] Share of people 60 and over (%): 25.99  (allowed 17.00 to 32.00; real: about 25 in rural South Dakota)
-[INFO] Births per 1,000 people a year: 16.04  (people: 12.4 in South Dakota)
-[INFO] Deaths per 1,000 people a year: 12.37  (people: 9.5 in South Dakota)
-[INFO] Marriages per 1,000 people a year: 4.58  (people: 6.1)
-[INFO] Divorces per 1,000 people a year: 2.29  (people: 2.4)
-[INFO] Property crimes per 1,000 people a year: 0.46  (people: about 18 in South Dakota, less in small towns)
+[INFO] Births per 1,000 people a year: 15.94  (people: 12.4 in South Dakota)
+[INFO] Deaths per 1,000 people a year: 10.93  (people: 9.5 in South Dakota)
+[INFO] Marriages per 1,000 people a year: 1.37  (people: 6.1)
+[INFO] Divorces per 1,000 people a year: 0.91  (people: 2.4)
+[INFO] Property crimes per 1,000 people a year: 1.82  (people: about 18 in South Dakota, less in small towns)
 [INFO] Burglaries per 1,000 people a year: 0.00  (people: about 3)
 [INFO] Assaults with injury per 1,000 people a year: 0.00  (people: about 2 to 4)
-[PASS] Work injuries per 100 workers a year: 2.97  (allowed 1.00 to 5.00; real: 2.7 (BLS))
-[INFO] New depression cases per 100 adults a year: 2.59  (people: about 3)
-[INFO] Bankruptcies per 1,000 adults a year: 3.01  (people: about 1 in South Dakota)
-[INFO] Foreclosures per 1,000 homes a year: 4.98  (people: about 2 to 3)
-[INFO] Evictions per 100 renting households a year: 1.67  (people: about 3 to 4 filings)
-[PASS] Building fires per 1,000 homes a year (expected): 2.96  (allowed 0.50 to 6.00; real: about 2.5 home fires plus some businesses)
+[PASS] Work injuries per 100 workers a year: 2.13  (allowed 1.00 to 5.00; real: 2.7 (BLS))
+[INFO] New depression cases per 100 adults a year: 3.11  (people: about 3)
+[INFO] Bankruptcies per 1,000 adults a year: 1.79  (people: about 1 in South Dakota)
+[INFO] Foreclosures per 1,000 homes a year: 6.98  (people: about 2 to 3)
+[INFO] Evictions per 100 renting households a year: 2.73  (people: about 3 to 4 filings)
+[PASS] Building fires per 1,000 homes a year (expected): 3.10  (allowed 0.50 to 6.00; real: about 2.5 home fires plus some businesses)
 [INFO] Building fires per 1,000 homes a year (these three years): 2.99  (people: about 2.5, plus some businesses)
-[INFO] Layoffs per 100 workers a year: 13.75  (people: about 13 (all layoffs and discharges, JOLTS))
-[INFO] Sims taking extra work when money is tight, per 1,000 adults a year: 7.83  (people: about 50 to 80 take a second job)
-[INFO] Sims starting night classes, per 1,000 adults a year: 21.09  (people: about 20 to 40 adult learners)
-[INFO] Sims joining a volunteer group, per 1,000 adults a year: 57.25  (people: about a quarter of adults volunteer)
-[INFO] Sims helping family or friends with money, per 1,000 adults a year: 0.00  (people: common)
+[INFO] Layoffs per 100 workers a year: 13.18  (people: about 13 (all layoffs and discharges, JOLTS))
+[INFO] Sims taking extra work when money is tight, per 1,000 adults a year: 10.16  (people: about 50 to 80 take a second job)
+[INFO] Sims starting night classes, per 1,000 adults a year: 16.14  (people: about 20 to 40 adult learners)
+[INFO] Sims joining a volunteer group, per 1,000 adults a year: 56.77  (people: about a quarter of adults volunteer)
+[INFO] Sims helping family or friends with money, per 1,000 adults a year: 1.79  (people: common)
 [INFO] Sims who start caring for an aging parent, per 1,000 adults a year: 0.00  (people: about 10 to 20)
-[INFO] Business closures per 100 businesses a year: 28.76  (people: about 8 to 10)
+[INFO] Business closures per 100 businesses a year: 22.62  (people: about 8 to 10)
 
 RESULT: ALL RATES REALISTIC
