@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T06:53:06 by tests/scenarios.gd.
+Generated 2026-11-28T18:23:39 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: acquitted. Sentence: . Job before: nursing aide, job now: nursing aide. Trail: Charged with burglary: broke into a neighbor's home (test). / Found not guilty.
@@ -75,6 +75,9 @@ Generated 2026-11-28T06:53:06 by tests/scenarios.gd.
 
 [PASS] Map kinds and trains: prairie, mountain town, lake country and north woods maps, each with buildable ground where the town starts; a town with no railroad must talk one into a branch line; towns can ask the passenger trains to stop
   Of 40 seeds: { "prairie": 17, "lakes": 6, "mountain": 8, "woods": 9 }, { "forest": 37, "mountain": 16, "lake": 36, "rail": 30 }. Start blocked: []. Passenger stop request: Asked. The service expects about 2696 riders a year here and -> declined (expects 2696 riders, needs 3000). No-rail seed 4 asked for a line: declined
+
+[PASS] Land leases: a business on city land pays about 6% a year, owning the land ends the lease, lease-only lots cannot be bought, a closed owner keeps and lists the land
+  Rate about 6%: true. Leasing at first: true. Lease-only blocks a sale: true. Bought: true, then no lease: true. After closing, owner kept it for sale: true.
 
 [PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
   Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 26% of income. Business: SBA 7(a) loan at 12.0%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
