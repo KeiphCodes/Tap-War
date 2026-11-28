@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T01:39:01 by tests/scenarios.gd.
+Generated 2026-11-28T05:00:01 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 70 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 70 days in the county jail.
@@ -63,6 +63,12 @@ Generated 2026-11-28T01:39:01 by tests/scenarios.gd.
 
 [PASS] Business rooms: every kind of business has its own rooms, equipment and code items, and a cramped kitchen is the bottleneck
   Without their own rooms or equipment: []. Balanced cafe serves 165 a day; one with seats crammed in serves 125 (60 seats, but the kitchen only keeps up with about 125 customers a day).
+
+[PASS] Town government: an elected board votes on laws and appointments, two terms and out, and ruling by decree costs the town's trust
+  Board of 3. School funding vote: Passed. 10 students. Their education grows faster each school day. The effect shows up years from now when they are adul Appointment: Mayor Sam Dakota appointed William Harris as finance officer. The finance officer keeps the city's b After two terms: Linda Martinez took over from Sam Dakota. Decree: approval 62 to 47.
+
+[PASS] Map landmarks: each map seed has farms, a grain elevator on the railroad, a country church, cabins and a lookout, the same every time
+  17 landmarks: ["farmstead", "elevator", "church", "schoolhouse", "windmill", "cabin", "dock", "lookout"]. On water: 0.
 
 [PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
   Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 25% of income. Business: SBA 7(a) loan at 11.7%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
