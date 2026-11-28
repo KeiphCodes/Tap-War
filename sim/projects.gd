@@ -175,6 +175,23 @@ static func define_project(w: LTWorld, ptype: String, target: int, ceiling: int,
 		# about a month of site work plus a day for every 60 square feet
 		p["raw_days"] = 30 + sqft / 60
 		p["sqft"] = sqft
+	if ptype == "apartments" and int(p["lot"]) >= 0 and str(owner.get("kind", "")) != "apt_dev":
+		# the city builds for whoever is waiting, at fair rents; a company builds to its owner's taste
+		var atr: Dictionary = {"kindness": 62, "discipline": 58, "greed": 40, "ambition": 50, "sociability": 55}
+		var aname: String = "the city"
+		if str(owner.get("kind", "")) == "business":
+			var ob: Dictionary = w.biz(int(owner["id"]))
+			var oc: Dictionary = w.cit(int(ob["owners"][0])) if not ob.is_empty() else {}
+			if not oc.is_empty():
+				atr = oc["traits"]
+			aname = str(owner.get("name", "a builder"))
+		elif not owner.is_empty():
+			atr = {"kindness": 45, "discipline": 55, "greed": 60, "ambition": 50, "sociability": 45}
+			aname = str(owner.get("name", "a builder"))
+		var aspec: Dictionary = LTApartments.design(w, w.lot(int(p["lot"])), {"traits": atr, "name": aname})
+		p["apt"] = aspec
+		p["raw_cost"] = LTApartments.cost(aspec)
+		p["raw_days"] = 30 + LTApartments.sqft(aspec) / 60
 	p["spec"] = default_spec(ptype)
 	_apply_spec(p)
 	if ceiling > 0:
@@ -826,16 +843,22 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		var l: Dictionary = w.lot(int(p["lot"]))
 		l["use"] = "apartment"
 		l["building"] = "apartment"
-		var units: Array = []
-		for k in int(w.city["laws"].get("zoning_density", 4)):
-			units.append(-1)
-		l["units"] = units
-		l["unit_rent"] = LTMoney.dollars(880.0)
+		LTBuildings._close_escrow(w, p)
+		if p.has("apt"):
+			LTApartments.apply(w, l, p["apt"])
+		else:
+			var units: Array = []
+			for k in int(w.city["laws"].get("zoning_density", 4)):
+				units.append(-1)
+			l["units"] = units
+			l["unit_rent"] = LTMoney.dollars(880.0)
 		l["condition"] = 60.0 + q * 40.0
 		l["built_day"] = w.day
 		l["value"] = int(p["price"]) + int(p["change_orders"])
 		var dev: Dictionary = p["developer"]
-		if str(dev["kind"]) == "business":
+		if str(dev.get("kind", "")) == "apt_dev":
+			LTApartments.open_rentals(w, w.cit(int(dev["id"])), l)
+		elif str(dev.get("kind", "")) == "business":
 			l["owner_kind"] = "business"
 			l["owner_id"] = int(dev["id"])
 			l["name"] = str(w.biz(int(dev["id"]))["name"])

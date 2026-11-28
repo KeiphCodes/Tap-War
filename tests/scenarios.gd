@@ -30,6 +30,7 @@ func _init() -> void:
 	_custom_homes()
 	_business_buildings()
 	_property_lines_and_bank()
+	_apartments_built_for_need()
 	var out: Array = ["LIVING TOWN SCENARIO CHECKS", "Generated %s by tests/scenarios.gd." % Time.get_datetime_string_from_system(), ""]
 	var ok_all: bool = true
 	for r in results:
@@ -640,3 +641,63 @@ func _property_lines_and_bank() -> void:
 	var none: Dictionary = LTFinance.business_offer(w, head, cs, LTMoney.dollars(2000.0), LTMoney.dollars(5000.0))
 	var bank_ok: bool = bool(conv["ok"]) and str(conv["program"]) == "conventional" and bool(fha["ok"]) and str(fha["program"]) == "FHA" and bool(sba["ok"]) and str(sba["program"]).begins_with("SBA") and not bool(none["ok"]) and str(none.get("advice", "")) != ""
 	_check("Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit", merged and split_ok and bank_ok, "Merge: %s Split: %s Conventional: %s. FHA: %s. Business: %s. Too little down: %s; advice: %s." % [m["message"], r["message"], conv.get("reason", conv.get("advice", "")), fha.get("reason", fha.get("advice", "")), sba.get("reason", ""), none.get("reason", ""), none.get("advice", "")], w)
+
+
+func _apartments_built_for_need() -> void:
+	# a town with no rentals free: a Sim with money builds apartments designed for
+	# who is waiting, renters move in at each unit's own rent, a family gets room
+	var w: LTWorld = _town(5)
+	var lot: Dictionary = {}
+	for l in w.lots:
+		if str(l["use"]) == "empty" and ["residential", "mixed"].has(str(l["zone"])) and LTGeography.lot_area(l) >= 700.0:
+			lot = l
+			break
+	if lot.is_empty():
+		for l in w.lots:
+			if str(l["use"]) == "empty" and LTGeography.lot_area(l) >= 700.0:
+				l["zone"] = "residential"
+				lot = l
+				break
+	lot["owner_kind"] = "city"
+	var dev: Dictionary = _adult(w, func(x): return w.age_years(x) >= 35)
+	dev["traits"]["ambition"] = 80
+	dev["traits"]["greed"] = 50
+	dev["skills"]["finance"] = 70
+	dev["credit"]["has_file"] = true
+	dev["credit"]["score"] = 760
+	_give(w, dev, 600000.0)
+	# fill every free home so the town is short
+	for i in 20:
+		var u: Dictionary = LTPeople.free_unit(w)
+		if u.is_empty():
+			break
+		var hh: Dictionary = LTPeople.make_household(w, false, true)
+		LTPeople.move_household_into(w, hh, int(u["lot"]), int(u["unit"]))
+		hh["tenure"] = "rent"
+	for i in 6:
+		var hx: Dictionary = LTPeople.make_household(w, true, true)
+		hx["lot"] = -1
+	var before: int = w.projects.size()
+	for i in 20:
+		if w.projects.size() > before:
+			break
+		LTApartments.monthly(w)
+	var built: Dictionary = {}
+	for p in w.projects.slice(before):
+		if str(p["ptype"]) == "apartments":
+			built = p
+	for d in 400:
+		w.tick_day()
+	var l2: Dictionary = w.lot(int(built.get("lot", -1))) if not built.is_empty() else {}
+	var rented: int = 0
+	var rent_ok: bool = true
+	if not l2.is_empty() and l2.has("apt"):
+		for i in l2["units"].size():
+			if int(l2["units"][i]) >= 0:
+				rented += 1
+				var hh2: Dictionary = w.hh(int(l2["units"][i]))
+				if absi(int(hh2["rent"]) - LTApartments.rent_for(w, l2, i)) > int(LTApartments.rent_for(w, l2, i) * 0.15):
+					rent_ok = false
+	var spec: Dictionary = l2.get("apt", {})
+	var ok: bool = not built.is_empty() and str(l2.get("use", "")) == "apartment" and not spec.is_empty() and spec["units"].size() >= 4 and rented > 0 and rent_ok and not LTApartments.floor_plan(l2, spec).is_empty()
+	_check("Apartments: a Sim builds homes designed for who is waiting, each unit with its own rent, and renters move in", ok, "%s. %s. Rents %s. %d of %d rented. Why: %s." % [built.get("title", "nothing built"), LTApartments.text(spec), LTApartments.rent_range(spec), rented, l2.get("units", []).size(), "; ".join(spec.get("why", []))], w)

@@ -58,6 +58,8 @@ static func generate_town(w: LTWorld) -> void:
 				units.append({"lot": int(l["id"]), "unit": k, "kind": "apartment"})
 			l["units"] = u
 			l["unit_rent"] = LTMoney.dollars(w.rng.randf_range(720.0, 940.0))
+			# built years ago by an outside company, for the town of its day
+			LTApartments.apply(w, l, LTApartments.design(w, l, {"traits": {"kindness": 50, "greed": 55, "discipline": 50, "ambition": 40, "sociability": 45}, "name": "Plains Property Group", "units": apt_units}))
 			l["condition"] = w.rng.randf_range(45.0, 88.0)
 			l["built_day"] = -w.rng.randi_range(10, 50) * 365
 			l["owner_kind"] = "outside"
@@ -85,7 +87,7 @@ static func generate_town(w: LTWorld) -> void:
 			l["home"] = LTGeography.choose_home(w, maxi(1, ad), kids, LTMoney.dollars(w.rng.randf_range(35000.0, 90000.0)), w.rng.randf_range(20.0, 80.0), w.rng.randf_range(20.0, 80.0), l, LTMoney.dollars(w.rng.randf_range(260000.0, 450000.0)))
 		else:
 			h["tenure"] = "rent"
-			h["rent"] = int(l["unit_rent"])
+			h["rent"] = LTApartments.rent_for(w, l, int(h["unit"]))
 	# two apartment buildings belong to well off Sims who run them as landlords
 	_seed_sim_landlords(w)
 	for h in w.households:
@@ -789,6 +791,8 @@ static func _rent_review(w: LTWorld, h: Dictionary) -> void:
 	var old: int = int(h["rent"])
 	h["rent"] = int(float(old) * (1.0 + raise))
 	l["unit_rent"] = maxi(int(l["unit_rent"]), int(h["rent"]))
+	if l.has("apt") and int(h["unit"]) >= 0 and int(h["unit"]) < l["apt"]["units"].size():
+		l["apt"]["units"][int(h["unit"])]["rent"] = int(h["rent"])
 	if absi(int(h["rent"]) - old) >= 500:
 		for m in w.household_adults(h):
 			w.log_sim(m, "The landlord %s the rent to %s a month%s." % ["raised" if int(h["rent"]) > old else "lowered", LTMoney.fmt(int(h["rent"])), ", the most the city's rent cap allows" if is_equal_approx(raise, cap) else ""], true)
@@ -921,13 +925,14 @@ static func _find_shelter(w: LTWorld, h: Dictionary) -> void:
 				w.log_sim(rel_c, "Took in %s's household after the eviction. Reason: family, and kindness won over the crowding." % m["first_name"], true)
 				return
 	# otherwise a free unit if they can pay first month
-	var u: Dictionary = free_unit(w)
+	var u: Dictionary = LTApartments.best_unit(w, h)
 	if not u.is_empty():
 		var l: Dictionary = w.lot(int(u["lot"]))
-		if w.household_cash(h) > int(l["unit_rent"]) * 2 and LTFinance.rental_approved(w, h):
+		var urent: int = LTApartments.rent_for(w, l, int(u["unit"]))
+		if w.household_cash(h) > urent * 2 and LTFinance.rental_approved(w, h):
 			move_household_into(w, h, int(u["lot"]), int(u["unit"]))
 			h["tenure"] = "rent"
-			h["rent"] = int(l["unit_rent"])
+			h["rent"] = urent
 			for m in w.household_members(h):
 				w.log_sim(m, "Found a new apartment on %s." % LTGeography.lot_label(w, int(u["lot"])), true)
 
@@ -1296,7 +1301,7 @@ static func _young_adults_move_out(w: LTWorld) -> void:
 		var u: Dictionary = free_unit(w)
 		if u.is_empty():
 			continue
-		var rent: int = int(w.lot(int(u["lot"]))["unit_rent"])
+		var rent: int = LTApartments.rent_for(w, w.lot(int(u["lot"])), int(u["unit"]))
 		if w.cash(c) < rent * 2 or float(c["job"]["daily_wage"]) * 21.0 < float(rent) * 2.5:
 			continue
 		if w.rng.randf() > 0.25 + float(c["traits"]["ambition"]) / 300.0:
@@ -1327,19 +1332,23 @@ static func town_pull(w: LTWorld) -> float:
 
 
 static func _monthly_migration(w: LTWorld) -> void:
+	# households with no home keep looking: family first, then any unit they can carry
+	for h0 in w.households:
+		if int(h0["lot"]) < 0 and not w.household_members(h0).is_empty() and not w.household_adults(h0).is_empty():
+			_find_shelter(w, h0)
 	# arrivals
 	var pull: float = town_pull(w)
 	if vacancy_count(w) > 0:
 		var arrivals: int = 0
 		var p: float = clampf(pull / 100.0, 0.0, 0.9)
 		while arrivals < 3 and w.rng.randf() < p and vacancy_count(w) > 0:
-			var u: Dictionary = free_unit(w)
+			var h: Dictionary = make_household(w, false, true)
+			var u: Dictionary = LTApartments.best_unit(w, h)
 			if u.is_empty():
 				break
-			var h: Dictionary = make_household(w, false, true)
 			move_household_into(w, h, int(u["lot"]), int(u["unit"]))
 			h["tenure"] = "rent"
-			h["rent"] = int(w.lot(int(u["lot"]))["unit_rent"])
+			h["rent"] = LTApartments.rent_for(w, w.lot(int(u["lot"])), int(u["unit"]))
 			var reason: String = _arrival_reason(w)
 			for m in w.household_members(h):
 				m["moved_in"] = w.day

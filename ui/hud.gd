@@ -1592,6 +1592,35 @@ func _biz_charts(b: Dictionary) -> void:
 		ch.as_line(str(lr[0]), lr[1], lbs, cash, DashScript.SERIES[int(lr[2])])
 
 
+## The plans for an apartment building: every unit, what it costs, why, the drawing.
+func _apt_plans(l: Dictionary, spec: Dictionary, title: String) -> void:
+	var ww: LTWorld = w()
+	var t: String = "\n[b]%s[/b]\nBuilt by %s. %s.\n" % [title, spec.get("builder", "a builder"), LTApartments.text(spec)]
+	t += "\n[b]The homes[/b]\n"
+	for i in spec["units"].size():
+		var u: Dictionary = spec["units"][i]
+		var who: String = ""
+		if i < l["units"].size() and int(l["units"][i]) >= 0:
+			var hh: Dictionary = ww.hh(int(l["units"][i]))
+			var ad: Array = ww.household_adults(hh)
+			who = "  %s household of %d" % [sim_link(int(ad[0]["id"])) if not ad.is_empty() else "a", ww.household_members(hh).size()]
+		elif i < l["units"].size():
+			who = "  [color=#93a1b5]empty[/color]"
+		t += "Apt %d: %s, %d sq ft, %s bath%s, %s a month%s%s\n" % [i + 1, str(LTApartments.TYPES[str(u["type"])]["label"]).to_lower(), int(u["sqft"]), str(u["baths"]).trim_suffix(".0"), "" if float(u["baths"]) == 1.0 else "s", _money(int(u["rent"])), ", accessible" if bool(spec.get("accessible", false)) and i < int(ceil(float(spec["units"].size()) / float(maxi(1, int(spec["stories"]))))) else "", who]
+	t += "\n[b]Cost to build[/b]\n"
+	for ln in LTApartments.price_list(spec):
+		t += "%s   %s\n" % [ln[0], _money(LTMoney.dollars(float(ln[1])))]
+	t += "[b]Total about %s[/b]\n" % _money(LTApartments.cost(spec))
+	if not spec.get("why", []).is_empty():
+		t += "\n[b]Why it was built this way[/b]\n"
+		for y in spec["why"]:
+			t += "- " + str(y).substr(0, 1).to_upper() + str(y).substr(1) + ".\n"
+	inspect_form.add_child(_rtl(t))
+	var fp: Control = preload("res://ui/floor_plan.gd").new()
+	inspect_form.add_child(fp)
+	fp.set_generic(l, LTApartments.site_parts(l, spec), LTApartments.floor_plan(l, spec))
+
+
 ## The plans for a business building, drawn the same way as a house.
 func _biz_plans(l: Dictionary, plan: Dictionary, title: String) -> void:
 	if plan.is_empty():
@@ -2352,6 +2381,8 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 				_lot_form(id)
 				if str(l["use"]) == "house" and l.has("home"):
 					_home_plans(l, l["home"], "THE HOUSE AS BUILT")
+				elif str(l["use"]) == "apartment" and l.has("apt"):
+					_apt_plans(l, l["apt"], "THE BUILDING AS BUILT")
 		"road":
 			t = _road_text(id)
 			main.view.select_lot(-1)
@@ -2377,6 +2408,8 @@ func inspect(kind: String, id: int, show: bool = true) -> void:
 					_biz_plans(w().lot(int(pp["lot"])), pp.get("bplan", pbz.get("bplan", {})), "THE PLANS")
 				if pp.has("home") and int(pp["lot"]) >= 0:
 					_home_plans(w().lot(int(pp["lot"])), pp["home"], "THE PLANS")
+				elif pp.has("apt") and int(pp["lot"]) >= 0:
+					_apt_plans(w().lot(int(pp["lot"])), pp["apt"], "THE PLANS")
 		"pet":
 			t = _pet_text(id)
 		"debt":
@@ -2665,16 +2698,26 @@ func _lot_text(id: int) -> String:
 			for hb in ww.businesses:
 				if int(hb["lot"]) == id and bool(hb.get("home_based", false)) and str(hb["status"]) == "open":
 					t += "Run from here: %s.\n" % biz_link(int(hb["id"]))
+			var aspec: Dictionary = l.get("apt", {})
+			if not aspec.is_empty():
+				var occ: int = 0
+				for u in l["units"]:
+					if int(u) >= 0:
+						occ += 1
+				t += "%s. %d of %d homes rented. Rents %s.\n" % [LTApartments.text(aspec), occ, l["units"].size(), LTApartments.rent_range(aspec)]
 			t += "Who lives here:\n"
-			for u in l["units"]:
+			for ui in l["units"].size():
+				var u = l["units"][ui]
+				var ulabel: String = (LTApartments.unit_label(aspec, ui) + ": ") if not aspec.is_empty() else ""
 				if int(u) < 0:
-					t += "- empty unit%s\n" % (", rent %s" % _money(int(l["unit_rent"])) if int(l["unit_rent"]) > 0 else "")
+					var er: int = LTApartments.rent_for(ww, l, ui)
+					t += "- %sempty%s\n" % [ulabel, ", rent %s" % _money(er) if er > 0 else ""]
 				else:
 					var hh: Dictionary = ww.hh(int(u))
 					var ms: Array = []
 					for m in ww.household_members(hh):
 						ms.append(sim_link(int(m["id"])))
-					t += "- %s%s\n" % [", ".join(ms), " (rent %s)" % _money(int(hh["rent"])) if str(hh["tenure"]) == "rent" else ""]
+					t += "- %s%s%s\n" % [ulabel, ", ".join(ms), " (rent %s)" % _money(int(hh["rent"])) if str(hh["tenure"]) == "rent" else ""]
 		"business", "closed":
 			t += "Business: %s.\n" % biz_link(int(l["ref"]))
 		"civic":

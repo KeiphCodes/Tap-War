@@ -68,7 +68,7 @@ static func divorce(w: LTWorld, a: Dictionary, b: Dictionary) -> void:
 	if not u.is_empty():
 		LTPeople.move_household_into(w, nh, int(u["lot"]), int(u["unit"]))
 		nh["tenure"] = "rent"
-		nh["rent"] = int(w.lot(int(u["lot"]))["unit_rent"])
+		nh["rent"] = LTApartments.rent_for(w, w.lot(int(u["lot"])), int(u["unit"]))
 	else:
 		leaver["homeless"] = true
 	# a house owned by the leaver passes to the keeper in the settlement, the mortgage with it

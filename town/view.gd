@@ -1097,7 +1097,7 @@ func kit_local(l: Dictionary) -> Transform3D:
 	var fw: float = LTGeography.lot_frontage(l)
 	var dp: float = LTGeography.lot_depth(l)
 	var sx: float = 1.0
-	if str(l["use"]) != "house":
+	if str(l["use"]) != "house" and not (str(l["use"]) == "apartment" and l.has("apt")):
 		sx = clampf((fw - 0.8) / 13.2, 0.4, 1.0)
 	var z: float = maxf(0.0, dp * 0.5 - KIT_BACK)
 	return Transform3D(Basis.IDENTITY.scaled(Vector3(sx, 1.0, 1.0)), Vector3(0, 0, z))
@@ -1404,6 +1404,9 @@ func _house(root: Node3D, l: Dictionary, cond: float) -> void:
 
 
 func _apartment(root: Node3D, l: Dictionary, cond: float) -> void:
+	if l.has("apt"):
+		_apartment_built(root, l, cond)
+		return
 	var units: Array = l["units"]
 	var floors: int = maxi(2, (units.size() + 1) / 2)
 	var h: float = 3.2 * floors
@@ -1415,8 +1418,78 @@ func _apartment(root: Node3D, l: Dictionary, cond: float) -> void:
 			var ui: int = f * 2 + k
 			var occ: bool = ui < units.size() and int(units[ui]) >= 0
 			_box(root, Vector3(2.4, 1.3, 0.1), Vector3(-2.5 + k * 5.0, 1.8 + f * 3.2, 3.05), Color(1.0, 0.86, 0.5) if occ else Color(0.22, 0.26, 0.3), occ)
+	_apartment_sign(root, l, h)
+
+
+## An apartment building drawn from its design: its floors, a lit window for each
+## rented home, balconies, front doors on a townhouse row, the lot and the play area.
+func _apartment_built(root: Node3D, l: Dictionary, cond: float) -> void:
+	var spec: Dictionary = l["apt"]
+	var lay: Dictionary = LTApartments.layout(l, spec)
+	var br: Array = lay["building"]
+	var W: float = float(lay["W"])
+	var D: float = float(lay["D"])
+	var stories: int = maxi(1, int(spec["stories"]))
+	var town: bool = str(spec["style"]) == "townhouse"
+	var fh: float = 3.0
+	var h: float = fh * float(stories)
+	var cx: float = (float(br[0]) + float(br[2])) * 0.5
+	var front_z: float = KIT_BACK - float(br[1])
+	var cz: float = front_z - D * 0.5
+	var pal: Array = {"brick": [Color(0.62, 0.3, 0.24), Color(0.55, 0.27, 0.22), Color(0.68, 0.38, 0.3), Color(0.5, 0.3, 0.26), Color(0.7, 0.45, 0.36)], "wood": [Color(0.66, 0.48, 0.32), Color(0.5, 0.56, 0.5), Color(0.74, 0.6, 0.42), Color(0.62, 0.3, 0.24), Color(0.85, 0.82, 0.72)]}.get(str(spec.get("siding", "vinyl")), [Color(0.86, 0.84, 0.78), Color(0.75, 0.82, 0.9), Color(0.82, 0.88, 0.8), Color(0.92, 0.9, 0.86), Color(0.8, 0.76, 0.7)])
+	var wc: Color = _wear(pal[int(spec.get("color", 0)) % pal.size()], cond)
+	var roof_c: Color = Color(0.3, 0.3, 0.32)
+	# the drive to the parking lot and the walk to the door
+	_box(root, Vector3(1.6, 0.05, KIT_BACK - front_z + 0.4), Vector3(cx, 0.05, (KIT_BACK + front_z) * 0.5), Color(0.72, 0.7, 0.66))
+	if lay.has("parking"):
+		var pr: Array = lay["parking"]
+		_box(root, Vector3(3.2, 0.05, float(pr[1])), Vector3(float(pr[2]) - 1.8, 0.04, KIT_BACK - float(pr[1]) * 0.5), Color(0.34, 0.34, 0.36))
+		_box(root, Vector3(float(pr[2]) - float(pr[0]), 0.05, float(pr[3]) - float(pr[1])), Vector3((float(pr[0]) + float(pr[2])) * 0.5, 0.045, KIT_BACK - (float(pr[1]) + float(pr[3])) * 0.5), Color(0.32, 0.32, 0.34))
+		var cols: int = maxi(1, int((float(pr[2]) - float(pr[0])) / 2.7))
+		for i in cols + 1:
+			_box(root, Vector3(0.1, 0.02, 4.8), Vector3(float(pr[0]) + float(i) * 2.7, 0.08, KIT_BACK - float(pr[1]) - 2.6), Color(0.92, 0.92, 0.9))
+	if lay.has("playground"):
+		var pg: Array = lay["playground"]
+		var pc: Vector3 = Vector3((float(pg[0]) + float(pg[2])) * 0.5, 0, KIT_BACK - (float(pg[1]) + float(pg[3])) * 0.5)
+		_box(root, Vector3(float(pg[2]) - float(pg[0]), 0.06, float(pg[3]) - float(pg[1])), pc + Vector3(0, 0.03, 0), Color(0.8, 0.7, 0.5))
+		_box(root, Vector3(0.2, 1.8, 2.0), pc + Vector3(-1.0, 0.9, 0), Color(0.9, 0.3, 0.3))
+		_box(root, Vector3(1.6, 0.15, 1.6), pc + Vector3(1.0, 0.6, 0), Color(0.3, 0.55, 0.85))
+	# the building
+	_box(root, Vector3(W, h, D), Vector3(cx, h * 0.5, cz), wc)
+	if town:
+		_roof(root, Vector3(D + 0.6, 2.0, W + 0.6), Vector3(cx, h + 1.0, cz), Color(0.35, 0.22, 0.2), PI * 0.5)
+	else:
+		_box(root, Vector3(W + 0.4, 0.45, D + 0.4), Vector3(cx, h + 0.22, cz), roof_c)
+	# a window pair for each home facing the street, lit when someone lives there
+	var units: Array = l["units"]
+	var per: int = int(ceil(float(spec["units"].size()) / float(stories)))
+	var front_n: int = int(ceil(float(per) / 2.0))
+	if town:
+		front_n = spec["units"].size()
+	for f in (1 if town else stories):
+		for k in front_n:
+			var ui: int = k if town else f * per + k
+			var occ: bool = ui < units.size() and int(units[ui]) >= 0
+			var x: float = float(br[0]) + W * (float(k) + 0.5) / float(front_n)
+			var wy: float = 1.7 + float(f) * fh
+			for side in [-0.6, 0.6]:
+				_box(root, Vector3(0.9, 1.1, 0.1), Vector3(x + side, wy, front_z + 0.06), Color(1.0, 0.86, 0.5) if occ else Color(0.22, 0.26, 0.3), occ)
+			if town:
+				_box(root, Vector3(0.9, 2.0, 0.12), Vector3(x + 1.4, 1.0, front_z + 0.07), Color(0.35, 0.22, 0.15))
+				_box(root, Vector3(0.9, 1.1, 0.1), Vector3(x, 1.7 + fh, front_z + 0.06), Color(1.0, 0.86, 0.5) if occ else Color(0.22, 0.26, 0.3), occ)
+			elif spec.get("amenities", []).has("balconies") and f > 0:
+				_box(root, Vector3(2.4, 0.15, 1.0), Vector3(x, float(f) * fh + 0.3, front_z + 0.5), Color(0.8, 0.8, 0.8))
+				_box(root, Vector3(2.4, 0.9, 0.06), Vector3(x, float(f) * fh + 0.8, front_z + 1.0), Color(0.5, 0.5, 0.52))
+	if not town:
+		# a front entry with a canopy
+		_box(root, Vector3(1.8, 2.3, 0.14), Vector3(cx, 1.15, front_z + 0.07), Color(0.4, 0.45, 0.5))
+		_box(root, Vector3(2.6, 0.15, 1.4), Vector3(cx, 2.6, front_z + 0.7), roof_c)
+	_apartment_sign(root, l, h)
+
+
+func _apartment_sign(root: Node3D, l: Dictionary, h: float) -> void:
 	var vac: int = 0
-	for u in units:
+	for u in l["units"]:
 		if int(u) < 0:
 			vac += 1
 	var owner: String = str(l["name"])

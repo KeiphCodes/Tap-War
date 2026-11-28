@@ -263,6 +263,8 @@ func tick_day() -> void:
 		LTBuildings.monthly(self)
 	if LTCalendar.day_of_month(day) == 20:
 		LTLand.monthly(self)
+	if LTCalendar.day_of_month(day) == 24:
+		LTApartments.monthly(self)
 	LTHomes.lapse(self)
 	LTProjects.daily(self)
 	LTPeople.life_events(self)
