@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T18:23:39 by tests/scenarios.gd.
+Generated 2026-11-28T21:15:06 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: acquitted. Sentence: . Job before: nursing aide, job now: nursing aide. Trail: Charged with burglary: broke into a neighbor's home (test). / Found not guilty.
