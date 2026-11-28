@@ -9,26 +9,6 @@ extends RefCounted
 ## many customers it can serve; the features bring in more business. When a
 ## business outgrows its building the owner adds on.
 
-const ROOMS: Dictionary = {
-	# key: [[room, label, share of the floor], ...], what sets capacity, per unit
-	"grocery": {"rooms": [["sales", "Sales floor", 0.62], ["stock", "Stockroom", 0.16], ["cooler", "Walk in cooler", 0.08], ["office", "Office", 0.05], ["rest", "Restrooms", 0.04], ["break", "Break room", 0.05]], "unit": "sales", "per": 22.0, "serve": 1.0},
-	"general_store": {"rooms": [["sales", "Sales floor", 0.68], ["stock", "Stockroom", 0.2], ["office", "Office", 0.07], ["rest", "Restroom", 0.05]], "unit": "sales", "per": 22.0, "serve": 1.0},
-	"pharmacy": {"rooms": [["sales", "Sales floor", 0.55], ["rx", "Pharmacy counter", 0.2], ["stock", "Stockroom", 0.15], ["office", "Office", 0.05], ["rest", "Restroom", 0.05]], "unit": "sales", "per": 18.0, "serve": 1.0},
-	"outfitter": {"rooms": [["sales", "Sales floor", 0.6], ["rental", "Rental and repair", 0.2], ["stock", "Stockroom", 0.15], ["rest", "Restroom", 0.05]], "unit": "sales", "per": 25.0, "serve": 1.0},
-	"cafe": {"rooms": [["dining", "Dining room", 0.55], ["kitchen", "Kitchen", 0.3], ["cooler", "Walk in cooler", 0.05], ["rest", "Restrooms", 0.07], ["office", "Office", 0.03]], "unit": "dining", "per": 15.0, "serve": 3.0, "seat": true},
-	"bar": {"rooms": [["dining", "Barroom", 0.6], ["kitchen", "Kitchen", 0.2], ["cooler", "Cooler", 0.07], ["rest", "Restrooms", 0.1], ["office", "Office", 0.03]], "unit": "dining", "per": 15.0, "serve": 3.0, "seat": true},
-	"bakery": {"rooms": [["bake", "Bake room", 0.5], ["counter", "Front counter", 0.3], ["stock", "Flour storage", 0.12], ["rest", "Restroom", 0.08]], "unit": "counter", "per": 10.0, "serve": 1.0},
-	"clinic": {"rooms": [["wait", "Waiting room", 0.18], ["exam", "Exam rooms", 0.4], ["lab", "Lab", 0.1], ["office", "Offices", 0.14], ["nurse", "Nurse station", 0.08], ["rest", "Restrooms", 0.1]], "unit": "exam", "per": 110.0, "serve": 16.0, "count": true},
-	"repair_shop": {"rooms": [["bays", "Service bays", 0.72], ["parts", "Parts room", 0.12], ["office", "Office and counter", 0.1], ["rest", "Restroom", 0.06]], "unit": "bays", "per": 450.0, "serve": 5.0, "count": true},
-	"construction": {"rooms": [["shop", "Shop", 0.65], ["office", "Office", 0.15], ["tools", "Tool room", 0.15], ["rest", "Restroom", 0.05]], "unit": "", "per": 0.0},
-	"childcare": {"rooms": [["class", "Classrooms", 0.5], ["nap", "Nap room", 0.15], ["kitchen", "Kitchen", 0.12], ["office", "Office", 0.08], ["rest", "Restrooms", 0.15]], "unit": "class", "per": 35.0, "serve": 1.0},
-	"private_school": {"rooms": [["class", "Classrooms", 0.6], ["gym", "Gym and lunchroom", 0.2], ["office", "Office", 0.1], ["rest", "Restrooms", 0.1]], "unit": "class", "per": 30.0, "serve": 1.0},
-	"law_office": {"rooms": [["offices", "Offices", 0.55], ["reception", "Reception", 0.2], ["conf", "Conference room", 0.17], ["rest", "Restroom", 0.08]], "unit": "", "per": 0.0},
-	"real_estate": {"rooms": [["offices", "Offices", 0.55], ["reception", "Reception", 0.3], ["rest", "Restroom", 0.15]], "unit": "", "per": 0.0},
-	"bank": {"rooms": [["lobby", "Lobby", 0.35], ["teller", "Teller line", 0.15], ["vault", "Vault", 0.1], ["offices", "Loan offices", 0.3], ["rest", "Restrooms", 0.1]], "unit": "", "per": 0.0},
-	"hotel": {"rooms": [["rooms", "Guest rooms", 0.72], ["lobby", "Lobby", 0.12], ["laundry", "Laundry", 0.08], ["office", "Office", 0.08]], "unit": "rooms", "per": 330.0, "serve": 1.0, "count": true},
-	"funeral_home": {"rooms": [["chapel", "Chapel", 0.4], ["view", "Viewing room", 0.2], ["prep", "Prep room", 0.15], ["office", "Office", 0.15], ["rest", "Restrooms", 0.1]], "unit": "", "per": 0.0},
-}
 const FEATURE_PRICE: Dictionary = {
 	"drive_thru": 45000, "patio": 15000, "dock": 30000, "parking": 2500, "awning": 6000, "apartments": 95000,
 	"hood": 25000, "neon": 4000, "brick_front": 30000, "solar": 40000, "playground": 18000,
@@ -41,7 +21,7 @@ const FEATURE_LABEL: Dictionary = {
 
 
 static func has_rooms(btype: String) -> bool:
-	return ROOMS.has(btype)
+	return LTBizSpecs.SPECS.has(btype)
 
 
 ## Features a business must have to open: a cook line needs a hood, a daycare a
@@ -98,6 +78,21 @@ static func design(w: LTWorld, btype: String, owner: Dictionary, sqft: int, spar
 		why.append("apartments upstairs to rent out, which pay the mortgage")
 	if tr.call("intelligence") > 70.0 and rich:
 		feats.append("solar")
+	# how the floor is split: a smart owner sizes the work rooms to the customer
+	# rooms; a greedy one squeezes in more seats than the kitchen can keep up with
+	var spec: Dictionary = LTBizSpecs.of(btype)
+	plan["v"] = 2
+	plan["mix"] = 0.0
+	if spec.has("flex"):
+		var fl: Array = spec["flex"]
+		var a_lbl: String = _room_label(btype, str(fl[0])).to_lower()
+		var b_lbl: String = _room_label(btype, str(fl[1])).to_lower()
+		if tr.call("greed") > 65.0 and tr.call("intelligence") < 55.0:
+			plan["mix"] = 0.25
+			why.append("a bigger %s to fit more customers in, with a smaller %s" % [a_lbl, b_lbl])
+		elif tr.call("intelligence") > 60.0:
+			why.append("the %s sized to what the %s can keep up with" % [b_lbl, a_lbl])
+	plan["code"] = LTBizSpecs.code_for(w, btype)
 	plan["rooms"] = rooms_for(plan)
 	# keep only the wishes the spare money covers
 	var given: Array = []
@@ -126,51 +121,127 @@ static func extras_cost(plan: Dictionary) -> int:
 	return LTMoney.dollars(float(t))
 
 
+static func _room_label(btype: String, key: String) -> String:
+	for r in LTBizSpecs.of(btype).get("rooms", []):
+		if str(r[0]) == key:
+			return str(r[1])
+	return key
+
+
 ## The rooms and their square feet, from the shares for this kind of business.
 static func rooms_for(plan: Dictionary) -> Array:
-	var cfg: Dictionary = ROOMS.get(str(plan["type"]), {"rooms": [["main", "Work floor", 0.8], ["office", "Office", 0.12], ["rest", "Restroom", 0.08]]})
+	var spec: Dictionary = LTBizSpecs.of(str(plan["type"]))
+	var rooms: Array = spec.get("rooms", [["main", "Work floor", 0.8, "b"], ["office", "Office", 0.12, "f"], ["rest", "Restroom", 0.08, "b"]])
+	# mix: the part of the work room given over to customers (a quarter, for a greedy owner)
+	var mix: float = float(plan.get("mix", 0.0))
+	var fl: Array = spec.get("flex", ["", ""])
+	var moved: float = 0.0
+	for r in rooms:
+		if str(r[0]) == str(fl[1]):
+			moved = float(r[2]) * mix
 	var out: Array = []
-	for r in cfg["rooms"]:
-		out.append({"key": str(r[0]), "label": str(r[1]), "sqft": int(float(plan["sqft"]) * float(r[2]))})
+	for r in rooms:
+		var share: float = float(r[2])
+		if str(r[0]) == str(fl[0]):
+			share += moved
+		elif str(r[0]) == str(fl[1]):
+			share -= moved
+		out.append({"key": str(r[0]), "label": str(r[1]), "sqft": int(float(plan["sqft"]) * share), "zone": str(r[3]) if r.size() > 3 else "b"})
+	return out
+
+
+## The rooms of a plan; plans from before the full room lists get them now.
+static func rooms_of(plan: Dictionary) -> Array:
+	if int(plan.get("v", 1)) < 2 and LTBizSpecs.SPECS.has(str(plan.get("type", ""))):
+		plan["v"] = 2
+		plan["rooms"] = rooms_for(plan)
+	return plan.get("rooms", [])
+
+
+static func _room_sqft(plan: Dictionary, key: String) -> float:
+	for r in rooms_of(plan):
+		if str(r["key"]) == key:
+			return float(r["sqft"])
+	return 0.0
+
+
+## Every room that limits how many customers a day: [what, customers a day, units].
+## The smallest is the bottleneck.
+static func limits(plan: Dictionary) -> Array:
+	var cfg: Dictionary = LTBizSpecs.of(str(plan.get("type", "")))
+	if cfg.is_empty() or str(cfg.get("unit", "")) == "":
+		return []
+	var units: float = _room_sqft(plan, str(cfg["unit"])) / float(cfg["per"])
+	if bool(cfg.get("count", false)):
+		units = floorf(units)
+	units = maxf(1.0, units)
+	var out: Array = [[str(cfg["unit"]), units * float(cfg.get("serve", 1.0)), units]]
+	for lm in cfg.get("limits", []):
+		out.append([str(lm[2]), maxf(1.0, _room_sqft(plan, str(lm[0])) / float(lm[1])), 0.0])
 	return out
 
 
 ## How many customers a day the building can serve (by its rooms), or -1 for no limit.
 static func capacity(plan: Dictionary) -> float:
-	var cfg: Dictionary = ROOMS.get(str(plan.get("type", "")), {})
-	if cfg.is_empty() or str(cfg["unit"]) == "":
+	var lm: Array = limits(plan)
+	if lm.is_empty():
 		return -1.0
-	for r in plan.get("rooms", []):
-		if str(r["key"]) == str(cfg["unit"]):
-			var units: float = float(r["sqft"]) / float(cfg["per"])
-			if bool(cfg.get("count", false)):
-				units = floorf(units)
-			return maxf(1.0, units) * float(cfg.get("serve", 1.0))
-	return -1.0
+	var c: float = INF
+	for x in lm:
+		c = minf(c, float(x[1]))
+	return c
+
+
+## The room that holds the business back, or "" when the main room does.
+static func bottleneck(plan: Dictionary) -> String:
+	var lm: Array = limits(plan)
+	if lm.size() < 2:
+		return ""
+	var low: Array = lm[0]
+	for x in lm:
+		if float(x[1]) < float(low[1]) - 0.01:
+			low = x
+	return "" if low == lm[0] else str(low[0])
 
 
 ## Words for the capacity: "36 seats", "4 service bays".
 static func capacity_text(plan: Dictionary) -> String:
-	var cfg: Dictionary = ROOMS.get(str(plan.get("type", "")), {})
-	if cfg.is_empty() or str(cfg["unit"]) == "":
+	var cfg: Dictionary = LTBizSpecs.of(str(plan.get("type", "")))
+	var lm: Array = limits(plan)
+	if lm.is_empty():
 		return ""
-	for r in plan.get("rooms", []):
-		if str(r["key"]) == str(cfg["unit"]):
-			var n: int = maxi(1, int(float(r["sqft"]) / float(cfg["per"])))
-			match str(cfg["unit"]):
-				"dining":
-					return "%d seats" % n
-				"bays":
-					return "%d service bay%s" % [n, "" if n == 1 else "s"]
-				"exam":
-					return "%d exam room%s" % [n, "" if n == 1 else "s"]
-				"rooms":
-					return "%d guest rooms" % n
-				"class":
-					return "room for %d children" % n
-				_:
-					return "%s sq ft of %s" % [LTGeography._thousands(int(r["sqft"])), str(r["label"]).to_lower()]
-	return ""
+	var n: int = int(lm[0][2])
+	var t: String
+	match str(cfg["unit"]):
+		"dining":
+			t = "%d seats" % n
+		"bays":
+			t = "%d service bay%s" % [n, "" if n == 1 else "s"]
+		"exam":
+			t = "%d exam room%s" % [n, "" if n == 1 else "s"]
+		"rooms":
+			t = "%d guest rooms" % n
+		"class":
+			t = "room for %d children" % n
+		_:
+			t = "%s sq ft of %s" % [LTGeography._thousands(int(_room_sqft(plan, str(cfg["unit"])))), _room_label(str(plan["type"]), str(cfg["unit"])).to_lower()]
+	var bn: String = bottleneck(plan)
+	if bn != "":
+		t += ", but the %s only keeps up with about %d customers a day" % [bn, int(capacity(plan))]
+	return t
+
+
+## The equipment that goes in, priced to the owner's equipment budget.
+static func equipment_list(plan: Dictionary) -> Array:
+	var cs: Dictionary = LTEconomy.COSTS.get(str(plan.get("type", "")), {})
+	return LTBizSpecs.equipment(str(plan.get("type", "")), float(cs.get("equipment", 0)))
+
+
+## The code rules the building was built to: [rule, authority].
+static func code_list(plan: Dictionary) -> Array:
+	if plan.has("code"):
+		return plan["code"]
+	return LTBizSpecs.code_for(null, str(plan.get("type", "")))
 
 
 ## More business from the building's features: a drive-through, summer patio.
@@ -211,6 +282,9 @@ static func text(plan: Dictionary) -> String:
 	var ct: String = capacity_text(plan)
 	if ct != "":
 		parts.append(ct)
+	var mk: String = str(LTBizSpecs.of(str(plan["type"])).get("make", ""))
+	if mk != "" and ct == "":
+		parts.append("%d rooms built for %s" % [rooms_of(plan).size(), mk])
 	for f in plan.get("features", []):
 		if ["drive_thru", "patio", "dock", "apartments", "playground"].has(str(f)):
 			parts.append(str(FEATURE_LABEL[str(f)]))
@@ -261,30 +335,44 @@ static func layout(l: Dictionary, plan: Dictionary) -> Dictionary:
 	return out
 
 
-## Rooms inside, for the floor plan: one floor of rect rows like a house plan.
+## Rooms inside, for the floor plan: the customer side across the front where
+## people come in, the back of house behind it, the way these places are built.
 static func floor_plan(l: Dictionary, plan: Dictionary) -> Array:
 	var lay: Dictionary = layout(l, plan)
 	var W: float = float(lay["W"])
 	var D: float = float(lay["D"])
-	var rooms: Array = plan.get("rooms", [])
+	var front: Array = []
+	var back: Array = []
+	for r in rooms_of(plan):
+		if str(r.get("zone", "b")) == "f":
+			front.append(r)
+		else:
+			back.append(r)
+	if front.is_empty() and not back.is_empty():
+		front.append(back.pop_front())
+	var rows: Array = [front]
+	if back.size() > 5:
+		rows.append(back.slice(0, int(ceil(back.size() / 2.0))))
+		rows.append(back.slice(int(ceil(back.size() / 2.0))))
+	elif not back.is_empty():
+		rows.append(back)
 	var total: float = 0.0
-	for r in rooms:
-		total += float(r["sqft"])
-	# the biggest room across the front, the rest in a row behind it
-	var big: Dictionary = rooms[0] if not rooms.is_empty() else {}
-	for r in rooms:
-		if float(r["sqft"]) > float(big.get("sqft", 0)):
-			big = r
-	var fd: float = D * float(big.get("sqft", 0)) / maxf(1.0, total)
-	var rects: Array = [[0.0, 0.0, W, fd, str(big.get("label", ""))]]
-	var rest_t: float = total - float(big.get("sqft", 0))
-	var x: float = 0.0
-	for r in rooms:
-		if r == big:
-			continue
-		var rw: float = W * float(r["sqft"]) / maxf(1.0, rest_t)
-		rects.append([x, fd, x + rw, D, str(r["label"])])
-		x += rw
+	for row in rows:
+		for r in row:
+			total += float(r["sqft"])
+	var rects: Array = []
+	var d: float = 0.0
+	for row in rows:
+		var rt: float = 0.0
+		for r in row:
+			rt += float(r["sqft"])
+		var rd: float = D * rt / maxf(1.0, total)
+		var x: float = 0.0
+		for r in row:
+			var rw: float = W * float(r["sqft"]) / maxf(1.0, rt)
+			rects.append([x, d, x + rw, d + rd, str(r["label"])])
+			x += rw
+		d += rd
 	var out: Array = [{"name": "Ground floor", "rects": rects, "W": W, "D": D, "labels": true}]
 	if plan.get("features", []).has("apartments"):
 		out.append({"name": "Upstairs apartments", "rects": [[0.0, 0.0, W * 0.5, D, "Apartment 1"], [W * 0.5, 0.0, W, D, "Apartment 2"]], "W": W, "D": D, "labels": true})

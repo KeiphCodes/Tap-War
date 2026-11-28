@@ -828,6 +828,12 @@ static func _finish(w: LTWorld, p: Dictionary) -> void:
 		LTBuildings._close_escrow(w, p)
 		if not sb.is_empty() and str(sb["status"]) == "building":
 			sb["building_quality"] = q
+			if sb.has("bplan"):
+				var rules: Array = LTBuildings.code_list(sb["bplan"])
+				var who: Dictionary = {}
+				for r in rules:
+					who[str(r[1])] = true
+				w.log_biz(sb, "Passed the final inspections before opening: %d code requirements checked by %s." % [rules.size(), LTHomes._join(who.keys().slice(0, 4))])
 			LTEconomy.open_business(w, sb)
 	elif ptype == "mayor_house":
 		var l3: Dictionary = w.lot(int(p["lot"]))

@@ -29,6 +29,7 @@ func _init() -> void:
 	_sim_mayor()
 	_custom_homes()
 	_business_buildings()
+	_business_rooms()
 	_property_lines_and_bank()
 	_apartments_built_for_need()
 	_real_loans()
@@ -564,6 +565,40 @@ func _custom_homes() -> void:
 	var vr: Dictionary = w.apply_action({"kind": "decide_variance", "variance_id": w.city["variances"].size() - 1, "approve": true})
 	var ok: bool = houses > 0 and fitting == houses and int(after["beds"]) == int(before["beds"]) + 1 and bool(vr["ok"]) and LTHomes.home_cost(after) > 0 and not LTHomes.plan(lot, after).is_empty()
 	_check("Custom homes: families design houses room by room that fit their lots, remodel as life changes, and ask the mayor for variances", ok, "%d of %d houses fit their lots. %s family: %s became %s. Variance: %s" % [fitting, houses, head["last_name"], LTHomes.text(before), LTHomes.text(after), vr["message"]], w)
+
+
+func _business_rooms() -> void:
+	# every kind of business has the rooms, equipment and code items its trade
+	# really needs; the rooms that limit service are the bottleneck
+	var w: LTWorld = _town(5)
+	var c: Dictionary = _adult(w, func(x): return true)
+	var missing: Array = []
+	for bt in LTEconomy.COSTS.keys():
+		var p: Dictionary = LTBuildings.design(w, bt, c, int(LTEconomy.COSTS[bt]["sqft"]), LTMoney.dollars(50000.0))
+		var keys: Array = []
+		for r in LTBuildings.rooms_of(p):
+			keys.append(str(r["key"]))
+		if keys.has("main") or LTBuildings.equipment_list(p).is_empty() or LTBuildings.code_list(p).is_empty():
+			missing.append(bt)
+	var cafe: Dictionary = LTBuildings.design(w, "cafe", c, 1500, 0)
+	cafe["mix"] = 0.0
+	cafe["rooms"] = LTBuildings.rooms_for(cafe)
+	var shop: Dictionary = LTBuildings.design(w, "repair_shop", c, 2000, 0)
+	var codes: String = ""
+	for x in LTBuildings.code_list(cafe) + LTBuildings.code_list(shop):
+		codes += str(x[0]) + "; "
+	var greedy: Dictionary = cafe.duplicate(true)
+	greedy["mix"] = 0.25
+	greedy["rooms"] = LTBuildings.rooms_for(greedy)
+	var front_ok: bool = true
+	var fp: Array = LTBuildings.floor_plan(w.lots[0], cafe)
+	for rc in fp[0]["rects"]:
+		if str(rc[4]) == "Dining room" and float(rc[1]) > 0.0:
+			front_ok = false
+	var ok: bool = missing.is_empty() and codes.contains("hood") and codes.contains("Grease trap") and codes.contains("Oil water separator") \
+		and LTBuildings.bottleneck(greedy) == "kitchen" and LTBuildings.capacity(greedy) < LTBuildings.capacity(cafe) and front_ok
+	_check("Business rooms: every kind of business has its own rooms, equipment and code items, and a cramped kitchen is the bottleneck", ok,
+		"Without their own rooms or equipment: %s. Balanced cafe serves %d a day; one with seats crammed in serves %d (%s)." % [str(missing), int(LTBuildings.capacity(cafe)), int(LTBuildings.capacity(greedy)), LTBuildings.capacity_text(greedy)], w)
 
 
 func _business_buildings() -> void:

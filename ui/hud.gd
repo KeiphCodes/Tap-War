@@ -1629,6 +1629,29 @@ func _biz_plans(l: Dictionary, plan: Dictionary, title: String) -> void:
 	for ln in LTBuildings.price_list(plan):
 		t += "%s   %s\n" % [ln[0], _money(LTMoney.dollars(float(ln[1])))]
 	t += "[b]Total about %s[/b]\n" % _money(LTBuildings.cost(plan))
+	var rooms: Array = LTBuildings.rooms_of(plan)
+	if not rooms.is_empty():
+		t += "\n[b]Rooms[/b]\n"
+		for r in rooms:
+			t += "%s   %s sq ft%s\n" % [r["label"], LTGeography._thousands(int(r["sqft"])), "   (customers)" if str(r.get("zone", "")) == "f" else ""]
+		var lm: Array = LTBuildings.limits(plan)
+		if not lm.is_empty():
+			t += "[b]Serves about %d customers a day[/b]" % int(LTBuildings.capacity(plan))
+			var bn: String = LTBuildings.bottleneck(plan)
+			t += (". The %s is the bottleneck: more floor there would serve more.\n" % bn) if bn != "" else ". The rooms are in balance.\n"
+	var eq: Array = LTBuildings.equipment_list(plan)
+	if not eq.is_empty():
+		t += "\n[b]Equipment installed[/b]\n"
+		var et: int = 0
+		for e in eq:
+			t += "%s   %s\n" % [e[0], _money(LTMoney.dollars(float(e[1]))) if int(e[1]) > 0 else "in the building price"]
+			et += int(e[1])
+		t += "[b]Equipment about %s[/b]\n" % _money(LTMoney.dollars(float(et)))
+	var code: Array = LTBuildings.code_list(plan)
+	if not code.is_empty():
+		t += "\n[b]Built to code[/b]\n"
+		for c in code:
+			t += "[color=#0aac23]✓[/color] %s  [color=#93a1b5](%s)[/color]\n" % [c[0], c[1]]
 	if not plan.get("why", []).is_empty():
 		t += "\n[b]Why the owner built it this way[/b]\n"
 		for y in plan["why"]:
