@@ -28,6 +28,8 @@ var color: Color = SERIES[0]
 var _hover: int = -1
 var _plot: Rect2 = Rect2()
 var info: Dictionary = {}     # biz card: everything it shows
+var values2: Array = []       # a second line on the same axis (same unit)
+var names2: Array = []        # legend names for the two lines
 signal pressed
 var _press_at: Vector2 = Vector2(-1, -1)
 
@@ -84,6 +86,13 @@ func as_line(p_title: String, p_values: Array, p_labels: Array, p_fmt: Callable,
 	custom_minimum_size = Vector2(0, 190)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	queue_redraw()
+
+
+## Two lines in the same unit on one axis, with a legend.
+func as_lines(p_title: String, a: Array, b: Array, p_names: Array, p_labels: Array, p_fmt: Callable) -> void:
+	as_line(p_title, a, p_labels, p_fmt, SERIES[0])
+	values2 = b
+	names2 = p_names
 
 
 func as_donut(p_title: String, p_values: Array, p_names: Array, p_fmt: Callable) -> void:
@@ -241,10 +250,22 @@ func _draw_line() -> void:
 	if values.size() < 2:
 		_text(Vector2(14, 60), "Fills in after the first two months.", 13, TEXT_2)
 		return
-	_text(Vector2(0, 24), _f(values[values.size() - 1]), 15, TEXT, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14)
+	var two: bool = values2.size() == values.size()
+	if two:
+		# legend in place of the single latest value
+		var lx: float = size.x - 14.0
+		for k in range(names2.size() - 1, -1, -1):
+			var nm: String = str(names2[k])
+			lx -= _font().get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			_text(Vector2(lx, 24), nm, 12, TEXT_2)
+			lx -= 16.0
+			draw_rect(Rect2(lx, 14, 10, 10), SERIES[k])
+			lx -= 14.0
+	else:
+		_text(Vector2(0, 24), _f(values[values.size() - 1]), 15, TEXT, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14)
 	var lo: float = 1e18
 	var hi: float = -1e18
-	for v in values:
+	for v in (values + values2 if two else values):
 		lo = minf(lo, float(v))
 		hi = maxf(hi, float(v))
 	if hi - lo < 0.0001:
@@ -264,12 +285,18 @@ func _draw_line() -> void:
 	for i in values.size():
 		pts.append(Vector2(_plot.position.x + _plot.size.x * float(i) / float(values.size() - 1), _plot.end.y - (float(values[i]) - lo) / (hi - lo) * _plot.size.y))
 	# soft area under the line
-	var area: PackedVector2Array = pts.duplicate()
-	area.append(Vector2(_plot.end.x, _plot.end.y))
-	area.append(Vector2(_plot.position.x, _plot.end.y))
-	var fill: Color = color
-	fill.a = 0.14
-	draw_colored_polygon(area, fill)
+	var pts2: PackedVector2Array = PackedVector2Array()
+	if two:
+		for i in values2.size():
+			pts2.append(Vector2(_plot.position.x + _plot.size.x * float(i) / float(values2.size() - 1), _plot.end.y - (float(values2[i]) - lo) / (hi - lo) * _plot.size.y))
+		draw_polyline(pts2, SERIES[1], 2.0, true)
+	else:
+		var area: PackedVector2Array = pts.duplicate()
+		area.append(Vector2(_plot.end.x, _plot.end.y))
+		area.append(Vector2(_plot.position.x, _plot.end.y))
+		var fill: Color = color
+		fill.a = 0.14
+		draw_colored_polygon(area, fill)
 	draw_polyline(pts, color, 2.0, true)
 	var last: Vector2 = pts[pts.size() - 1]
 	draw_circle(last, 6.0, SURFACE)
@@ -283,7 +310,11 @@ func _draw_line() -> void:
 		draw_line(Vector2(hp.x, _plot.position.y), Vector2(hp.x, _plot.end.y), TEXT_2, 1.0)
 		draw_circle(hp, 6.0, SURFACE)
 		draw_circle(hp, 4.0, color)
-		_tooltip(hp, [str(labels[_hover]) if _hover < labels.size() else "", "%s: %s" % [title, _f(values[_hover])]])
+		if two:
+			draw_circle(pts2[_hover], 4.0, SERIES[1])
+			_tooltip(hp, [str(labels[_hover]) if _hover < labels.size() else "", "%s: %s" % [names2[0], _f(values[_hover])], "%s: %s" % [names2[1], _f(values2[_hover])]])
+		else:
+			_tooltip(hp, [str(labels[_hover]) if _hover < labels.size() else "", "%s: %s" % [title, _f(values[_hover])]])
 
 
 func _draw_donut() -> void:
@@ -356,7 +387,10 @@ func _draw_bars() -> void:
 		_text(Vector2(0, y + 19), _f(float(parts[i][0]) + float(parts[i][1])), 12, TEXT_2, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14)
 	if _hover >= 0 and _hover < parts.size():
 		var hy: float = 52.0 + 30.0 * _hover
-		_tooltip(Vector2(14.0 + name_w + bw * 0.5, hy + 14), [str(labels[_hover]), "%s: %s" % [part_names[0], _f(parts[_hover][0])], "%s: %s" % [part_names[1], _f(parts[_hover][1])]])
+		var tl: Array = [str(labels[_hover]), "%s: %s" % [part_names[0], _f(parts[_hover][0])]]
+		if part_names.size() > 1:
+			tl.append("%s: %s" % [part_names[1], _f(parts[_hover][1])])
+		_tooltip(Vector2(14.0 + name_w + bw * 0.5, hy + 14), tl)
 
 
 func _draw_biz() -> void:

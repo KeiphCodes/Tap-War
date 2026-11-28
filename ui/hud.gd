@@ -5,7 +5,7 @@ extends CanvasLayer
 
 const ChartScript = preload("res://ui/chart.gd")
 const DashScript = preload("res://ui/dash.gd")
-const TABS: Array = ["Mayor", "Requests", "Projects", "People", "Business", "City", "News", "Help"]
+const TABS: Array = ["Mayor", "Budget", "Laws", "Requests", "Projects", "People", "Business", "City", "News", "Help"]
 const LEFT_W: int = 480   # the dashboard's narrowest
 ## The dashboard grows to most of the screen; the town view is a tap away.
 var left_w: int = LEFT_W
@@ -564,7 +564,7 @@ func _build_left() -> void:
 	left.add_child(lv)
 	# the sections as big buttons in two rows, easier to hit than small tabs
 	var grid: GridContainer = GridContainer.new()
-	grid.columns = 4
+	grid.columns = 5
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	lv.add_child(grid)
@@ -1089,6 +1089,10 @@ func refresh_tab() -> void:
 	match t:
 		"Mayor":
 			_tab_mayor()
+		"Budget":
+			_tab_budget()
+		"Laws":
+			_tab_laws()
 		"Requests":
 			_tab_requests()
 		"Projects":
@@ -1110,101 +1114,310 @@ func refresh_tab() -> void:
 # ================================================================ Mayor desk
 
 
+## A card: a rounded panel with a title, holding whatever is added to the box it returns.
+func _card(parent: Control, title: String, sub: String = "") -> VBoxContainer:
+	var pc: PanelContainer = PanelContainer.new()
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color("1b2230")
+	sb.border_color = Color("2a3446")
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(14)
+	pc.add_theme_stylebox_override("panel", sb)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(pc)
+	var vb: VBoxContainer = VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	pc.add_child(vb)
+	if title != "":
+		vb.add_child(_lbl(title, 16, Color("e8edf4")))
+	if sub != "":
+		vb.add_child(_lbl(sub, 13, Color("93a1b5")))
+	return vb
+
+
+func _cols(parent: Control, n: int) -> GridContainer:
+	var g: GridContainer = GridContainer.new()
+	g.columns = n
+	g.add_theme_constant_override("h_separation", 8)
+	g.add_theme_constant_override("v_separation", 8)
+	parent.add_child(g)
+	return g
+
+
+func _hist_col(key: String) -> Array:
+	var out: Array = []
+	for h in w().stats_history:
+		out.append(h.get(key, 0))
+	out.append(w().snapshot().get(key, 0))
+	return out
+
+
 func _tab_mayor() -> void:
 	var box: VBoxContainer = tab_boxes["Mayor"]
 	_clear(box)
 	var ww: LTWorld = w()
-	box.add_child(_h("You"))
+	var wide: bool = left_w >= 900
 	var pl: Dictionary = ww.player
+	box.add_child(_h("Mayor's office"))
+	var num: Callable = func(v): return str(int(round(float(v))))
+	var tiles: GridContainer = _cols(box, 4 if wide else 2)
+	var t1: Control = DashScript.new()
+	tiles.add_child(t1)
+	t1.as_kpi("Approval", _hist_col("approval"), num, true, DashScript.SERIES[0])
+	var t2: Control = DashScript.new()
+	tiles.add_child(t2)
+	t2.as_kpi("Happiness", _hist_col("happiness"), num, true, DashScript.SERIES[2])
+	var t3: Control = DashScript.new()
+	tiles.add_child(t3)
+	t3.as_kpi("Residents", _hist_col("population"), num, true, DashScript.SERIES[0])
+	var got: Dictionary = ww.city.get("milestones", {}) if ww.city.get("milestones", {}) is Dictionary else {}
+	var ms: Array = []
+	for m in LTFounder.MILESTONES:
+		if str(ww.mode.get("start", "")) != "founder" and ["first_settler", "incorporated"].has(m[0]):
+			continue
+		ms.append(m)
+	var done_n: int = 0
+	for m in ms:
+		if got.has(m[0]):
+			done_n += 1
+	var t4: Control = DashScript.new()
+	tiles.add_child(t4)
+	t4.as_kpi("Milestones reached", [done_n], func(v): return "%d of %d" % [int(v), ms.size()], true, DashScript.SERIES[2])
+	var row: GridContainer = _cols(box, 2 if wide else 1)
+	# you
+	var you: VBoxContainer = _card(row, "You")
 	var where: String = "the mayor's house" if int(pl.get("home_lot", -1)) >= 0 else "a camper by the county road"
-	box.add_child(_rtl("[b]%s[/b] (%s), %d, from %s. Mayor of %s, living in %s." % [pl["name"], {"they": "they/them", "he": "he/him", "she": "she/her"}.get(str(pl.get("pronouns", "they")), "they/them"), ww.player_age(), pl.get("hometown", "somewhere"), ww.city["name"], where]))
-	box.add_child(_btn("Edit your profile", func(): show_profile(), "Your name, pronouns, age, hometown, color, and the town's name."))
+	you.add_child(_rtl("[b]%s[/b] (%s), %d, from %s.\nMayor of %s, living in %s." % [pl["name"], {"they": "they/them", "he": "he/him", "she": "she/her"}.get(str(pl.get("pronouns", "they")), "they/them"), ww.player_age(), pl.get("hometown", "somewhere"), ww.city["name"], where]))
+	you.add_child(_rtl("[color=#93a1b5]Game:[/color] %s, %s.%s" % ["founded from nothing" if str(ww.mode.get("start", "")) == "founder" else "Prairie Hollow", "elected mayor" if bool(ww.city.get("elections", false)) else "permanent mayor", "" if bool(ww.city.get("incorporated", true)) else " Not incorporated yet: %d of %d residents. The county taxes and serves the settlement until then." % [ww.residents(), LTFounder.INCORPORATE_AT]]))
+	you.add_child(_btn("Edit your profile", func(): show_profile(), "Your name, pronouns, age, hometown, color, and the town's name."))
+	if bool(ww.mode.get("autonomous", false)):
+		you.add_child(_rtl("[color=#e8c35a]Sim mayor[/color] [b]%s[/b], %d, from %s: %s. [color=#93a1b5]Mayor seed[/color] [b]%d[/b]. %s" % [pl["name"], int(pl.get("age", 40)), pl.get("hometown", ""), LTMayorAI.describe(pl), int(pl.get("mayor_seed", 0)), "[color=#e88a5a]You have taken over. Hand it back from the Menu.[/color]" if bool(pl.get("player_took_over", false)) else "Every decision is in the town history. Take over from the Menu."]))
+	# elections
+	var el: VBoxContainer = _card(row, "Elections")
+	if bool(ww.city.get("elections", false)):
+		var left_days: int = int(ww.city["next_election_day"]) - ww.day
+		el.add_child(_lbl("Next election %s, in %d days." % [LTCalendar.short(int(ww.city["next_election_day"])), maxi(0, left_days)], 15))
+		var ch: Dictionary = ww.cit(int(ww.city.get("challenger", -1)))
+		if not ch.is_empty() and ww.is_present(ch):
+			el.add_child(_rtl("Running against you: %s, promising %s." % [sim_link(int(ch["id"])), ww.city["platform"]]))
+		else:
+			el.add_child(_lbl("No challenger yet. One steps up when people have real grievances.", 13, Color("93a1b5")))
+		el.add_child(_lbl("Approval above 50 usually wins. It moves with happiness, trust in the city and how petitions are answered.", 13, Color("93a1b5")))
+	else:
+		el.add_child(_lbl("You are mayor for as long as you like. Elections can be turned on when starting a new town.", 13, Color("93a1b5")))
+	if not bool(ww.city.get("mayor_in_office", true)):
+		el.add_child(_rtl("[color=#ef6b5b][b]You lost the election.[/b] The town goes on. You can keep watching, or start a new town.[/color]"))
+	# milestones
+	var mc: VBoxContainer = _card(box, "Milestones", "%d of %d reached" % [done_n, ms.size()])
+	var mg: GridContainer = _cols(mc, 2 if wide else 1)
+	for m in ms:
+		var ok: bool = got.has(m[0])
+		mg.add_child(_rtl("%s %s%s" % ["[color=#0aac23]●[/color]" if ok else "[color=#4a5568]○[/color]", m[1], "  [color=#93a1b5]%s[/color]" % LTCalendar.short(int(got[m[0]])) if ok else ""]))
+	# the land
 	var tt: Dictionary = LTTerrain.t(ww)
 	if not tt.is_empty():
 		var lakes: Array = tt["lakes"].map(func(lk): return str(lk["name"]))
-		if bool(ww.mode.get("autonomous", false)):
-			var smp: Dictionary = ww.player
-			box.add_child(_rtl("[color=#e8c35a]Sim mayor[/color] [b]%s[/b], %d, from %s: %s. [color=#9fb0c0]Mayor seed[/color] [b]%d[/b] (type it in New town to get this mayor again). %s" % [smp["name"], int(smp.get("age", 40)), smp.get("hometown", ""), LTMayorAI.describe(smp), int(smp.get("mayor_seed", 0)), "[color=#e88a5a]You have taken over. Hand it back from the Menu.[/color]" if bool(smp.get("player_took_over", false)) else "Every decision is in the town history. Take over from the Menu."]))
-		box.add_child(_rtl("[color=#9fb0c0]The land:[/color] %s, %s and %s. [color=#9fb0c0]Map seed[/color] [b]%d[/b] (type it in New town to play this map again)." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
-	box.add_child(_sep())
-	box.add_child(_h("Budget"))
-	var last: Dictionary = ww.city["budget_months"][ww.city["budget_months"].size() - 1] if not ww.city["budget_months"].is_empty() else {}
-	var bb: String = "City cash [b]%s[/b]. Last 12 months: income %s, spending %s. Credit standing [b]%s[/b].\n" % [_money(ww.ledger.bal("city")), _money(int(ww.city["income_12m"])), _money(int(ww.city["spend_12m"])), LTFinance.city_credit_rating(ww)]
-	if not last.is_empty():
-		bb += "[color=#9fb0c0]Last month in:[/color] "
-		var parts: Array = []
-		for k in last["income"]:
-			parts.append("%s %s" % [str(k).replace("_", " "), _money(int(last["income"][k]))])
-		bb += ", ".join(parts) + "\n[color=#9fb0c0]Last month out:[/color] "
-		parts = []
-		for k in last["spend"]:
-			parts.append("%s %s" % [str(k).replace("_", " "), _money(int(last["spend"][k]))])
-		bb += ", ".join(parts)
-	var cdebt: Array = LTFinance.debts_of(ww, "city", 0)
-	if not cdebt.is_empty():
-		var owed: int = 0
-		var pay: int = 0
-		for d in cdebt:
-			owed += int(d["balance"])
-			pay += int(d["payment"])
-		bb += "\nCity debt: %s owed, %s a month in payments." % [_money(owed), _money(pay)]
-	box.add_child(_rtl(bb))
-	var borrow: HBoxContainer = HBoxContainer.new()
+		var land: VBoxContainer = _card(box, "The land")
+		land.add_child(_rtl("%s, %s and %s.\n[color=#93a1b5]Map seed[/color] [b]%d[/b]: type it in New town to play this map again." % [tt["forest_name"], tt["park_name"], " and ".join(lakes), int(tt["seed"])]))
+
+
+# ================================================================ Budget
+
+const TAX_LAWS: Array = [["property_tax", "property_tax"], ["sales_tax", "sales_tax"], ["income_tax", "income_tax"], ["business_tax", "business_tax"], ["transfer_tax", "transfer_tax"]]
+
+
+func _tab_budget() -> void:
+	var box: VBoxContainer = tab_boxes["Budget"]
+	_clear(box)
+	var ww: LTWorld = w()
+	var wide: bool = left_w >= 900
+	var cash: Callable = func(v): return _short_money(int(v))
+	var bm: Array = ww.city["budget_months"]
+	box.add_child(_h("City budget"))
+	box.add_child(_lbl("Credit standing %s. Hover the charts to read any month." % LTFinance.city_credit_rating(ww), 13, Color("93a1b5")))
+	var inc: Array = []
+	var spd: Array = []
+	var net: Array = []
+	var cash_end: Array = []
+	var months: Array = []
+	for m in bm:
+		inc.append(int(m.get("total_income", 0)))
+		spd.append(int(m.get("total_spend", 0)))
+		net.append(int(m.get("total_income", 0)) - int(m.get("total_spend", 0)))
+		cash_end.append(int(m.get("cash_end", 0)))
+		months.append(LTCalendar.short(int(m.get("day", ww.day))))
+	cash_end.append(ww.ledger.bal("city"))
+	var owed: int = 0
+	var pay: int = 0
+	for d in LTFinance.debts_of(ww, "city", 0):
+		owed += int(d["balance"])
+		pay += int(d["payment"])
+	var tiles: GridContainer = _cols(box, 4 if wide else 2)
+	for kr in [["City cash", cash_end, true, 2], ["Income last month", inc if not inc.is_empty() else [0], true, 0], ["Spending last month", spd if not spd.is_empty() else [0], false, 1], ["Debt owed", [owed], false, 1]]:
+		var tile: Control = DashScript.new()
+		tiles.add_child(tile)
+		tile.as_kpi(str(kr[0]), kr[1], cash, bool(kr[2]), DashScript.SERIES[int(kr[3])])
+	var charts: GridContainer = _cols(box, 2 if wide else 1)
+	var c1: Control = DashScript.new()
+	charts.add_child(c1)
+	c1.as_lines("Income and spending by month", inc, spd, ["Income", "Spending"], months, cash)
+	var c2: Control = DashScript.new()
+	charts.add_child(c2)
+	c2.as_line("City cash", cash_end.slice(0, cash_end.size() - 1) if cash_end.size() > 1 else cash_end, months, cash, DashScript.SERIES[2])
+	# a year of money in and out, by where it comes from and goes
+	var ins: Dictionary = {}
+	var outs: Dictionary = {}
+	for m in bm.slice(maxi(0, bm.size() - 12)):
+		for k in m["income"]:
+			ins[k] = int(ins.get(k, 0)) + int(m["income"][k])
+		for k in m["spend"]:
+			outs[k] = int(outs.get(k, 0)) + int(m["spend"][k])
+	var to_rows: Callable = func(d: Dictionary) -> Array:
+		var rows: Array = []
+		for k in d:
+			if str(k) in ["city_start_reserve", "unwind"]:
+				continue
+			rows.append([str(k).replace("_", " ").capitalize(), int(d[k]), 0])
+		rows.sort_custom(func(x, y): return int(x[1]) > int(y[1]))
+		return rows.slice(0, 8)
+	var pair: GridContainer = _cols(box, 2 if wide else 1)
+	var b1: Control = DashScript.new()
+	pair.add_child(b1)
+	b1.as_bars("Where the money comes from (12 months)", to_rows.call(ins), ["Income"], cash)
+	var b2: Control = DashScript.new()
+	pair.add_child(b2)
+	b2.as_bars("Where it goes (12 months)", to_rows.call(outs), ["Spending"], cash)
+	# taxes, each with what it brought in
+	box.add_child(_h("Taxes"))
+	var tg: GridContainer = _cols(box, 2 if wide else 1)
+	for tx in TAX_LAWS:
+		var got_y: int = int(ins.get(str(tx[1]), 0))
+		var card: VBoxContainer = _card(tg, "", "")
+		card.add_child(_law_row(str(tx[0])))
+		card.add_child(_lbl("Brought in over the last 12 months: %s" % _money(got_y), 13, Color("93a1b5")))
+	# borrowing and bonds, with the payment shown before you commit
+	box.add_child(_h("Borrowing"))
+	var bg: GridContainer = _cols(box, 2 if wide else 1)
+	var rating: String = LTFinance.city_credit_rating(ww)
+	var loan: VBoxContainer = _card(bg, "Bank loan", "15 years from %s" % LTFinance.BANK_NAME)
 	var amt: SpinBox = SpinBox.new()
 	amt.min_value = 10000
 	amt.max_value = 1000000
 	amt.step = 10000
 	amt.value = 100000
 	amt.prefix = "$"
-	amt.custom_minimum_size = Vector2(130, 0)
-	borrow.add_child(_lbl("Borrow"))
-	borrow.add_child(amt)
-	borrow.add_child(_btn("Borrow from the bank", func(): show_toast(str(main.act({"kind": "city_borrow", "amount": int(amt.value) * 100, "purpose": "city needs"})["message"]))))
-	box.add_child(borrow)
-	box.add_child(_sep())
-	box.add_child(_h("Bonds and elections"))
-	var bond: HBoxContainer = HBoxContainer.new()
+	loan.add_child(amt)
+	var loan_note: Label = _lbl("", 13, Color("93a1b5"))
+	loan.add_child(loan_note)
+	var loan_rate: float = 0.045 + (0.0 if rating == "A" else 0.015) + float(ww.bank["tightness"]) * 0.02
+	var upd_loan: Callable = func(_v = 0.0):
+		loan_note.text = "Will not lend: credit standing C." if rating == "C" else "About %.1f%%: %s a month for 15 years." % [loan_rate * 100.0, _money(LTFinance.amortized_payment(int(amt.value) * 100, loan_rate, 180))]
+	upd_loan.call()
+	amt.value_changed.connect(upd_loan)
+	loan.add_child(_btn("Borrow", func():
+		show_toast(str(main.act({"kind": "city_borrow", "amount": int(amt.value) * 100, "purpose": "city needs"})["message"]))
+		_tab_budget()))
+	var bond: VBoxContainer = _card(bg, "Bonds", "20 years, sold to investors outside town")
 	var bamt: SpinBox = SpinBox.new()
 	bamt.min_value = 50000
 	bamt.max_value = 2000000
 	bamt.step = 50000
 	bamt.value = 250000
 	bamt.prefix = "$"
-	bamt.custom_minimum_size = Vector2(130, 0)
-	bond.add_child(_lbl("Bonds"))
 	bond.add_child(bamt)
-	bond.add_child(_btn("Sell 20 year bonds", func(): show_toast(str(main.act({"kind": "issue_bond", "amount": int(bamt.value) * 100, "purpose": "city projects"})["message"]))))
-	box.add_child(bond)
-	box.add_child(_rtl("Mode: %s, %s. You live in %s.%s" % ["founded from nothing" if str(ww.mode.get("start", "")) == "founder" else "Prairie Hollow", "elected mayor" if bool(ww.city.get("elections", false)) else "permanent mayor", "the mayor's house" if int(ww.player.get("home_lot", -1)) >= 0 else "a camper until the mayor's house is built", "" if bool(ww.city.get("incorporated", true)) else " Not incorporated yet: %d of %d residents. The county taxes and serves the settlement until then." % [ww.residents(), LTFounder.INCORPORATE_AT]]))
-	if bool(ww.city.get("elections", false)):
-		var ch: Dictionary = ww.cit(int(ww.city.get("challenger", -1)))
-		box.add_child(_rtl("Next election %s.%s" % [LTCalendar.short(int(ww.city["next_election_day"])), " Running against you: %s, promising %s." % [sim_link(int(ch["id"])), ww.city["platform"]] if not ch.is_empty() and ww.is_present(ch) else ""]))
-	if not bool(ww.city.get("mayor_in_office", true)):
-		box.add_child(_rtl("[color=#ef6b5b][b]You lost the election.[/b] The town goes on. You can keep watching, or start a new town.[/color]"))
-	box.add_child(_sep())
-	box.add_child(_h("Milestones"))
-	var got: Dictionary = ww.city.get("milestones", {})
-	var ml: Array = []
-	for m in LTFounder.MILESTONES:
-		if str(ww.mode.get("start", "")) != "founder" and ["first_settler", "incorporated"].has(m[0]):
-			continue
-		ml.append("%s %s%s" % ["[color=#7fd37f]done[/color]" if got.has(m[0]) else "[color=#6a737d]open[/color]", m[1], " (%s)" % LTCalendar.short(int(got[m[0]])) if got.has(m[0]) else ""])
-	box.add_child(_rtl("\n".join(ml)))
-	box.add_child(_sep())
+	var bond_note: Label = _lbl("", 13, Color("93a1b5"))
+	bond.add_child(bond_note)
+	var bond_rate: float = 0.038 + (0.0 if rating == "A" else 0.012) + (1.0 - LTRegion.index(ww)) * 0.02
+	var upd_bond: Callable = func(_v = 0.0):
+		bond_note.text = "Investors will not buy: credit standing C." if rating == "C" else "About %.1f%%: %s a month for 20 years." % [bond_rate * 100.0, _money(LTFinance.amortized_payment(int(bamt.value) * 100, bond_rate, 240))]
+	upd_bond.call()
+	bamt.value_changed.connect(upd_bond)
+	bond.add_child(_btn("Sell bonds", func():
+		show_toast(str(main.act({"kind": "issue_bond", "amount": int(bamt.value) * 100, "purpose": "city projects"})["message"]))
+		_tab_budget()))
+	if owed > 0:
+		var dc: VBoxContainer = _card(box, "City debt", "%s owed, %s a month in payments" % [_money(owed), _money(pay)])
+		for d in LTFinance.debts_of(ww, "city", 0):
+			dc.add_child(_rtl("[url=debt:%d]%s[/url]: %s left, %s a month, %.1f%%." % [int(d["id"]), str(d["type"]).replace("_", " ").capitalize(), _money(int(d["balance"])), _money(int(d["payment"])), float(d["rate"]) * 100.0]))
+	# the bank
+	var bank: VBoxContainer = _card(box, "The bank", LTFinance.BANK_NAME)
+	bank.add_child(_rtl("Lending tightness [b]%d%%[/b]. Losses in the last year about %s.\n%s" % [int(float(ww.bank["tightness"]) * 100.0), _money(int(ww.bank["losses_12m"])), ww.bank["note"]]))
+	var lb: Dictionary = LTServices.local_bank(ww)
+	if not lb.is_empty():
+		bank.add_child(_rtl("Local bank: %s, %d loans made. Its interest stays in town." % [biz_link(int(lb["id"])), int(lb.get("loans_made", 0))]))
+
+
+# ================================================================ Laws
+
+const LAW_GROUPS: Array = [
+	["Services", "What the city pays for. More money, better service, higher costs.", ["school_funding", "police_funding", "fire_funding", "health_funding", "welfare", "bus_service"]],
+	["Business rules", "The rules every business decides under.", ["min_wage", "license_fee", "health_code", "pollution_rule", "bank_charter", "mining", "hunting_season"]],
+	["Housing and land", "What can be built, and how renters and borrowers are treated.", ["building_code", "zoning_density", "lot_coverage", "rent_cap", "late_fee_cap"]],
+]
+
+
+func _tab_laws() -> void:
+	var box: VBoxContainer = tab_boxes["Laws"]
+	_clear(box)
+	var ww: LTWorld = w()
+	var wide: bool = left_w >= 900
 	box.add_child(_h("Laws"))
-	box.add_child(_lbl("A law changes the numbers Sims and businesses decide with. It never sets an outcome. Each change shows an estimate first, and the City tab tracks what really happened.", 13, Color(0.7, 0.75, 0.8)))
-	for key in LTCivic.LAWS:
-		box.add_child(_law_row(key))
-	box.add_child(_sep())
-	box.add_child(_h("Publish a city need"))
-	box.add_child(_lbl("Say what the town needs and offer help. A Sim still decides whether to take it, and the one who does may not be good at it.", 13, Color(0.7, 0.75, 0.8)))
+	box.add_child(_lbl("A law changes the numbers Sims and businesses decide with. It never sets an outcome. Move a slider to see the estimate before you pass it. Taxes are on the Budget tab.", 13, Color("93a1b5")))
+	for g in LAW_GROUPS:
+		box.add_child(_h(str(g[0])))
+		box.add_child(_lbl(str(g[1]), 13, Color("93a1b5")))
+		var grid: GridContainer = _cols(box, 2 if wide else 1)
+		for key in g[2]:
+			if not LTCivic.LAWS.has(key):
+				continue
+			var card: VBoxContainer = _card(grid, "")
+			card.add_child(_law_row(str(key)))
+			# the last time it changed, and what happened
+			for i in range(ww.laws_log.size() - 1, -1, -1):
+				var e: Dictionary = ww.laws_log[i]
+				if str(e["law"]) == str(key):
+					var tr: String = str(e["tracked"][e["tracked"].size() - 1]) if not e["tracked"].is_empty() else "tracking starts after a month"
+					card.add_child(_rtl("[color=#93a1b5]Changed %s from %s. Since then: %s[/color]" % [LTCalendar.short(int(e["day"])), LTCivic.law_text(str(key), float(e["old"])), tr]))
+					break
+	box.add_child(_h("Every law passed: estimate against what happened"))
+	if ww.laws_log.is_empty():
+		box.add_child(_lbl("No laws changed yet.", 14, Color("93a1b5")))
+	for i in range(ww.laws_log.size() - 1, -1, -1):
+		var e2: Dictionary = ww.laws_log[i]
+		var lc: VBoxContainer = _card(box, "%s, %s" % [e2["label"], LTCalendar.short(int(e2["day"]))], "%s to %s" % [LTCivic.law_text(str(e2["law"]), float(e2["old"])), LTCivic.law_text(str(e2["law"]), float(e2["new"]))])
+		lc.add_child(_rtl("[color=#c8d3a0]Estimate:[/color] %s\n[color=#a8c8e8]Tracked:[/color] %s" % [e2["estimate"]["hits"], "\n".join(e2["tracked"]) if not e2["tracked"].is_empty() else "Tracking starts after a month."]))
+
+
+# ================================================================ Contractors (on Projects)
+
+func _contractor_cards(box: VBoxContainer) -> void:
+	var ww: LTWorld = w()
+	box.add_child(_h("Contractors"))
+	box.add_child(_lbl("The firms that bid on city work. Their record follows them from job to job.", 13, Color("93a1b5")))
+	var grid: GridContainer = _cols(box, 3 if left_w >= 1150 else (2 if left_w >= 900 else 1))
+	for co in ww.companies:
+		var g: String = LTProjects._grade(LTProjects._avg(co["quality_hist"]))
+		var c: VBoxContainer = _card(grid, str(co["name"]), "From out of town. The money leaves town and the crew is not local.")
+		c.add_child(_rtl("Quality grade [b]%s[/b]   Jobs %d\nOver budget %d   Late %d   Defects %d" % [g, int(co["jobs"]), int(co["overruns"]), int(co["late"]), int(co["defects"])]))
+	for b in ww.open_businesses("construction"):
+		var c2: VBoxContainer = _card(grid, str(b["name"]), "Local: wages and profit stay in town.")
+		c2.add_child(_rtl("Public jobs done %d   Crew quality %d\nOver budget %d   Defects %d\n%s" % [int(b["jobs_done"]), int(float(b.get("crew_quality", 0.0)) * 100.0), int(b["overruns"]), int(b["defects"]), biz_link(int(b["id"]))]))
+
+
+# ================================================================ Publish a city need (on Requests)
+
+func _publish_need(box: VBoxContainer) -> void:
+	var ww: LTWorld = w()
+	box.add_child(_h("Ask for a business"))
+	var card: VBoxContainer = _card(box, "Publish a city need", "Say what the town needs and offer help. A Sim still decides whether to take it, and the one who does may not be good at it.")
 	var need_opt: OptionButton = OptionButton.new()
 	for k in LTEconomy.all_types():
 		if k == "landlord":
 			continue
 		need_opt.add_item(str(LTEconomy.tcfg(k)["display"]))
 		need_opt.set_item_metadata(need_opt.item_count - 1, k)
-	box.add_child(need_opt)
+	card.add_child(need_opt)
 	var lot_opt: OptionButton = OptionButton.new()
 	lot_opt.add_item("Best fitting empty lot")
 	lot_opt.set_item_metadata(0, -1)
@@ -1212,9 +1425,9 @@ func _tab_mayor() -> void:
 		if str(l["use"]) == "empty":
 			lot_opt.add_item("Lot %d (%s, %s)" % [l["id"], LTGeography.lot_street(ww, int(l["id"]))["name"], l["zone"]])
 			lot_opt.set_item_metadata(lot_opt.item_count - 1, int(l["id"]))
-	box.add_child(lot_opt)
-	box.add_child(_incentive_editor())
-	box.add_child(_btn("Publish this need", func():
+	card.add_child(lot_opt)
+	card.add_child(_incentive_editor())
+	card.add_child(_btn("Publish this need", func():
 		var r: Dictionary = main.act({"kind": "publish_need", "need": need_opt.get_item_metadata(need_opt.selected), "lot": int(lot_opt.get_item_metadata(lot_opt.selected)), "incentives": _need_inc.duplicate()})
 		show_toast(str(r["message"]))))
 	var open_needs: Array = []
@@ -1224,7 +1437,8 @@ func _tab_mayor() -> void:
 			tb = ", taken by %s" % biz_link(int(n["taken_by"]))
 		open_needs.append("%s on %s: %s%s" % [str(LTEconomy.tcfg(n["need"])["display"]), lot_link(int(n["lot"])), n["status"], tb])
 	if not open_needs.is_empty():
-		box.add_child(_rtl("[b]Published needs[/b]\n" + "\n".join(open_needs)))
+		var pc: VBoxContainer = _card(box, "Published needs")
+		pc.add_child(_rtl("\n".join(open_needs)))
 
 
 func _incentive_editor() -> VBoxContainer:
@@ -1465,6 +1679,7 @@ func _tab_requests() -> void:
 		box.add_child(_h("Answered"))
 		for p in rest:
 			box.add_child(_petition_card(p, false))
+	_publish_need(box)
 
 
 func _petition_card(p: Dictionary, actions: bool) -> Control:
@@ -1595,6 +1810,7 @@ func _tab_projects() -> void:
 		box.add_child(_lbl("Settlers and developers hiring their own builders. Not your contracts: you only see them.", 13, Color(0.7, 0.75, 0.8)))
 		for p in priv:
 			box.add_child(_project_card(p))
+	_contractor_cards(tab_boxes["Projects"])
 
 
 func _project_card(p: Dictionary) -> Control:
@@ -1845,15 +2061,6 @@ func _tab_business() -> void:
 		card.pressed.connect(func():
 			inspect("biz", bid)
 			main.focus_lot(int(w().biz(bid)["lot"])))
-	box.add_child(_sep())
-	box.add_child(_h("Contractors"))
-	var cl: Array = []
-	for co in ww.companies:
-		cl.append("%s (outside): grade %s, %s jobs, %d overruns, %d late, %d defects." % [co["name"], LTProjects._grade(LTProjects._avg(co["quality_hist"])), co["jobs"], co["overruns"], co["late"], co["defects"]])
-	box.add_child(_rtl("\n".join(cl)))
-	box.add_child(_sep())
-	box.add_child(_h("Bank"))
-	box.add_child(_rtl("%s. Lending tightness %d%%. Losses in the last year about %s. %s" % [LTFinance.BANK_NAME, int(float(ww.bank["tightness"]) * 100.0), _money(int(ww.bank["losses_12m"])), ww.bank["note"]]))
 
 
 # ================================================================ City dashboard
@@ -1992,12 +2199,6 @@ func _tab_city() -> void:
 	for k in rows:
 		rl.append("%s: %s (%d people)" % [k, _bar(float(rows[k][0]) / float(rows[k][1])), rows[k][1]])
 	box.add_child(_rtl("\n".join(rl)))
-	box.add_child(_h("Laws passed: estimate against what happened"))
-	if ww.laws_log.is_empty():
-		box.add_child(_lbl("No laws changed yet.", 14))
-	for e in ww.laws_log:
-		var tr: String = "\n".join(e["tracked"]) if not e["tracked"].is_empty() else "Tracking starts after a month."
-		box.add_child(_rtl("[b]%s[/b] on %s: %s to %s.\n[color=#c8d3a0]Estimate:[/color] %s\n[color=#a8c8e8]Tracked:[/color] %s" % [e["label"], LTCalendar.short(int(e["day"])), LTCivic.law_text(str(e["law"]), float(e["old"])), LTCivic.law_text(str(e["law"]), float(e["new"])), e["estimate"]["hits"], tr]))
 	box.add_child(_h("Roads"))
 	var rd: Array = []
 	for st in ww.streets:
