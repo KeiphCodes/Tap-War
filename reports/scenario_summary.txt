@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T05:00:01 by tests/scenarios.gd.
+Generated 2026-11-28T05:34:28 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 70 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 70 days in the county jail.
@@ -68,7 +68,10 @@ Generated 2026-11-28T05:00:01 by tests/scenarios.gd.
   Board of 3. School funding vote: Passed. 10 students. Their education grows faster each school day. The effect shows up years from now when they are adul Appointment: Mayor Sam Dakota appointed William Harris as finance officer. The finance officer keeps the city's b After two terms: Linda Martinez took over from Sam Dakota. Decree: approval 62 to 47.
 
 [PASS] Map landmarks: each map seed has farms, a grain elevator on the railroad, a country church, cabins and a lookout, the same every time
-  17 landmarks: ["farmstead", "elevator", "church", "schoolhouse", "windmill", "cabin", "dock", "lookout"]. On water: 0.
+  18 landmarks: ["farmstead", "elevator", "church", "schoolhouse", "windmill", "cabin", "dock", "lookout"]. On water: 0.
+
+[PASS] Railroad and growth: shippers build spurs, depots go by the tracks, the right of way stays clear, full lots build up to the height limit, farms buy land
+  Spur: rail costs about a third of trucking per ton; the $231,340 spur pays for itself in about 3 years. Right of way: the land is the railroad's right of way, 15 meters each side of the track. Depot far away: A depot has to sit beside the tracks: this lot is 237 meters away. Pick a lot within 60 meters of the line.. Up to 2 stories: false, up to 6: true (3 stories). Farm acres: 320.
 
 [PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
   Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 25% of income. Business: SBA 7(a) loan at 11.7%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.
