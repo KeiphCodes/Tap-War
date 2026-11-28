@@ -35,6 +35,15 @@ var _dirty_t: float = -1.0       # seconds until a debounced autosave after a ma
 var resumed: bool = false        # the game opened on an autosaved town
 ## Snapshots taken before each mayor action, newest last: {"day", "label", "bytes"}
 var undo_stack: Array = []
+## The title screen, shown at launch and from the Menu.
+var title: CanvasLayer
+## The save slot this town saves to: 1 to 3.
+var slot: int = 1
+## True while the town on screen is only the title screen's backdrop.
+var demo: bool = false
+const SLOTS: int = 3
+const SETTINGS_PATH: String = "user://settings.cfg"
+var settings: Dictionary = {"sound": true, "volume": 0.8, "graphics": 1, "stop_level": 1, "steps": true}
 
 
 func _ready() -> void:
@@ -46,7 +55,9 @@ func _ready() -> void:
 			resumed = true
 			_autosaved_day = world.day
 	if not resumed:
+		# a town to look at behind the title screen until the player starts one
 		world.new_town(int(Time.get_unix_time_from_system()) % 1000000)
+		demo = true
 	get_tree().set_auto_accept_quit(false)
 	view = preload("res://town/view.gd").new()
 	view.name = "TownView"
@@ -60,9 +71,81 @@ func _ready() -> void:
 	hud.setup(self)
 	view.refresh_all()
 	hud.refresh_all()
+	_load_settings()
+	title = preload("res://ui/title.gd").new()
+	title.name = "Title"
+	add_child(title)
+	title.setup(self)
+	title.open(true)
+
+
+# ---------------------------------------------------------------- settings
+
+func _load_settings() -> void:
+	var cf: ConfigFile = ConfigFile.new()
+	if cf.load(SETTINGS_PATH) == OK:
+		for k in settings:
+			settings[k] = cf.get_value("game", k, settings[k])
+	apply_settings()
+
+
+func save_settings() -> void:
+	var cf: ConfigFile = ConfigFile.new()
+	for k in settings:
+		cf.set_value("game", k, settings[k])
+	cf.save(SETTINGS_PATH)
+	apply_settings()
+
+
+## Sound, volume and how much the graphics ask of the device.
+func apply_settings() -> void:
+	if sound != null:
+		sound.muted = not bool(settings["sound"])
+	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(0.001, float(settings["volume"]))))
+	var vp: Viewport = get_viewport()
+	var g: int = int(settings["graphics"])
+	vp.msaa_3d = [Viewport.MSAA_4X, Viewport.MSAA_2X, Viewport.MSAA_DISABLED][g]
+	vp.scaling_3d_scale = [1.0, 1.0, 0.75][g]
+	if view != null and view.sun != null:
+		view.sun.shadow_enabled = g < 2
+	if hud != null:
+		hud.steps_hidden = not bool(settings["steps"])
+		hud.refresh_menu()
+
+
+# ---------------------------------------------------------------- save slots
+
+static func slot_path(n: int) -> String:
+	return SAVE_PATH if n <= 1 else "user://living_town_%d.ltsave" % n
+
+
+## A few words about a saved town, written beside it so the load screen is quick.
+func _write_meta(path: String) -> void:
+	var f: FileAccess = FileAccess.open(path + ".meta", FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify({"town": str(world.city["name"]), "date": LTCalendar.short(world.day), "day": world.day,
+		"people": world.residents(), "kind": LTTerrain.kind_name(world), "mayor": str(world.player.get("name", "")),
+		"saved": Time.get_datetime_string_from_system(false, true)}))
+
+
+static func slot_info(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var out: Dictionary = {"saved": Time.get_datetime_string_from_unix_time(FileAccess.get_modified_time(path), true)}
+	if FileAccess.file_exists(path + ".meta"):
+		var j: Variant = JSON.parse_string(FileAccess.get_file_as_string(path + ".meta"))
+		if j is Dictionary:
+			out.merge(j, true)
+	return out
 
 
 func new_town(seed_value: int, mode: Dictionary = {}) -> void:
+	demo = false
+	if title != null:
+		title.close()
+	if not mode.has("stop_level"):
+		mode["stop_level"] = int(settings["stop_level"])
 	world = LTWorld.new()
 	world.new_town(seed_value, {}, mode)
 	catch_up_to = -1
@@ -89,7 +172,10 @@ func _write_save(path: String) -> Error:
 
 
 func autosave() -> void:
+	if demo:
+		return
 	if _write_save(AUTOSAVE_PATH) == OK:
+		_write_meta(AUTOSAVE_PATH)
 		_autosaved_day = world.day
 	_dirty_t = -1.0
 
@@ -106,28 +192,47 @@ func _notification(what: int) -> void:
 				autosave()
 
 
-func save_game() -> String:
-	var err: Error = _write_save(SAVE_PATH)
+func save_game(n: int = -1) -> String:
+	if demo:
+		return "Start or load a town first."
+	if n > 0:
+		slot = n
+	var path: String = slot_path(slot)
+	var err: Error = _write_save(path)
 	if err == OK:
+		_write_meta(path)
 		autosave()
-	return "Saved on %s." % LTCalendar.short(world.day) if err == OK else "Save failed: %s" % error_string(err)
+	return "Saved to slot %d on %s." % [slot, LTCalendar.short(world.day)] if err == OK else "Save failed: %s" % error_string(err)
 
 
-func load_game() -> String:
-	if not FileAccess.file_exists(SAVE_PATH):
+func load_game(n: int = -1) -> String:
+	if n > 0:
+		slot = n
+	var path: String = AUTOSAVE_PATH if n == 0 else slot_path(slot)
+	if not FileAccess.file_exists(path):
 		return "No save found yet."
 	var w: LTWorld = LTWorld.new()
-	var err: Error = w.load_from_file(SAVE_PATH)
+	var err: Error = w.load_from_file(path)
 	if err != OK:
 		return "Could not load the save: %s" % error_string(err)
 	world = w
+	demo = false
+	if title != null:
+		title.close()
 	speed = 0
 	catch_up_to = -1
 	undo_stack.clear()
 	view.rebuild()
 	hud.on_new_world()
 	autosave()
-	return "Loaded the town on %s." % LTCalendar.short(world.day)
+	return "Loaded %s on %s." % [world.city["name"], LTCalendar.short(world.day)]
+
+
+## Back to the title screen; the town is saved on the way.
+func to_title() -> void:
+	autosave()
+	set_speed(0)
+	title.open(false)
 
 
 func set_speed(i: int) -> void:

@@ -7,6 +7,7 @@ config/name="Living Town"
 config/description="A city builder where the citizens build the city. You are the mayor."
 run/main_scene="res://town/main.tscn"
 config/icon="res://icon.png"
+boot_splash/bg_color=Color(0.043, 0.067, 0.106, 1)
 config/features=PackedStringArray("4.4", "GL Compatibility")
 
 [display]

@@ -451,7 +451,7 @@ func _build_top() -> void:
 	pm.add_theme_constant_override("v_separation", 18)
 	pm.add_theme_constant_override("item_start_padding", 16)
 	pm.add_theme_constant_override("item_end_padding", 24)
-	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps", "Take over as mayor", "Stop time: major events"]:
+	for it in ["Save", "Load", "New town", "Your profile", "Sound: on", "Show next steps", "Take over as mayor", "Stop time: major events", "Main menu"]:
 		pm.add_item(it)
 	pm.id_pressed.connect(_on_menu)
 	menu_popup = pm
@@ -514,13 +514,18 @@ func _on_menu(id: int) -> void:
 		0:
 			show_toast(main.save_game())
 		1:
-			show_toast(main.load_game())
+			main.to_title()
+			main.title._page_load()
 		2:
 			show_setup()
+		8:
+			main.to_title()
 		3:
 			show_profile()
 		4:
 			main.sound.muted = not main.sound.muted
+			main.settings["sound"] = not main.sound.muted
+			main.save_settings()
 			menu_popup.set_item_text(4, "Sound: off" if main.sound.muted else "Sound: on")
 			show_toast("Sound off." if main.sound.muted else "Sound on.")
 		5:
@@ -546,6 +551,8 @@ func refresh_menu() -> void:
 		return
 	var auto: bool = bool(w().mode.get("autonomous", false))
 	menu_popup.set_item_text(7, main.STOP_LEVELS[main.stop_level()])
+	menu_popup.set_item_text(0, "Save (slot %d)" % int(main.slot))
+	menu_popup.set_item_text(4, "Sound: off" if main.sound != null and main.sound.muted else "Sound: on")
 	menu_popup.set_item_disabled(6, not auto)
 	menu_popup.set_item_text(6, "Hand back to Mayor %s" % w().player["name"] if auto and bool(w().player.get("player_took_over", false)) else "Take over as mayor")
 
@@ -893,7 +900,7 @@ func show_interrupt(events: Array) -> void:
 
 
 ## The new town card: how this town is played.
-func show_setup(first: bool = false) -> void:
+func show_setup(first: bool = false, on_cancel: Callable = Callable()) -> void:
 	main.set_speed(0)
 	var card: PanelContainer = PanelContainer.new()
 	card.anchor_left = 0.5
@@ -993,7 +1000,9 @@ func show_setup(first: bool = false) -> void:
 	hb3.alignment = BoxContainer.ALIGNMENT_END
 	hb3.add_child(_btn("Keep this town" if first else "Cancel", func():
 		card.queue_free()
-		if first:
+		if on_cancel.is_valid():
+			on_cancel.call()
+		elif first:
 			_welcome()))
 	hb3.add_child(_btn("Start", func():
 		var mode: Dictionary = {
