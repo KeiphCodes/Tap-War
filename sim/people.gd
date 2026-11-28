@@ -59,7 +59,10 @@ static func generate_town(w: LTWorld) -> void:
 			l["units"] = u
 			l["unit_rent"] = LTMoney.dollars(w.rng.randf_range(720.0, 940.0))
 			# built years ago by an outside company, for the town of its day
+			# (designed without touching the town's random draws, so the people are the same)
+			var rs: int = w.rng.state
 			LTApartments.apply(w, l, LTApartments.design(w, l, {"traits": {"kindness": 50, "greed": 55, "discipline": 50, "ambition": 40, "sociability": 45}, "name": "Plains Property Group", "units": apt_units}))
+			w.rng.state = rs
 			l["condition"] = w.rng.randf_range(45.0, 88.0)
 			l["built_day"] = -w.rng.randi_range(10, 50) * 365
 			l["owner_kind"] = "outside"
