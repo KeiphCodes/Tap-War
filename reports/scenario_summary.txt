@@ -1,5 +1,5 @@
 LIVING TOWN SCENARIO CHECKS
-Generated 2026-11-28T01:24:52 by tests/scenarios.gd.
+Generated 2026-11-28T01:39:01 by tests/scenarios.gd.
 
 [PASS] Crime goes to court: a charge, a trial, a verdict, and a sentence with a record
   Kevin Perez was charged with burglary. Case status: convicted. Sentence: fined $1,000, 70 days in the county jail. Job before: nursing aide, job now: none. Trail: Charged with burglary: broke into a neighbor's home (test). / Guilty. Fined $1,000, 70 days in the county jail.
@@ -59,7 +59,10 @@ Generated 2026-11-28T01:24:52 by tests/scenarios.gd.
   22 of 22 houses fit their lots. Perez family: Farmhouse, 3 bedrooms, 2.5 baths, 1,615 sq ft, 2 car detached garage, basement, front porch became Farmhouse, 4 bedrooms, 2.5 baths, 1,776 sq ft, 2 car detached garage, basement, front porch. Variance: Variance granted. The Perez family can build a back deck.
 
 [PASS] Business buildings: owners design them room by room within their money, rooms set how many they serve, and busy ones add on
-  Lean cafe: 1,500 sq ft, 55 seats, 4 parking spaces. With money to spare: 1,500 sq ft, 55 seats, outdoor patio seating, 5 parking spaces. Perez Coffee House grew from 800 to 1200 sq ft.
+  Lean cafe: 1,500 sq ft, 60 seats, but the kitchen only keeps up with about 125 customers a day, 4 parking spaces. With money to spare: 1,500 sq ft, 60 seats, but the kitchen only keeps up with about 125 customers a day, outdoor patio seating, 5 parking spaces. Perez Coffee House grew from 800 to 1200 sq ft.
+
+[PASS] Business rooms: every kind of business has its own rooms, equipment and code items, and a cramped kitchen is the bottleneck
+  Without their own rooms or equipment: []. Balanced cafe serves 165 a day; one with seats crammed in serves 125 (60 seats, but the kitchen only keeps up with about 125 customers a day).
 
 [PASS] Property lines and the bank: owners combine and split lots (splits need the mayor), and the bank finds a program for buyers who have the down payment and the credit
   Merge: Lots 0 and 1 are now one lot. Split: Plat approved. Lot 0 was split; the new lot is 80. Conventional: conventional loan: $50,000 down, credit 635, payments 20% of income. FHA: FHA loan: $8,750 down, credit 590, payments 25% of income. Business: SBA 7(a) loan at 11.7%, 12% down, credit 665. Too little down: a bank loan needs 20% down, $40,000; a SBA 7(a) loan needs 10% down, $20,000; advice: save at least $20,000 to put into it.

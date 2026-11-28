@@ -1,8 +1,8 @@
 LIVING TOWN V1 SLICE ACCEPTANCE RUN
-Generated 2026-11-28T01:24:20 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 5043 ms.
+Generated 2026-11-28T01:38:28 by tests/acceptance.gd. Seed 20261120, 365 days. Main run took 4939 ms.
 
 [PASS] 365 daily ticks complete with the ledger balanced every day (no mystery money)
-  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 114, "transfers": 22699 }.
+  Day 365 reached. Final audit: { "ok": true, "sum": 0, "negatives": [], "accounts": 114, "transfers": 22682 }.
 
 [PASS] At least one business was started by a Sim decision, with its start reason readable
   16 businesses started by Sims. First: Taylor Builders, opened day 29 by Ryan Taylor. Reason in its history: "Opened by Ryan Taylor from home on Lot 7 (Main Street, residential). Reason: the city and landlords hire outside builders for everything, construction skill is 50, expects about $5,004 a month after costs. It cost $49,080 in all: equipment $45,000, opening stock $3,000, three months of cash to get started $780, license $300. Funded with $9,275 of savings, a $39,804 SBA 7(a) loan at 11.2%. Run from home: a used truck, a trailer and tools, run from home."
@@ -40,10 +40,10 @@ Generated 2026-11-28T01:24:20 by tests/acceptance.gd. Seed 20261120, 365 days. M
   
 
 [PASS] Replaying the seed plus the logged mayor actions gives the same town
-  Run A hash 2453460377, replay hash 2453460377, 3 actions replayed.
+  Run A hash 2168872863, replay hash 2168872863, 3 actions replayed.
 
 [PASS] Saving on day 180 and loading the save reaches the same day 365 town
-  Save OK, load OK, loaded run hash 2453460377, straight run hash 2453460377.
+  Save OK, load OK, loaded run hash 2168872863, straight run hash 2168872863.
 
 [PASS] No em dashes in generated player facing text
   0 lines checked problems: []
@@ -81,13 +81,13 @@ BUSINESSES
       Start reason: there is nowhere in town to sit down and eat, cooking skill is 48, expects about $5,008 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $23,433 of savings, a $124,160 SBA 7(a) loan at 10.9%.
   - Brown Motel (hotel, sole), opened day 168 by William Brown. Open, 2 staff, cash $28,821, reputation 59.
       Start reason: people here need rooms for visiting crews and travelers and nobody local offers it, management skill is 65, expects about $18,837 a month after costs. It cost $479,500 in all: a 2100 square foot building $381,150, equipment $81,000, opening stock $1,750, three months of cash to get started $15,300, license $300. Funded with $7,415 of savings, $472,084 from outside investors for a 98% share.
-  - Rodriguez Trucking (trucking, sole), opened day 103 by Walt Rodriguez. Open, 0 staff, cash $583, reputation 56.
+  - Rodriguez Trucking (trucking, sole), opened day 103 by Walt Rodriguez. Open, 0 staff, cash $555, reputation 56.
       Start reason: people here need freight and nobody local offers it, logistics skill is 48, expects about $1,671 a month after costs. It cost $123,080 in all: equipment $120,000, opening stock $2,000, three months of cash to get started $780, license $300. Funded with $12,464 of savings, $110,615 from outside investors for a 89% share. Run from home: one used semi parked in the yard.
   - Taylor Kitchen (cafe, llc), opened day 247 by Lucy Taylor. Open, 0 staff, cash $3,922, reputation 74.
       Start reason: there is nowhere in town to sit down and eat, cooking skill is 45, expects about $4,555 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $14,861 of savings, a $132,732 SBA 7(a) loan at 10.4% with a personal guarantee.
   - Harris Cafe (cafe, llc), opened day 292 by William Harris. Open, 0 staff, cash $4,305, reputation 63.
       Start reason: there is nowhere in town to sit down and eat, cooking skill is 27, expects about $3,359 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $19,560 of savings, a $128,033 SBA 7(a) loan at 10.8% with a personal guarantee.
-  - Nelson Grocery (grocery, sole), opened day 267 by David Nelson. Open, 1 staff, cash $22,423, reputation 58.
+  - Nelson Grocery (grocery, sole), opened day 267 by David Nelson. Open, 1 staff, cash $21,845, reputation 58.
       Start reason: 30 of 30 households drive about 73 minutes round trip for groceries, retail skill is 45, expects about $618 a month after costs, the city published this need with incentives. It cost $364,522 in all: a 1400 square foot building $254,100, equipment $81,000, opening stock $21,000, three months of cash to get started $8,172, license $250. Funded with $10,441 of savings, a $10,000 city grant, a $344,080 bank loan with a city guarantee at 10.1%.
   - Brown Coffee House (cafe, sole), opened day 314 by Lucy Brown. Open, 1 staff, cash $5,182, reputation 61.
       Start reason: there is nowhere in town to sit down and eat, cooking skill is 32, expects about $4,386 a month after costs. It cost $147,594 in all: a 500 square foot building $90,750, equipment $47,250, opening stock $1,750, three months of cash to get started $7,644, license $200. Funded with $18,581 of savings, a $129,012 SBA 7(a) loan at 10.9%.
@@ -112,7 +112,7 @@ DEBT AND CREDIT
   Prairie State Bank: lending tightness 0.25, losses in the last year about $19,545.
 
 CITY
-  City cash $101,847 (was $150,000). Income last 12 months $184,732, spending $250,020. Credit standing A.
+  City cash $101,814 (was $150,000). Income last 12 months $184,711, spending $250,020. Credit standing A.
   Petitions 5. Projects finished 10. Protests 0. Thefts 0.
   - Petition "We need a grocery store in town": 19 signers, status resolved.
   - Petition "Build a school here so our kids stop riding the bus for an hour": 11 signers, status submitted.
@@ -139,8 +139,8 @@ CITY
   - Project "The Schmidt family's house": building.
 
 MONEY CHECK
-  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 22699.
-  Across the town line this run: $2,127,575 more left town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
+  Ledger: balanced. Sum of all accounts 0 cents (must be 0). Accounts below zero that should not be: 0. Transfers: 22682.
+  Across the town line this run: $2,128,142 more left town (imports, commutes, rent to outside owners against outside wages, pensions, exports).
 
 SAMPLE LIVES (last entries of their history logs)
 Sara Fischer, adult ordinary, 62. alive.
